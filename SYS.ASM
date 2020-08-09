@@ -1,5 +1,5 @@
 ; ========================================================================
-; HOUSEDOS KERNEL
+; House-DOS KERNEL
 ; 
 ; Written by Jacob Bates
 ; ========================================================================
@@ -46,11 +46,12 @@ start:                                          ; Startup code for HouseDOS kern
     int 0x10                                    ; BIOS VGA interrupt
 
     mov si, iface_welcome
-    call print_str                              ; Print welcome message
-    call line_break                             ; Line break
+    call println                                ; Print welcome message
 
     mov si, iface_info
-    call print_str                              ; Print info
+    call println                                ; Print info
+
+    xor bx, bx                                  ; Make sure that the zero-flag is set
 
 
 main:                                           ; Main code for HouseDOS kernel
@@ -77,7 +78,6 @@ main:                                           ; Main code for HouseDOS kernel
 
 command:                                        ; Main loop: Retrieve command from user
     call line_break                             ; Line break
-    call line_break                             ; Another line break
     call clear_input                            ; Clear input buffer
     call prompt                                 ; Setup prompt
     call input                                  ; Get input from user
@@ -102,7 +102,11 @@ command:                                        ; Main loop: Retrieve command fr
     inc di                                      ; Move pointer forward
     loop .char_filename                         ; Repeat
 
+    jmp .bad_command                            ; There should have been a null/space by now
+
 .params:
+    push cx                                     ; Save the loop counter
+    pop cx                                      ; Restore the loop counter
 
 .spaces:
     mov byte [di], 0x20                         ; Move a space into the next position
@@ -130,7 +134,7 @@ command:                                        ; Main loop: Retrieve command fr
 
 .bad_command:
     mov si, iface_command_bad
-    call print_str                              ; Display an error message
+    call println                                ; Display an error message
 
     jmp command                                 ; Try again
 
@@ -161,20 +165,45 @@ routines:
 .confirm:
     call confirm                                ; Ask for confirmation
 
+    pushf                                       ; Save flags
+    call line_break                             ; Line break
+    popf                                        ; Restore flags
+
     jmp ret_far                                 ; We're done!
 
 
-ret_far:                                        ; Far return
-                    db 0xCB
+ret_far:                                        ; Return back to command
+    mov ax, 0x1000
+    mov ds, ax                                  ; The segment our file is loaded in
+    mov es, ax
+
+    retf                                        ; Far return
 
 
 ; ========================================================================
 ; MISCELLANEOUS SUBROUTINES
 ; ========================================================================
 
+clear_input:                                    ; Clear the input buffer
+    pusha                                       ; Push register states to stack
+
+    mov di, prompt_response                     ; Our buffer
+    mov cx, end_prompt_buffer-prompt_response   ; Buffer is 1 paragraph long
+
+.zero:
+    mov byte [di], 0x00                         ; Write a zero in
+    inc di                                      ; Advance the pointer
+    loop .zero                                  ; Repeat
+
+.ret:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 confirm:                                        ; Ask the user to confirm
     pusha                                       ; Push register states to stack
 
+    clc                                         ; No error yet
     mov si, iface_confirm
     call print_str                              ; Print message
 
@@ -231,8 +260,12 @@ print_str:                                      ; Prints String in SI
 
 
 println:                                        ; Prints String in SI, then does a line break
+    pusha                                       ; Save register states to stack
+
     call print_str                              ; Print
     call line_break                             ; Line break
+
+    popa                                        ; Restore register states
     ret                                         ; Return to caller
 
 
@@ -286,23 +319,6 @@ prompt:                                         ; Set up a prompt for the user
     ret                                         ; Return to caller
 
 
-clear_input:                                    ; Clear the input buffer
-    pusha                                       ; Push register states to stack
-
-    mov di, prompt_response                     ; Our buffer
-
-.zero:
-    cmp di, prompt_response+0x10                ; Have we cleared the whole thing?
-    jge .ret                                    ; If so, we're done
-
-    mov byte [di], 0x00                         ; Move a zero in
-    inc di                                      ; Advance the pointer
-
-.ret:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
 input:                                          ; Get input from user
     pusha                                       ; Push register states to stack
 
@@ -340,6 +356,7 @@ input:                                          ; Get input from user
 
 get_file_cluster:                               ; Get the starting cluster of a file
     pusha                                       ; Push register states to stack
+    push es                                     ; Save segment
 
 .search_init:
     mov si, iface_disk_search
@@ -379,6 +396,7 @@ get_file_cluster:                               ; Get the starting cluster of a 
     clc                                         ; No error
 
 .end:
+    pop es                                      ; Restore segment
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -515,6 +533,7 @@ data:
 ; Storage data region
 prompt_response     dq 0x0000000000000000
                     dq 0x0000000000000000
+end_prompt_buffer:
 
 ; Disk operation data region
 filename            db "        "
@@ -536,7 +555,7 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 3", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 4", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
 iface_command_bad   db "Bad command", 0x00
@@ -551,8 +570,4 @@ iface_disk_nf       db "FATAL: Specified file not found.", 0x00
 iface_disk_eread    db "FATAL: Error while reading disk.", 0x00
 
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00
-
-; Command strings
-cmd_info            db "INFO", 0x00
-cmd_exit            db "EXIT", 0x00
 
