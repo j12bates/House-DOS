@@ -139,7 +139,7 @@ main:
     mov dx, ax                          ; Save in DX
 
     call calc_root_start                ; Start of root directory
-    add ax, 0x20                        ; Root directory is 32 sectors
+    add ax, 0x0020                      ; Root directory is 32 sectors
     add ax, dx                          ; Add to the number of sectors
 
     call calc_chs_ls                    ; Convert this Logical sector to CHS
@@ -177,11 +177,11 @@ main:
     cmp ax, 0xFFF8                      ; Is this the end of the file?
     jae .jump                           ; If so, we are ready to jump!
 
-    mov ax, 0x0200
+    mov ax, word [bytes_sector]
     mul word [sectors_cluster]
     add word [buffer_pointer], ax       ; Advance pointer by one cluster
 
-    jmp .load_cluster                   ; If not, load next cluster
+    jmp .load_cluster                   ; Load next cluster
 
 .jump:
     mov si, msg_ready
@@ -191,6 +191,7 @@ main:
     int 0x16                            ; BIOS keyboard interrupt
 
     mov dl, byte [boot_drive_num]       ; Provide the drive number to the kernel
+    call calc_root_start                ; Provide the start of the root directory
 
     jmp 0x2000:0x0000                   ; Jump!
 
@@ -289,7 +290,7 @@ reboot:                                 ; Prompt user to press a key and reboot
 data:
 
 msg_retrying        db "R", 0x00
-msg_fatal           db "FATAL", 0x00
+msg_fatal           db "FTL", 0x00
 msg_reboot          db "X", 0x00
 msg_search_root     db "Srch", 0x00
 msg_load_cluster    db "Clstr", 0x00
