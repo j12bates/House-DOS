@@ -232,10 +232,6 @@ print_str:                              ; Print string in SI
     mov ax, 0x07C0
     mov ds, ax                          ; Segment in which we are loaded
 
-    ;mov ah, 0x86
-    ;mov cx, 0x000D
-    ;int 0x15
-
     mov ah, 0x0E                        ; Teletype output
     mov bh, 0x00                        ; Page 0
 
@@ -282,9 +278,6 @@ reboot:                                 ; Prompt user to press a key and reboot
     mov si, msg_reboot
     call print_str                      ; Print message
 
-    mov si, msg_ready
-    call print_str                      ; Print message
-
     mov ah, 0x00                        ; Wait and read from keyboard
     int 0x16                            ; BIOS keyboard interrupt
 
@@ -295,17 +288,17 @@ reboot:                                 ; Prompt user to press a key and reboot
 
 data:
 
-cluster             dw 0x0000
-buffer_pointer      dw 0x0000
-boot_drive_num      db 0x00
-
 msg_retrying        db "R", 0x00
-msg_fatal           db "F", 0x00
+msg_fatal           db "FATAL", 0x00
 msg_reboot          db "X", 0x00
 msg_search_root     db "Srch", 0x00
 msg_load_cluster    db "Clstr", 0x00
-msg_ready           db "GO", 0x00
-msg_load            db "Press a key", 0x00
+msg_ready           db "Press a key", 0x00
+msg_load            db "Load"
+
+cluster             dw 0x0000
+buffer_pointer      dw 0x0000
+boot_drive_num      db 0x00
 
 kern_filename       db "SYS     BIN"
 
