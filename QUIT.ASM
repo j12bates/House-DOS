@@ -1,5 +1,5 @@
 ; ========================================================================
-; House-DOS EXIT COMMAND
+; House-DOS QUIT COMMAND
 ; 
 ; Written by Jacob Bates
 ; ========================================================================
@@ -20,7 +20,10 @@ main:
 
     jc .return                          ; If not given, return control
 
-    int 0x19                            ; Otherwise, reboot
+    mov ax, 0x5307
+    mov bx, 0x0001
+    mov cx, 0x0003
+    int 0x15                            ; Otherwise, BIOS shutdown 
 
     mov ah, 0x02                        ; Print line
     mov si, msg_error
@@ -33,5 +36,5 @@ main:
 
 data:
 
-msg         db "Rebooting...", 0x00
-msg_error   db "FATAL: Failed to reboot.", 0x00
+msg         db "Shutting down...", 0x00
+msg_error   db "FATAL: Failed to shut down.", 0x00

@@ -10,14 +10,14 @@
 ; MAIN ROUTINE
 ; ========================================================================
 
-start:                                          ; Startup code for HouseDOS kernel
-    mov bx, 0x2000                              ; The segment in which we are
-    mov ds, bx
+start:                                          ; House-DOS code
+    mov bx, 0x2000
+    mov ds, bx                                  ; The segment in which we are
 
     cmp ah, 0x00                                ; Have we just now been loaded?
     jne main                                    ; If not, don't initialize again
 
-.init:
+.init:                                          ; Startup code for House-DOS kernel
     mov bx, 0x07C0
     mov es, bx                                  ; The segment in which the bootloader is
 
@@ -87,7 +87,7 @@ command:                                        ; Main loop: Retrieve command fr
     mov si, prompt_response                     ; Read from the input buffer
     mov di, filename                            ; Into the filename
     mov cx, 0x0009                              ; Up to 8 chars in a filename
-    cld                                         ; Make sure direction is cleared
+    cld                                         ; Ensure correct direction
 
 .char_filename:
     lodsb                                       ; Load next char
@@ -117,6 +117,7 @@ command:                                        ; Main loop: Retrieve command fr
     mov si, bin_extension                       ; The extension for a Binary file
     mov di, filename_extension                  ; The extension of the filename
     mov cx, 0x0003                              ; Extension is 3 chars
+    cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Move into our file extension
 
@@ -124,13 +125,17 @@ command:                                        ; Main loop: Retrieve command fr
     call get_file_cluster                       ; Get the starting cluster for our file
     jc .bad_command                             ; If error, bad command
 
-    call load_file                              ; Load file into our buffer
+    call clear_file_buffer                      ; Clear the file buffer
+    call load_file                              ; Load file into our file buffer
+    call move_file_bin                          ; Move the contents into the binary buffer
 
-    mov ax, 0x1000
+    call line_break                             ; Line break between messages and command output
+
+    mov ax, 0x4000
     mov ds, ax                                  ; The segment our file is loaded in
     mov es, ax
 
-    jmp 0x1000:0x0000                           ; Jump to our loaded binary
+    jmp 0x4000:0x0000                           ; Jump to our loaded binary
 
 .bad_command:
     mov si, iface_command_bad
@@ -140,13 +145,13 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 ; ========================================================================
-; KERNEL ROUTINES
+; SYSTEM CALL ROUTINES
 ; ========================================================================
 
 routines:
 
 .print:
-    mov ax, 0x1000
+    mov ax, 0x4000
     mov ds, ax                                  ; Segment our command is loaded in
 
     call print_str                              ; Print String
@@ -154,7 +159,7 @@ routines:
     jmp ret_far                                 ; We're done!
 
 .println:
-    mov ax, 0x1000
+    mov ax, 0x4000
     mov ds, ax                                  ; Segment our command is loaded in
 
     call print_str                              ; Print String
@@ -173,7 +178,7 @@ routines:
 
 
 ret_far:                                        ; Return back to command
-    mov ax, 0x1000
+    mov ax, 0x4000
     mov ds, ax                                  ; The segment our file is loaded in
     mov es, ax
 
@@ -181,8 +186,157 @@ ret_far:                                        ; Return back to command
 
 
 ; ========================================================================
-; MISCELLANEOUS SUBROUTINES
+; MEMORY SUBROUTINES
 ; ========================================================================
+
+clear_file_buffer:                              ; Clear the file buffer (0x10000-0x100FF)
+    pusha                                       ; Save register states to stack
+    push es                                     ; Save extra segment
+
+    mov si, iface_mem_clear
+    call print_str                              ; Print message
+
+    mov ax, 0x1000
+    mov es, ax                                  ; File buffer segment
+    mov di, 0x0000                              ; Start at offset 0
+    mov cx, 0xFFFF                              ; Clear every byte
+
+.zero:
+    mov byte [es:di], 0x00                      ; Move a zero in
+    inc di                                      ; Advance pointer
+    loop .zero                                  ; Repeat
+
+.end:
+    mov si, iface_done
+    call println                                ; Print message
+
+    pop es                                      ; Restore extra segment
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+move_file_bin:                                  ; Load the file buffer as a binary
+    pusha                                       ; Save register states to stack
+    push ds
+    push es                                     ; Save segments
+
+    mov si, iface_mem_bin
+    call print_str                              ; Print message
+
+    mov ax, 0x1000
+    mov ds, ax                                  ; File buffer segment
+    mov si, 0x0000                              ; Start at offset 0
+
+    mov ax, 0x4000
+    mov es, ax                                  ; Binary execution segment
+    mov di, 0x0000                              ; Start at offset 0
+
+    mov cx, 0xFFFF                              ; Move every byte
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Move all of the bytes into the binary buffer
+
+    pop es
+    pop ds                                      ; Restore segments
+    mov si, iface_done
+    call println                                ; Print message
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; ========================================================================
+; INPUT SUBROUTINES
+; ========================================================================
+
+input:                                          ; Get input from user
+    pusha                                       ; Push register states to stack
+
+    mov bh, 0x00                                ; Page 0
+    mov bl, 0b00000111                          ; Light grey
+    mov di, prompt_response                     ; Our buffer for input
+
+.key:
+    mov ah, 0x00                                ; Get keyboard input
+    int 0x16                                    ; BIOS keyboard interrupt
+
+    cmp ah, 0x1C                                ; Was the RETURN key pressed?
+    je .ret                                     ; If so, we're done
+
+    cmp ah, 0x0E                                ; Was the BACKSPACE key pressed?
+    je .backspace                               ; If so, erase last char and move cursor left
+
+    cmp ah, 0x4B                                ; Was the LEFT ARROW pressed
+    je .left                                    ; If so, move cursor left
+
+    cmp ah, 0x4D                                ; Was the RIGHT ARROW pressed?
+    je .right                                   ; If so, move cursor right
+
+    cmp di, end_prompt_buffer                   ; Have we exhausted our 16-byte buffer?
+    jge .key                                    ; If so, don't continue
+
+.record:
+    mov ah, 0x0E                                ; Teletype output
+    int 0x10                                    ; BIOS VGA interrupt (print the char)
+
+    and al, 0b11011111                          ; Capitalize
+    mov byte [di], al                           ; Store this char in our buffer
+    inc di                                      ; Advance the pointer
+
+    jmp .key                                    ; Get more input
+
+.backspace:
+    cmp di, prompt_response                     ; Have we reached the leftmost limit?
+    je .key                                     ; If so, we can't do a backspace
+
+    mov ah, 0x0E                                ; Teletype output
+    mov al, 0x08                                ; Backwards
+    int 0x10                                    ; BIOS VGA interrupt
+
+    mov ah, 0x09                                ; Write char
+    mov al, 0x20                                ; Space
+    mov cx, 0x01                                ; Write once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    dec di                                      ; Decrement the pointer
+    mov byte [di], 0x00                         ; Erase that char
+
+    jmp .key                                    ; Get more input
+
+.left:
+    cmp di, prompt_response                     ; Have we reached the leftmost limit?
+    je .key                                     ; If so, we can't move left
+
+    mov ah, 0x0E                                ; Teletype output
+    mov al, 0x08                                ; Backwards
+    int 0x10                                    ; BIOS VGA interrupt
+
+    dec di                                      ; Decrement the pointer
+
+    jmp .key                                    ; Get more input
+
+.right:
+    cmp di, end_prompt_buffer                   ; Have we reached the rightmost limit?
+    je .key                                     ; If so, we can't move right
+
+    cmp byte [di], 0x00                         ; Is this char a null char?
+    je .key                                     ; If so, we can't move right
+
+    mov ah, 0x03                                ; Otherwise, get cursor position
+    int 0x10                                    ; BIOS VGA interrupt
+
+    inc dl                                      ; Advance by one col
+    mov ah, 0x02                                ; Set cursor position
+    int 0x10                                    ; BIOS VGA interrupt
+
+    inc di                                      ; Advance the pointer
+
+    jmp .key                                    ; Get more input
+
+.ret:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
 
 clear_input:                                    ; Clear the input buffer
     pusha                                       ; Push register states to stack
@@ -244,7 +398,8 @@ print_str:                                      ; Prints String in SI
     pusha                                       ; Push register states to stack
 
     mov ah, 0x0E                                ; Teletype output
-    mov bh, 0x00
+    mov bh, 0x00                                ; Page 0
+    cld                                         ; Ensure correct direction
 
 .char:
     lodsb                                       ; Load in next character
@@ -319,37 +474,6 @@ prompt:                                         ; Set up a prompt for the user
     ret                                         ; Return to caller
 
 
-input:                                          ; Get input from user
-    pusha                                       ; Push register states to stack
-
-    mov di, prompt_response                     ; Our buffer for input
-
-.char:
-    mov ah, 0x00                                ; Get keyboard input
-    int 0x16                                    ; BIOS keyboard interrupt
-
-    cmp al, 0x0D                                ; Was the RETURN key pressed?
-    je .ret                                     ; If so, we're done
-
-    cmp di, prompt_response+0x10                ; Have we exhausted our 16-byte buffer?
-    jge .char                                   ; If so, don't continue
-
-    mov ah, 0x0E                                ; Teletype output
-    mov bh, 0x00                                ; Page 0
-    mov bl, 0b00000111                          ; Light grey
-    int 0x10                                    ; BIOS VGA interrupt (print the char)
-
-    and al, 0b11011111                          ; Capitalize
-    mov byte [di], al                           ; Store this char in our buffer
-    inc di                                      ; Advance the pointer
-
-    jmp .char                                   ; Repeat
-
-.ret:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
 ; ========================================================================
 ; DISK SUBROUTINES
 ; ========================================================================
@@ -360,7 +484,7 @@ get_file_cluster:                               ; Get the starting cluster of a 
 
 .search_init:
     mov si, iface_disk_search
-    call println                                ; Print message
+    call print_str                              ; Print message
 
     mov ax, 0x3800
     mov es, ax                                  ; Segment the root directory is at
@@ -374,6 +498,7 @@ get_file_cluster:                               ; Get the starting cluster of a 
     mov cx, 0x000B                              ; Compare the first 11 bytes
     mov si, filename                            ; Compare against the filename requested
     push di                                     ; Save our location
+    cld                                         ; Ensure correct direction
 
     repe cmpsb                                  ; Compare!
 
@@ -413,7 +538,7 @@ load_file:                                      ; Load file starting at cluster 
 
 .load_cluster:
     mov si, iface_disk_cluster
-    call println                                ; Print message
+    call print_str                              ; Print message
 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
@@ -555,12 +680,15 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 4", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 5", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
-iface_command_bad   db "Bad command", 0x00
+iface_command_bad   db "Bad command.", 0x00
 iface_confirm       db "Are you sure? Press Y to confirm: ", 0x00
 iface_done          db "Done!", 0x00
+
+iface_mem_clear     db "Clearing file buffer...", 0x00
+iface_mem_bin       db "Loading file into binary buffer...", 0x00
 
 iface_disk_search   db "Searching root directory...", 0x00
 iface_disk_found    db "Found file!", 0x00

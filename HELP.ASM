@@ -1,5 +1,5 @@
 ; ========================================================================
-; House-DOS INFO COMMAND
+; House-DOS HELP COMMAND
 ; 
 ; Written by Jacob Bates
 ; ========================================================================
@@ -27,11 +27,24 @@ main:
     call 0x2000:0x0000                  ; Call SYS.BIN
     popa                                ; Restore register states
 
+    mov si, msgD                        ; Message D
+    pusha                               ; Push register states to stack
+    call 0x2000:0x0000                  ; Call SYS.BIN
+    popa                                ; Restore register states
+
+    mov si, msgE                        ; Message E
+    pusha                               ; Push register states to stack
+    call 0x2000:0x0000                  ; Call SYS.BIN
+    popa                                ; Restore register states
+
     mov ah, 0xFF                        ; We're done
     jmp 0x2000:0x0000                   ; Return control
 
+
 data:
 
-msgA        db "House-DOS v0.0.0, Build 5", 0x00
-msgB        db "Written by Jacob Bates", 0x00
-msgC        db "Compiled 2020-8-9", 0x00
+msgA        db "====== House-DOS Help ======", 0x00
+msgB        db "INFO: Display OS information", 0x00
+msgC        db "HELP: Display House-DOS help", 0x00
+msgD        db "EXIT: System Reboot", 0x00
+msgE        db "QUIT: System Shutdown", 0x00
