@@ -11,6 +11,7 @@
 ; ========================================================================
 
 start:                                          ; House-DOS code
+    push bx                                     ; Save register state to stack
     mov bx, 0x2000
     mov ds, bx                                  ; The segment in which we are
 
@@ -39,6 +40,14 @@ start:                                          ; House-DOS code
     mov ax, word [es:0x001A]
     mov word [heads], ax                        ; Save the number of heads
 
+    mov ax, 0x0000
+    mov es, ax                                  ; The IVT is in this segment
+    mov di, 0x7E                                ; We will be changing the entry for this interrupt
+    shl di, 0x2                                 ; 4 bytes per entry
+
+    mov word [es:di], 0x0000                    ; Handler (kernel) is loaded at offset 0
+    mov word [es:di+0x02], 0x2000               ; Segment 0x2000
+
     call clear                                  ; Clear screen
 
     mov ax, 0x1003                              ; Configure attribute bit 7
@@ -57,13 +66,16 @@ start:                                          ; House-DOS code
 main:                                           ; Main code for HouseDOS kernel
     mov bx, 0x2000
     mov es, bx                                  ; The segment in which we are loaded
+    pop bx                                      ; Restore register state
 
     je command                                  ; If we were just loaded, get a command
 
     cmp ah, 0xFF                                ; Did the last command just finish?
     je command                                  ; If so, get a command
 
-.check_function:                                ; Otherwise, a function was called
+                                                ; OTHERWISE, a system function was called
+
+.interface_funcs:                               ; Interfacing functions
     cmp ah, 0x01
     je routines.print                           ; Print String
 
@@ -98,6 +110,8 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x20                                ; Is this a SPACE?
     je .params                                  ; If so, that's also the end of the filename
 
+    call capitalize_char                        ; Capitalize this character
+
     mov byte [di], al                           ; Otherwise, move this char into our filename
     inc di                                      ; Move pointer forward
     loop .char_filename                         ; Repeat
@@ -127,6 +141,8 @@ command:                                        ; Main loop: Retrieve command fr
 
     call clear_file_buffer                      ; Clear the file buffer
     call load_file                              ; Load file into our file buffer
+    jc command                                  ; If error, stop here
+
     call move_file_bin                          ; Move the contents into the binary buffer
 
     call line_break                             ; Line break between messages and command output
@@ -151,16 +167,20 @@ command:                                        ; Main loop: Retrieve command fr
 routines:
 
 .print:
+    push ax                                     ; Save register state to stack
     mov ax, 0x4000
     mov ds, ax                                  ; Segment our command is loaded in
+    pop ax                                      ; Restore register state
 
     call print_str                              ; Print String
 
     jmp ret_far                                 ; We're done!
 
 .println:
+    push ax                                     ; Save register state to stack
     mov ax, 0x4000
     mov ds, ax                                  ; Segment our command is loaded in
+    pop ax                                      ; Restore register state
 
     call print_str                              ; Print String
     call line_break                             ; Line Break
@@ -178,9 +198,11 @@ routines:
 
 
 ret_far:                                        ; Return back to command
+    push ax                                     ; Save register state to stack
     mov ax, 0x4000
     mov ds, ax                                  ; The segment our file is loaded in
     mov es, ax
+    pop ax                                      ; Restore register state
 
     retf                                        ; Far return
 
@@ -272,6 +294,9 @@ input:                                          ; Get input from user
     cmp ah, 0x4D                                ; Was the RIGHT ARROW pressed?
     je .right                                   ; If so, move cursor right
 
+    cmp al, 0x20                                ; Is it between SPACE and DEL?
+    jl .key                                     ; If not, we can't print this character
+
     cmp di, end_prompt_buffer                   ; Have we exhausted our 16-byte buffer?
     jge .key                                    ; If so, don't continue
 
@@ -279,7 +304,6 @@ input:                                          ; Get input from user
     mov ah, 0x0E                                ; Teletype output
     int 0x10                                    ; BIOS VGA interrupt (print the char)
 
-    and al, 0b11011111                          ; Capitalize
     mov byte [di], al                           ; Store this char in our buffer
     inc di                                      ; Advance the pointer
 
@@ -376,6 +400,18 @@ confirm:                                        ; Ask the user to confirm
 
 .end:
     popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+capitalize_char:                                ; Capitalize char in AL
+    cmp al, 0x61                                ; Are we between lowercase A
+    jl .end
+    cmp al, 0x7A                                ; And lowercase Z?
+    jg .end
+
+    and al, 0b11011111                          ; If so, capitalize
+
+.end:
     ret                                         ; Return to caller
 
 
@@ -680,7 +716,7 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 5", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 6", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
 iface_command_bad   db "Bad command.", 0x00

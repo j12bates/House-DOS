@@ -13,25 +13,19 @@
 main:
     mov ah, 0x02                        ; Print line
     mov si, msgA                        ; Message A
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov si, msgB                        ; Message B
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov si, msgC                        ; Message C
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov ah, 0xFF                        ; We're done
-    jmp 0x2000:0x0000                   ; Return control
+    int 0x7E                            ; Call SYS.BIN
 
 data:
 
-msgA        db "House-DOS v0.0.0, Build 5", 0x00
+msgA        db "House-DOS v0.0.0, Build 6", 0x00
 msgB        db "Written by Jacob Bates", 0x00
-msgC        db "Compiled 2020-8-9", 0x00
+msgC        db "Compiled 2020-8-11", 0x00

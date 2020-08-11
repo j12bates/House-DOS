@@ -13,10 +13,10 @@
 main:
     mov ah, 0x02                        ; Print line
     mov si, msg
-    call 0x2000:0x0000                  ; Call SYS.BIN
+    int 0x7E                            ; Call SYS.BIN
 
     mov ah, 0x03                        ; Ask for confirmation
-    call 0x2000:0x0000                  ; Call SYS.BIN
+    int 0x7E                            ; Call SYS.BIN
 
     jc .return                          ; If not given, return control
 
@@ -24,11 +24,11 @@ main:
 
     mov ah, 0x02                        ; Print line
     mov si, msg_error
-    call 0x2000:0x0000                  ; Call SYS.BIN
+    int 0x7E                            ; Call SYS.BIN
 
 .return:
     mov ah, 0xFF                        ; We're done
-    jmp 0x2000:0x0000                   ; Return control
+    int 0x7E                            ; Call SYS.BIN
 
 
 data:

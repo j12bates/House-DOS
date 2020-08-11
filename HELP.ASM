@@ -13,32 +13,22 @@
 main:
     mov ah, 0x02                        ; Print line
     mov si, msgA                        ; Message A
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov si, msgB                        ; Message B
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov si, msgC                        ; Message C
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov si, msgD                        ; Message D
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov si, msgE                        ; Message E
-    pusha                               ; Push register states to stack
-    call 0x2000:0x0000                  ; Call SYS.BIN
-    popa                                ; Restore register states
+    int 0x7E                            ; Call SYS.BIN
 
     mov ah, 0xFF                        ; We're done
-    jmp 0x2000:0x0000                   ; Return control
+    int 0x7E                            ; Call SYS.BIN
 
 
 data:
