@@ -9,9 +9,7 @@ Creating a disk image:
   - Other than that, you can rename any files if you desire.
   2. Create a blank image: `dd if=/dev/zero of=House-DOS.img iflag=fullblock bs=512 count=65536`
   3. Write the bootloader to the bootsector of the image: `dd if=BOOT.BIN of=House-DOS.img conv=notrunc`
-  4. Mount the image as a loop device: `sudo losetup loop0 House-DOS.img`
-  5. Copy all the assembled source files to the device. (Except `BOOT.BIN`)
-  6. Unmount the loop device: `sudo losetup -d /dev/loop0`
+  4. Mount the image as a loop device, copy all the assembled source files to the device (Except `BOOT.BIN`), and unmount the loop device.
 
 Creating commands:
-  House-DOS commands are written in real-mode x86 assembly. There are a few different system calls available; a reference can be found in `syscall_docs.TXT`.
+  House-DOS commands are written in real-mode x86 assembly. There are a few different system calls available; a reference can be found in `syscall_docs.TXT`. More system calls coming soon, including disk/file functionality, and more.
