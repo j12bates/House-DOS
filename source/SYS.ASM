@@ -22,7 +22,6 @@ start:                                          ; House-DOS code
     mov bx, 0x07C0
     mov es, bx                                  ; The segment in which the bootloader is
 
-    mov byte [drive_num], dl                    ; Save our boot drive number
     mov word [root_start], ax                   ; Save the start of the root directory
 
     mov ax, word [es:0x000B]
@@ -39,6 +38,13 @@ start:                                          ; House-DOS code
 
     mov ax, word [es:0x001A]
     mov word [heads], ax                        ; Save the number of heads
+
+    mov al, byte [es:0x0024]
+    mov byte [drive_num], al                    ; Save our boot drive number
+
+    pop bx                                      ; Take this out of the stack for now
+    mov sp, 0x4000                              ; 16K ought to be enough for anyone
+    push bx                                     ; Push this back
 
     mov ax, 0x0000
     mov es, ax                                  ; The IVT is in this segment
@@ -71,7 +77,7 @@ main:                                           ; Main code for HouseDOS kernel
     je command                                  ; If we were just loaded, get a command
 
     cmp ah, 0xFF                                ; Did the last command just finish?
-    je command                                  ; If so, get a command
+    je .handback                                ; If so, prepare to get a command
 
                                                 ; OTHERWISE, a system function was called
 
@@ -85,18 +91,24 @@ main:                                           ; Main code for HouseDOS kernel
     cmp ah, 0x03
     je routines.confirm                         ; Ask for confirmation
 
+    cmp ah, 0x04
+    je routines.input                           ; Get user input
+
     ret                                         ; If invalid function number, we're done!
 
+.handback:
+    add sp, 0x0006                              ; Get rid of all the stuff in the stack from INT 0x7E
 
 command:                                        ; Main loop: Retrieve command from user
     call line_break                             ; Line break
-    call clear_input                            ; Clear input buffer
     call prompt                                 ; Setup prompt
+
+    mov di, input_buffer                        ; Our input buffer
     call input                                  ; Get input from user
     call line_break                             ; Line break
     call line_break                             ; Another line break
 
-    mov si, prompt_response                     ; Read from the input buffer
+    mov si, input_buffer                        ; Read from the input buffer
     mov di, filename                            ; Into the filename
     mov cx, 0x0009                              ; Up to 8 chars in a filename
     cld                                         ; Ensure correct direction
@@ -174,7 +186,7 @@ routines:
 
     call print_str                              ; Print String
 
-    jmp ret_far                                 ; We're done!
+    jmp int_ret                                 ; We're done!
 
 .println:
     push ax                                     ; Save register state to stack
@@ -185,7 +197,7 @@ routines:
     call print_str                              ; Print String
     call line_break                             ; Line Break
 
-    jmp ret_far                                 ; We're done!
+    jmp int_ret                                 ; We're done!
 
 .confirm:
     call confirm                                ; Ask for confirmation
@@ -194,13 +206,49 @@ routines:
     call line_break                             ; Line break
     popf                                        ; Restore flags
 
-    jmp ret_far                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
-
-ret_far:                                        ; Return back to command
+.input:
     push ax                                     ; Save register state to stack
     mov ax, 0x4000
-    mov ds, ax                                  ; The segment our file is loaded in
+    mov es, ax                                  ; Segment our command is loaded in
+    pop ax                                      ; Restore register state
+
+    call input                                  ; Get input
+    call line_break                             ; Line Break
+
+    jmp int_ret                                 ; We're done!
+
+
+int_ret:                                        ; Return back to command
+    push ax                                     ; Save register state to stack
+    mov ax, 0x4000
+    mov ds, ax                                  ; The segment our command is loaded in
+    mov es, ax
+    pop ax                                      ; Restore register state
+    
+.ret:
+    iret                                        ; Interrupt return
+
+.preserve_flags:
+    mov word [register_bckp_a], ax
+    mov word [register_bckp_b], bx              ; Save register states to backup
+
+    pop ax                                      ; Pop instruction pointer
+    pop bx                                      ; Pop code segment
+
+    inc sp
+    inc sp                                      ; Move stack pointer past the FLAGS image
+
+    push bx                                     ; Push code segment
+    push ax                                     ; Push instruction pointer
+
+    mov ax, word [register_bckp_a]
+    mov bx, word [register_bckp_b]              ; Restore register states
+
+    push ax                                     ; Save register state to stack
+    mov ax, 0x4000
+    mov ds, ax                                  ; The segment our command is loaded in
     mov es, ax
     pop ax                                      ; Restore register state
 
@@ -211,7 +259,7 @@ ret_far:                                        ; Return back to command
 ; MEMORY SUBROUTINES
 ; ========================================================================
 
-clear_file_buffer:                              ; Clear the file buffer (0x10000-0x100FF)
+clear_file_buffer:                              ; Clear the file buffer (0x10000-0x1FFFF)
     pusha                                       ; Save register states to stack
     push es                                     ; Save extra segment
 
@@ -271,19 +319,20 @@ move_file_bin:                                  ; Load the file buffer as a bina
 ; INPUT SUBROUTINES
 ; ========================================================================
 
-input:                                          ; Get input from user
+input:                                          ; Get input from user, store in paragraph DI
     pusha                                       ; Push register states to stack
+
+    mov word [input_buffer_addr], di            ; Save our address
 
     mov bh, 0x00                                ; Page 0
     mov bl, 0b00000111                          ; Light grey
-    mov di, prompt_response                     ; Our buffer for input
 
 .key:
     mov ah, 0x00                                ; Get keyboard input
     int 0x16                                    ; BIOS keyboard interrupt
 
     cmp ah, 0x1C                                ; Was the RETURN key pressed?
-    je .ret                                     ; If so, we're done
+    je .zero                                    ; If so, we're done getting input
 
     cmp ah, 0x0E                                ; Was the BACKSPACE key pressed?
     je .backspace                               ; If so, erase last char and move cursor left
@@ -297,20 +346,22 @@ input:                                          ; Get input from user
     cmp al, 0x20                                ; Is it between SPACE and DEL?
     jl .key                                     ; If not, we can't print this character
 
-    cmp di, end_prompt_buffer                   ; Have we exhausted our 16-byte buffer?
+    mov cx, word [input_buffer_addr]            ; Our buffer address
+    add cx, 0x0010                              ; The end of our buffer
+    cmp di, cx                                  ; Have we exhausted our buffer?
     jge .key                                    ; If so, don't continue
 
 .record:
     mov ah, 0x0E                                ; Teletype output
     int 0x10                                    ; BIOS VGA interrupt (print the char)
 
-    mov byte [di], al                           ; Store this char in our buffer
+    mov byte [es:di], al                        ; Store this char in our buffer
     inc di                                      ; Advance the pointer
 
     jmp .key                                    ; Get more input
 
 .backspace:
-    cmp di, prompt_response                     ; Have we reached the leftmost limit?
+    cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't do a backspace
 
     mov ah, 0x0E                                ; Teletype output
@@ -323,12 +374,12 @@ input:                                          ; Get input from user
     int 0x10                                    ; BIOS VGA interrupt
 
     dec di                                      ; Decrement the pointer
-    mov byte [di], 0x00                         ; Erase that char
+    mov byte [es:di], 0x00                      ; Erase that char
 
     jmp .key                                    ; Get more input
 
 .left:
-    cmp di, prompt_response                     ; Have we reached the leftmost limit?
+    cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't move left
 
     mov ah, 0x0E                                ; Teletype output
@@ -340,11 +391,13 @@ input:                                          ; Get input from user
     jmp .key                                    ; Get more input
 
 .right:
-    cmp di, end_prompt_buffer                   ; Have we reached the rightmost limit?
+    mov ax, word [input_buffer_addr]            ; Our buffer address
+    add ax, 0x0010                              ; The end of our buffer
+    cmp di, ax                                  ; Have we reached the rightmost limit?
     je .key                                     ; If so, we can't move right
 
-    cmp byte [di], 0x00                         ; Is this char a null char?
-    je .key                                     ; If so, we can't move right
+    cmp byte [es:di], 0x00                      ; Is this char a null char?
+    je .key                                     ; If so, there's nowhere to move
 
     mov ah, 0x03                                ; Otherwise, get cursor position
     int 0x10                                    ; BIOS VGA interrupt
@@ -357,23 +410,17 @@ input:                                          ; Get input from user
 
     jmp .key                                    ; Get more input
 
-.ret:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
-clear_input:                                    ; Clear the input buffer
-    pusha                                       ; Push register states to stack
-
-    mov di, prompt_response                     ; Our buffer
-    mov cx, end_prompt_buffer-prompt_response   ; Buffer is 1 paragraph long
-
 .zero:
-    mov byte [di], 0x00                         ; Write a zero in
-    inc di                                      ; Advance the pointer
-    loop .zero                                  ; Repeat
+    mov ax, word [input_buffer_addr]            ; Our buffer address
+    add ax, 0x0010                              ; The end of our buffer
+    cmp di, ax                                  ; Have we exhausted our buffer?
+    je .done                                    ; If so, we're done
 
-.ret:
+    mov byte [es:di], 0x00                      ; Otherwise, fill in a zero here
+    inc di                                      ; Advance the pointer
+    jmp .zero                                   ; And repeat
+
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -692,9 +739,12 @@ reboot_fatal:
 data:
 
 ; Storage data region
-prompt_response     dq 0x0000000000000000
+input_buffer        dq 0x0000000000000000
                     dq 0x0000000000000000
-end_prompt_buffer:
+input_buffer_addr   dw 0x0000
+
+register_bckp_a     dw 0x0000
+register_bckp_b     dw 0x0000
 
 ; Disk operation data region
 filename            db "        "
@@ -716,7 +766,7 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 6", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 7", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
 iface_command_bad   db "Bad command.", 0x00
