@@ -39,7 +39,7 @@ main:
     mov ss, ax
     mov sp, 0x1000                      ; 4K stack
 
-    mov byte [boot_drive_num], dl       ; Save boot drive number
+    mov byte [drive_num], dl            ; Save boot drive number
 
     mov ah, 0x08                        ; Read disk geometry
     int 0x13                            ; BIOS disk interrupt
@@ -190,7 +190,6 @@ main:
     mov ah, 0x00                        ; Wait and read from keyboard
     int 0x16                            ; BIOS keyboard interrupt
 
-    mov dl, byte [boot_drive_num]       ; Provide the drive number to the kernel
     call calc_root_start                ; Provide the start of the root directory
 
     jmp 0x2000:0x0000                   ; Jump!
@@ -221,7 +220,7 @@ calc_chs_ls:                            ; Setup Cylinder-Head-Sector from LBA (A
     mov dh, dl                          ; The remainder is the head number
     mov ch, al                          ; The quotient is the cylinder number
     
-    mov dl, byte [boot_drive_num]       ; Drive number
+    mov dl, byte [drive_num]            ; Drive number
     ret                                 ; Return to caller
 
 
@@ -263,7 +262,7 @@ reset_disk:                             ; Reset the disk
     call print_str                      ; Print message
 
     mov ah, 0x00                        ; Reset disk
-    mov dl, byte [boot_drive_num]
+    mov dl, byte [drive_num]
 
     int 0x13                            ; BIOS disk interrupt
     jc reboot_fatal                     ; If there was an error, reboot
@@ -289,17 +288,17 @@ reboot:                                 ; Prompt user to press a key and reboot
 
 data:
 
-msg_retrying        db "R", 0x00
-msg_fatal           db "FTL", 0x00
-msg_reboot          db "X", 0x00
-msg_search_root     db "Srch", 0x00
+msg_retrying        db "Rtry", 0x00
+msg_fatal           db "FATL", 0x00
+msg_reboot          db "Rbt", 0x00
 msg_load_cluster    db "Clstr", 0x00
 msg_ready           db "Press a key", 0x00
-msg_load            db "Load"
 
+msg_load            db "Load"
 cluster             dw 0x0000
+
+msg_search_root     db "Srch"
 buffer_pointer      dw 0x0000
-boot_drive_num      db 0x00
 
 kern_filename       db "SYS     BIN"
 
