@@ -1,0 +1,70 @@
+****************************** House-DOS System Call Documentation ******************************
+=================================================================================================
+
+This document contains information about all the system calls available in House-DOS/Assembly
+programming, as well as some general information about using these system calls.
+
+I. Writing Commands/Implementation
+
+House-DOS commands are written in real mode x86 assembly language. There is no need to worry
+about segmentation or preserving register states, as the kernel takes care of this.
+
+There are 6 different system calls available to commands, and these are called by setting
+parameters in various registers, and calling on interrupt 0x7E. Here is an example of a system
+call to print out a string:
+
+    mov ah, 0x02
+    mov si, string_mem_location
+    int 0x7E
+
+In this example, the string (terminated with NULL char) pointed to by SI will be printed out, and
+the cursor will be moved one line down. The following sections contain details on all the system
+calls available.
+
+
+II. Basic Functions
+
+    RE-INITIALIZE
+        AH = 0x00
+
+        Completely re-initializes House-DOS, including re-loading constants from the bootsector,
+        resetting the stack, re-configuring the interrupt vector should anything have happened
+        to it, clearing the screen, and displaying the welcome message.
+
+    HANDBACK
+        AH = 0xFF
+
+        Signals the end of the command. When this is used, command execution will stop and
+        House-DOS will prompt the user for a new command.
+
+
+III. Interface Functions
+
+    PRINT-STRING
+        AH = 0x01
+        SI = String location
+
+        Prints out the string in SI in teletype mode.
+
+    PRINT-STRING AND LINE-BREAK
+        AH = 0x02
+        SI = String location
+
+        Prints out the string in SI in teletype mode, and then moves the cursor to the next line.
+
+    REQUEST CONFIRMATION
+        AH = 0x03
+        Return:
+        CF = Set if confirmation denied, cleared if confirmation given.
+
+        Prompts the user to give confirmation before proceeding. The carry-flag will be set if
+        confirmation was not given.
+
+    GET KEYBOARD INPUT
+        AH = 0x04
+        DI = Buffer location
+
+        Retrieves user input through the keyboard. Any input will be printed out in teletype
+        mode, and the input will be stored in the buffer pointed to by DI. Note that the buffer
+        size is limited to 16 bytes.
+    
