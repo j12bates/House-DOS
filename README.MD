@@ -12,3 +12,6 @@ Creating a disk image:
   4. Mount the image as a loop device: `sudo losetup loop0 House-DOS.img`
   5. Copy all the assembled source files to the device. (Except `BOOT.BIN`)
   6. Unmount the loop device: `sudo losetup -d /dev/loop0`
+
+Creating commands:
+  House-DOS commands are written in real-mode x86 assembly. There are a few different system calls available; a reference can be found in `syscall_docs.TXT`.
