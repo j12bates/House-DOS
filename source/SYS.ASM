@@ -72,6 +72,10 @@ start:                                          ; House-DOS code
 main:                                           ; Main code for HouseDOS kernel
     mov bx, 0x2000
     mov es, bx                                  ; The segment in which we are loaded
+
+    mov bx, 0x1000
+    mov fs, bx                                  ; The segment in which files are loaded
+
     pop bx                                      ; Restore register state
 
     je command                                  ; If we were just loaded, get a command
@@ -79,22 +83,8 @@ main:                                           ; Main code for HouseDOS kernel
     cmp ah, 0xFF                                ; Did the last command just finish?
     je .handback                                ; If so, prepare to get a command
 
-                                                ; OTHERWISE, a system function was called
+    jmp syscall_handler                         ; OTHERWISE, a system function was called
 
-.interface_funcs:                               ; Interfacing functions
-    cmp ah, 0x01
-    je routines.print                           ; Print String
-
-    cmp ah, 0x02
-    je routines.println                         ; Print Line
-
-    cmp ah, 0x03
-    je routines.confirm                         ; Ask for confirmation
-
-    cmp ah, 0x04
-    je routines.input                           ; Get user input
-
-    ret                                         ; If invalid function number, we're done!
 
 .handback:
     add sp, 0x0006                              ; Get rid of all the stuff in the stack from INT 0x7E
@@ -173,90 +163,7 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 ; ========================================================================
-; SYSTEM CALL ROUTINES
-; ========================================================================
-
-routines:
-
-.print:
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov ds, ax                                  ; Segment our command is loaded in
-    pop ax                                      ; Restore register state
-
-    call print_str                              ; Print String
-
-    jmp int_ret                                 ; We're done!
-
-.println:
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov ds, ax                                  ; Segment our command is loaded in
-    pop ax                                      ; Restore register state
-
-    call print_str                              ; Print String
-    call line_break                             ; Line Break
-
-    jmp int_ret                                 ; We're done!
-
-.confirm:
-    call confirm                                ; Ask for confirmation
-
-    pushf                                       ; Save flags
-    call line_break                             ; Line break
-    popf                                        ; Restore flags
-
-    jmp int_ret.preserve_flags                  ; We're done!
-
-.input:
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov es, ax                                  ; Segment our command is loaded in
-    pop ax                                      ; Restore register state
-
-    call input                                  ; Get input
-    call line_break                             ; Line Break
-
-    jmp int_ret                                 ; We're done!
-
-
-int_ret:                                        ; Return back to command
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov ds, ax                                  ; The segment our command is loaded in
-    mov es, ax
-    pop ax                                      ; Restore register state
-    
-.ret:
-    iret                                        ; Interrupt return
-
-.preserve_flags:
-    mov word [register_bckp_a], ax
-    mov word [register_bckp_b], bx              ; Save register states to backup
-
-    pop ax                                      ; Pop instruction pointer
-    pop bx                                      ; Pop code segment
-
-    inc sp
-    inc sp                                      ; Move stack pointer past the FLAGS image
-
-    push bx                                     ; Push code segment
-    push ax                                     ; Push instruction pointer
-
-    mov ax, word [register_bckp_a]
-    mov bx, word [register_bckp_b]              ; Restore register states
-
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov ds, ax                                  ; The segment our command is loaded in
-    mov es, ax
-    pop ax                                      ; Restore register state
-
-    retf                                        ; Far return
-
-
-; ========================================================================
-; MEMORY SUBROUTINES
+; MEMORY/LOGICAL SUBROUTINES
 ; ========================================================================
 
 clear_file_buffer:                              ; Clear the file buffer (0x10000-0x1FFFF)
@@ -314,12 +221,81 @@ move_file_bin:                                  ; Load the file buffer as a bina
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+conv_word_hex:                                  ; Convert AX to ASCII hexadecimal dword at ES:DI
+    pusha                                       ; Push register states to stack
+    mov cx, 0x0004                              ; Four nibbles
+
+.nibble:
+    push ax                                     ; Save our word
+    push cx                                     ; Save our counter
+    
+    dec cx                                      ; Avoid an O.B.O.E
+    shl cx, 0x2                                 ; 4 bits in a nibble
+    shr ax, cl                                  ; Shift the nibble we care about into the far right
+
+    and al, 0x0F                                ; Get rid of the nibble on the left
+    add al, 0x30                                ; ASCII digits start here
+
+    cmp al, 0x39                                ; Is this nibble greater than 9?
+    jng .record                                 ; If not, no need to change anything
+
+    add al, 0x07                                ; Otherwise, fast forward to capital letters A-F
+
+.record:
+    mov byte [es:di], al                        ; Save the ASCII char in our space in memory
+    inc di                                      ; Increment our pointer
+
+    pop cx                                      ; Restore our counter
+    pop ax                                      ; Restore our word
+    loop .nibble                                ; And repeat
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at ES:DI
+    pusha                                       ; Push register states to stack
+    mov cx, 0x0005                              ; There are up to 5 digits in a 16-bit unsigned number
+
+.digit:
+    push ax                                     ; Save our number
+    push cx                                     ; Save our counter
+    mov ax, 0x0001                              ; One
+    loop .place_value                           ; Avoid an O.B.O.E and start calculating the place value
+
+    jmp .calc_digit                             ; If we are at the units digit, skip this
+
+.place_value:
+    mov dx, 0x000A                              ; Ten
+    mul dx                                      ; Multiply
+    loop .place_value                           ; Raise 10 to the number of digits left
+
+.calc_digit:
+    mov bx, ax                                  ; Save our place value
+    pop cx                                      ; Restore our counter
+    pop ax                                      ; Restore our number
+
+    mov dx, 0x0000                              ; Upper word of dividend is zero
+    div bx                                      ; Divide to find the digit in that place value
+
+    add al, 0x30                                ; ASCII digits start here
+    mov byte [es:di], al                        ; Store the ASCII character
+    inc di                                      ; Increment our pointer
+
+    mov ax, dx                                  ; We will now do this with the remainder
+    loop .digit                                 ; Repeat this process
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
 
 ; ========================================================================
 ; INPUT SUBROUTINES
 ; ========================================================================
 
-input:                                          ; Get input from user, store in paragraph DI
+input:                                          ; Get input from user, store in paragraph ES:DI
     pusha                                       ; Push register states to stack
 
     mov word [input_buffer_addr], di            ; Save our address
@@ -561,13 +537,17 @@ prompt:                                         ; Set up a prompt for the user
 ; DISK SUBROUTINES
 ; ========================================================================
 
-get_file_cluster:                               ; Get the starting cluster of a file
-    pusha                                       ; Push register states to stack
-    push es                                     ; Save segment
+get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
+    push di                                     ; Save register state to stack
+    push cx                                     ; Push register state to stack
+    push ax                                     ; Save our offset
 
 .search_init:
     mov si, iface_disk_search
     call print_str                              ; Print message
+
+    mov ax, 0x2000
+    mov ds, ax                                  ; Segment we are loaded at
 
     mov ax, 0x3800
     mov es, ax                                  ; Segment the root directory is at
@@ -588,24 +568,43 @@ get_file_cluster:                               ; Get the starting cluster of a 
     pop di                                      ; Restore our location
     pop cx                                      ; Restore the remaining entries
 
-    je .done                                    ; If equal, we found the entry
+    je .found                                   ; If equal, we found the entry
 
     add di, 0x0020                              ; Otherwise, move pointer to next entry
     loop .check_entry                           ; And repeat
 
     jmp .error_nf                               ; If gone through everything, error
 
-.done:
+.found:
     mov si, iface_disk_found
     call println                                ; Print message
 
-    mov ax, word [es:di+0x1A]
-    mov word [cluster], ax                      ; The starting cluster number
+    pop ax                                      ; Restore our offset
+    mov ah, 0x00                                ; Clear upper byte
     clc                                         ; No error
 
-.end:
-    pop es                                      ; Restore segment
-    popa                                        ; Restore register states
+    cmp al, 0x0E                                ; Items below this offset are byte-sized
+    jb .byte
+
+    cmp al, 0x1C                                ; Items between here and there are word-sized
+    jb .word
+
+    mov ax, word [es:di+0x1C]
+    mov dx, word [es:di+0x1E]                   ; Otherwise, return the file size in DX:AX
+    jmp .done                                   ; We're finished
+
+.byte:
+    add di, ax                                  ; Add our offset
+    mov al, byte [es:di]                        ; Return the byte in AL
+    jmp .done                                   ; We're finished
+
+.word:
+    add di, ax                                  ; Add our offset
+    mov ax, word [es:di]                        ; Return the word in AX
+
+.done:
+    pop cx                                      ; Restore register state
+    pop di                                      ; Restore register state
     ret                                         ; Return to caller
 
 .error_nf:
@@ -613,11 +612,14 @@ get_file_cluster:                               ; Get the starting cluster of a 
     call println                                ; Print message
 
     stc                                         ; Carry flag for error
-    jmp .end                                    ; We're done
+    jmp .done                                   ; We're done
 
 
 load_file:                                      ; Load file starting at cluster into buffer
     pusha                                       ; Push register states to stack
+
+    mov ax, 0x2000
+    mov ds, ax                                  ; Segment in which we are loaded
 
 .load_cluster:
     mov si, iface_disk_cluster
@@ -656,7 +658,7 @@ load_file:                                      ; Load file starting at cluster 
     mov ax, 0x3000
     mov ds, ax                                  ; Segment where the FAT is loaded
 
-    mov ax, word [ds:si]                        ; DS:SI is pointing to the FAT entry
+    mov ax, word [si]                           ; DS:SI is pointing to the FAT entry
 
     pop ds                                      ; Restore segment
     mov word [cluster], ax                      ; That entry contained our next cluster
@@ -667,6 +669,9 @@ load_file:                                      ; Load file starting at cluster 
     mov ax, word [bytes_sector]
     mul word [sectors_cluster]
     add word [buffer_pointer], ax               ; Advance pointer by one cluster
+
+    cmp word [buffer_pointer], 0x0000           ; Have we used up our 64K?
+    je .error_size                              ; If so, error
 
     jmp .load_cluster                           ; Load next cluster
 
@@ -687,6 +692,25 @@ load_file:                                      ; Load file starting at cluster 
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
+.error_size:
+    mov si, iface_disk_esize
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+get_file_cluster:                               ; Get the starting cluster for a file
+    pusha                                       ; Save register states to stack
+
+    mov al, 0x1A                                ; Read the starting cluster
+    call get_file_info                          ; Get from the root directory
+
+    mov word [cluster], ax                      ; Store as cluster number
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
 
 calc_chs_ls:                                    ; Setup Cylinder-Head-Sector from LBA (AX)
     mov dx, 0x0000
@@ -701,6 +725,7 @@ calc_chs_ls:                                    ; Setup Cylinder-Head-Sector fro
 
     mov dl, byte [drive_num]                    ; Drive number
     ret                                         ; Return to caller
+
 
 reset_disk:                                     ; Reset the disk
     push ax                                     ; Push register states to stack
@@ -718,6 +743,41 @@ reset_disk:                                     ; Reset the disk
     ret                                         ; Return to caller
 
 
+conv_x3_83:                                     ; Convert X.3 filename in DS:SI to an 8.3 for searching
+    pusha                                       ; Push register states to stack
+
+    mov ax, 0x2000
+    mov es, ax                                  ; Segment we're loaded in
+    mov di, filename                            ; Place into our memory space for filenames
+
+    mov cx, 0x0008                              ; 8 chars in the file NAME
+
+.name_char:
+    movsb                                       ; Move one byte and advance pointers
+
+    cmp byte [si], 0x2E                         ; Is this next character the dot?
+    je .dot                                     ; If so, move on
+
+    loop .name_char                             ; Otherwise, repeat
+
+.dot:
+    dec cx                                      ; Avoid an O.B.O.E
+    inc si                                      ; Get ready to read the extension
+
+.space:
+    mov byte [es:di], 0x20                      ; Pad with a space
+    inc di                                      ; Advance pointer
+    loop .space                                 ; Repeat
+
+.ext_chars:
+    mov cx, 0x0003                              ; 3 chars in the file EXTENSION
+    rep movsb                                   ; Move one byte and advance pointers
+    
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller 
+
+
 ; ========================================================================
 ; ERROR SUBROUTINES
 ; ========================================================================
@@ -730,6 +790,184 @@ reboot_fatal:
     int 0x16                                    ; BIOS keyboard interrupt
 
     int 0x19                                    ; Reboot
+
+
+; ========================================================================
+; SYSTEM CALL HANDLER
+; ========================================================================
+
+syscall_handler:                                ; System call handler
+
+.iface_funcs:                                   ; Interfacing functions
+    cmp ah, 0x01
+    je iface_routines.print                     ; Print String
+
+    cmp ah, 0x02
+    je iface_routines.println                   ; Print Line
+
+    cmp ah, 0x03
+    je iface_routines.confirm                   ; Ask for confirmation
+
+    cmp ah, 0x04
+    je iface_routines.input                     ; Get user input
+
+.disk_funcs:                                    ; Disk functions
+    cmp ah, 0x60
+    je disk_routines.verify                     ; Verify file
+
+    cmp ah, 0x61
+    je disk_routines.load                       ; Load file
+
+.general_funcs:                                 ; General functions
+    cmp ah, 0xF0
+    je general_routines.conv_hex                ; Convert to hexadecimal notation
+
+    cmp ah, 0xF1
+    je general_routines.conv_dec_usigned        ; Convert to decimal notation (unsigned)
+
+    jmp int_ret                                 ; If invalid function number, we're done!
+
+
+; ========================================================================
+; SYSTEM CALL ROUTINES
+; ========================================================================
+
+iface_routines:                                 ; Interface functions
+
+.print:
+    call data_binseg                            ; We want to access data from the command
+
+    call print_str                              ; Print String
+
+    jmp int_ret                                 ; We're done!
+
+.println:
+    call data_binseg                            ; We want to access data from the command
+
+    call print_str                              ; Print String
+    call line_break                             ; Line Break
+
+    jmp int_ret                                 ; We're done!
+
+.confirm:
+    call confirm                                ; Ask for confirmation
+
+    pushf                                       ; Save flags
+    call line_break                             ; Line break
+    popf                                        ; Restore flags
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.input:
+    call extra_binseg                           ; We want to give data to the command
+
+    call input                                  ; Get input
+    call line_break                             ; Line Break
+
+    jmp int_ret                                 ; We're done!
+
+
+disk_routines:                                  ; Disk functions
+
+.verify:                                        ; Verify file with X.3 filename (SI) exists
+    call data_binseg                            ; We want to access data from the command
+
+    call conv_x3_83                             ; Convert filename to proper format
+    call get_file_cluster                       ; Search the directory and find the starting cluster
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.load:                                          ; Load file just verified
+    call clear_file_buffer                      ; Clear the file buffer
+    call load_file                              ; Load the file into the file buffer
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+
+general_routines:                               ; General functions
+
+.conv_hex:                                      ; Convert word in DX to hexadecimal ASCII chars at DI
+    call extra_binseg                           ; We want to give data to the command
+
+    xchg ax, dx                                 ; Function takes arg in AX, we have it in DX
+    call conv_word_hex                          ; Do the conversion
+    xchg dx, ax                                 ; Put everything back the way it was
+
+    jmp int_ret                                 ; We're done!
+
+.conv_dec_usigned:                              ; Convert word in DX to decimal ASCII chars at DI
+    call extra_binseg                           ; We want to give data to the command
+
+    xchg ax, dx                                 ; Function takes arg in AX, we have it in DX
+    call conv_word_dec_unsigned                 ; Do the conversion
+    xchg dx, ax                                 ; Put everything back the way it was
+
+    jmp int_ret                                 ; We're done!
+
+
+int_ret:                                        ; Return back to command
+    push ax                                     ; Save register state to stack
+    mov ax, 0x4000
+    mov ds, ax                                  ; The segment our command is loaded in
+    mov es, ax
+    pop ax                                      ; Restore register state
+    
+.ret:
+    iret                                        ; Interrupt return
+
+.preserve_flags:
+    mov word [register_bckp_a], ax
+    mov word [register_bckp_b], bx              ; Save register states to backup
+
+    pop ax                                      ; Pop instruction pointer
+    pop bx                                      ; Pop code segment
+
+    inc sp
+    inc sp                                      ; Move stack pointer past the FLAGS image
+
+    push bx                                     ; Push code segment
+    push ax                                     ; Push instruction pointer
+
+    mov ax, word [register_bckp_a]
+    mov bx, word [register_bckp_b]              ; Restore register states
+
+    push ax                                     ; Save register state to stack
+    mov ax, 0x4000
+    mov ds, ax                                  ; The segment our command is loaded in
+    mov es, ax
+    pop ax                                      ; Restore register state
+
+    retf                                        ; Far return
+
+
+data_binseg:                                    ; Sets the data segment to the binary segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x4000
+    mov ds, ax                                  ; Segment the binary command is loaded in
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+data_kernseg:                                   ; Sets the data segment to the kernel segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x2000
+    mov ds, ax                                  ; Segment we are loaded in
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+extra_binseg:                                   ; Sets the extra segment to the binary segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x4000
+    mov es, ax                                  ; Segment the binary command is loaded in
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
 
 
 ; ========================================================================
@@ -766,7 +1004,7 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 7", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 8", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
 iface_command_bad   db "Bad command.", 0x00
@@ -782,6 +1020,7 @@ iface_disk_cluster  db "Loading cluster...", 0x00
 iface_disk_reset    db "Resetting disk...", 0x00
 iface_disk_nf       db "FATAL: Specified file not found.", 0x00
 iface_disk_eread    db "FATAL: Error while reading disk.", 0x00
+iface_disk_esize    db "FATAL: File too large to load.", 0x00
 
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00
 
