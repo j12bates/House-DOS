@@ -9,7 +9,7 @@ I. Writing Commands/Implementation
 House-DOS commands are written in real mode x86 assembly language. There is no need to worry
 about segmentation or preserving register states, as the kernel takes care of this.
 
-There are 6 different system calls available to commands, and these are called by setting
+There are 10 different system calls available to commands, and these are called by setting
 parameters in various registers, and calling on interrupt 0x7E. Here is an example of a system
 call to print out a string:
 
@@ -36,6 +36,22 @@ II. Basic Functions
 
         Signals the end of the command. When this is used, command execution will stop and
         House-DOS will prompt the user for a new command.
+
+    CONVERT TO HEX
+        AH = 0xF0
+        DX = Value to convert
+        DI = 4-byte buffer for result
+
+        Converts the value in DX into ASCII hexadecimal notation, which is stored in the four-
+        byte buffer pointed to by DI.
+
+    CONVERT TO UNSIGNED DECIMAL
+        AH = 0xF1
+        DX = Value to convert
+        DI = 5-byte buffer for result
+
+        Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
+        five-byte buffer pointed to by DI.
 
 
 III. Interface Functions
@@ -68,3 +84,16 @@ III. Interface Functions
         mode, and the input will be stored in the buffer pointed to by DI. Note that the buffer
         size is limited to 16 bytes.
     
+
+IV. Disk Functions
+
+    VERIFY FILE EXISTS
+        AH = 0x60
+        SI = X.3 filename
+
+        Verifies that a file with the given filename exists, and sets up for loading that file.
+
+    LOAD FILE
+        AH = 0x61
+
+        Clears the file buffer and loads the file that was just verified into it.
