@@ -21,6 +21,9 @@ In this example, the string (terminated with NULL char) pointed to by SI will be
 the cursor will be moved one line down. The following sections contain details on all the system
 calls available.
 
+Out of the system calls listed, the ones marked with an asterisk (*) have not yet been
+implemented, but are planned.
+
 
 II. Basic Functions
 
@@ -70,6 +73,7 @@ III. Interface Functions
 
     REQUEST CONFIRMATION
         AH = 0x03
+
         Return:
         CF = Set if confirmation denied, cleared if confirmation given.
 
@@ -83,6 +87,13 @@ III. Interface Functions
         Retrieves user input through the keyboard. Any input will be printed out in teletype
         mode, and the input will be stored in the buffer pointed to by DI. Note that the buffer
         size is limited to 16 bytes.
+
+    PRINT BYTES
+        AH = 0x10
+        SI = Source
+        CX = Number of characters
+
+        Prints out specified number of characters from source.
     
 
 IV. Disk Functions
@@ -91,9 +102,113 @@ IV. Disk Functions
         AH = 0x60
         SI = X.3 filename
 
+        Return:
+        CF = Set if file does not exist, cleared if it does.
+
         Verifies that a file with the given filename exists, and sets up for loading that file.
 
     LOAD FILE
         AH = 0x61
 
         Clears the file buffer and loads the file that was just verified into it.
+
+    GET BYTES (INDEX-QUANTITY)
+        AH = 0x62
+        SI = Byte to start at
+        CX = Number of bytes
+        DI = Destination buffer
+
+        Return:
+        CF = Set on error.
+
+        Gets a certain quantity of bytes from the file buffer starting at the given index, and
+        stores that in the destination buffer.
+
+    GET BYTES (INDEX-INDEX)
+        AH = 0x63
+        SI = Byte to start at
+        CX = Byte to stop at (non-inclusive)
+        DI = Destination buffer
+
+        Gets bytes from file buffer between the two indexes, and stores that in the destination
+        buffer.
+
+*   GET LINES
+        AH = 0x64
+        BX = Line number
+        CX = Number of lines
+        DI = Destination buffer
+
+        Gets a certain quantity of lines from the file buffer, and stores that in the destination
+        buffer.
+
+*   WRITE BYTES (INDEX-QUANTITY)
+        AH = 0x68
+        SI = Source buffer
+        CX = Number of bytes
+        DI = Byte to start writing at
+
+        WRITES a certain quantity of bytes from the source buffer into the file buffer at the
+        given index.
+
+*   WRITE BYTES (INDEX-INDEX)
+        AH = 0x69
+        SI = Source buffer
+        CX = End of source buffer
+        DI = Byte to start writing at
+
+        WRITES bytes from the buffer between the two indexes into the file buffer at the given
+        index.
+
+*   WRITE LINES
+        AH = 0x6A
+        SI = Source buffer
+        BX = Line number
+        CX = Number of lines
+
+        WRITES a certain quantity of lines from the source buffer into the file buffer at the
+        given line number.
+
+*   INSERT BYTES (INDEX-QUANTITY)
+        AH = 0x6B
+        SI = Source buffer
+        CX = Number of bytes
+        DI = Byte to start writing at
+
+        INSERTS a certain quantity of bytes from the source buffer into the file buffer at the
+        given index.
+
+*   INSERT BYTES (INDEX-INDEX)
+        AH = 0x6C
+        SI = Source buffer
+        CX = End of source buffer
+        DI = Byte to start writing at
+
+        INSERTS bytes from the buffer between the two indexes into the file buffer at the given
+        index.
+
+*   INSERT LINES
+        AH = 0x6D
+        SI = Source buffer
+        BX = Line number
+        CX = Number of lines
+
+        INSERTS a certain quantity of lines from the source buffer into the file buffer at the
+        given line number.
+
+*   WRITE TO DISK
+        AH = 0x6F
+        SI = X.3 filename
+
+        Write file with given filename to disk.
+
+    GET FILE SIZE
+        AH = 0x70
+        SI = X.3 filename
+
+        Return:
+        CF = Set if file does not exist, cleared if it does.
+        DX:AX = File size in bytes
+
+        Returns the size of the file with the filename given.
+
