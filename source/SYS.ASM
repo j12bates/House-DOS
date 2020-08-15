@@ -453,7 +453,7 @@ clear:                                          ; Clear screen
     ret                                         ; Return to caller
 
 
-print_str:                                      ; Prints String in SI
+print_str:                                      ; Prints String in DS:SI
     pusha                                       ; Push register states to stack
 
     mov ah, 0x0E                                ; Teletype output
@@ -473,7 +473,7 @@ print_str:                                      ; Prints String in SI
     ret                                         ; Return to caller
 
 
-println:                                        ; Prints String in SI, then does a line break
+println:                                        ; Prints String in DS:SI, then does a line break
     pusha                                       ; Save register states to stack
 
     call print_str                              ; Print
@@ -533,13 +533,33 @@ prompt:                                         ; Set up a prompt for the user
     ret                                         ; Return to caller
 
 
+print_bytes:                                    ; Prints number of bytes (CX) starting at DS:SI
+    pusha                                       ; Push register states to stack
+
+    mov ah, 0x0E                                ; Teletype output
+    mov bh, 0x00                                ; Page 0
+    cld                                         ; Ensure correct direction
+
+.char:
+    lodsb                                       ; Load char and increment pointer
+    int 0x10                                    ; BIOS VGA interrupt
+    loop .char                                  ; Repeat
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; ========================================================================
 ; DISK SUBROUTINES
 ; ========================================================================
 
 get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
-    push di                                     ; Save register state to stack
+    push ds                                     ; Save our segment
+    push es                                     ; Save our segment
     push cx                                     ; Push register state to stack
+    push si                                     ; Push register state to stack
+    push di                                     ; Push register state to stack
     push ax                                     ; Save our offset
 
 .search_init:
@@ -603,14 +623,18 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     mov ax, word [es:di]                        ; Return the word in AX
 
 .done:
-    pop cx                                      ; Restore register state
     pop di                                      ; Restore register state
+    pop si                                      ; Restore register state
+    pop cx                                      ; Restore register state
+    pop es                                      ; Restore our segment
+    pop ds                                      ; Restore our segment
     ret                                         ; Return to caller
 
 .error_nf:
     mov si, iface_disk_nf
     call println                                ; Print message
 
+    pop ax                                      ; Restore for balance
     stc                                         ; Carry flag for error
     jmp .done                                   ; We're done
 
@@ -705,9 +729,11 @@ get_file_cluster:                               ; Get the starting cluster for a
 
     mov al, 0x1A                                ; Read the starting cluster
     call get_file_info                          ; Get from the root directory
+    jc .done                                    ; If error, stop
 
-    mov word [cluster], ax                      ; Store as cluster number
+    mov word [es:cluster], ax                   ; Store as cluster number
 
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -776,7 +802,7 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller 
-
+    
 
 ; ========================================================================
 ; ERROR SUBROUTINES
@@ -811,12 +837,24 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x04
     je iface_routines.input                     ; Get user input
 
+    cmp ah, 0x10
+    je iface_routines.print_bytes               ; Print bytes
+
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
     je disk_routines.verify                     ; Verify file
 
     cmp ah, 0x61
     je disk_routines.load                       ; Load file
+
+    cmp ah, 0x62
+    je disk_routines.get_bytes_qty              ; Get quantity of bytes from file
+
+    cmp ah, 0x63
+    je disk_routines.get_bytes_indexes          ; Get bytes between two indexes
+
+    cmp ah, 0x70
+    je disk_routines.get_file_size              ; Verify and get size of file
 
 .general_funcs:                                 ; General functions
     cmp ah, 0xF0
@@ -866,10 +904,17 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret                                 ; We're done!
 
+.print_bytes:
+    call data_binseg                            ; We want to access data from the command
+
+    call print_bytes                            ; Print bytes
+
+    jmp int_ret                                 ; We're done!
+
 
 disk_routines:                                  ; Disk functions
 
-.verify:                                        ; Verify file with X.3 filename (SI) exists
+.verify:
     call data_binseg                            ; We want to access data from the command
 
     call conv_x3_83                             ; Convert filename to proper format
@@ -877,16 +922,49 @@ disk_routines:                                  ; Disk functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
-.load:                                          ; Load file just verified
+.load:
     call clear_file_buffer                      ; Clear the file buffer
     call load_file                              ; Load the file into the file buffer
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.get_bytes_qty:
+    call data_fileseg                           ; We want to access data from the file buffer
+    call extra_binseg                           ; We want to give data to the command
+
+    push cx                                     ; Save our counter
+    rep movsb                                   ; Copy the correct number of bytes
+    pop cx                                      ; Restore our counter
+
+    jmp int_ret                                 ; We're done!
+
+.get_bytes_indexes:
+    call data_fileseg                           ; We want to access data from the file buffer
+    call extra_binseg                           ; We want to give data to the command
+
+    push cx                                     ; Save our counter
+
+    sub cx, si                                  ; Convert index to number of bytes
+    rep cmpsb                                   ; Copy the correct number of bytes
+
+    pop cx                                      ; Restore our counter
+
+    jmp int_ret                                 ; We're done!
+
+.get_file_size:
+    call data_binseg                            ; We want to access data from the command
+
+    call conv_x3_83                             ; Convert filename to proper format
+
+    mov al, 0x1C                                ; File size
+    call get_file_info                          ; Get item from root directory
 
     jmp int_ret.preserve_flags                  ; We're done!
 
 
 general_routines:                               ; General functions
 
-.conv_hex:                                      ; Convert word in DX to hexadecimal ASCII chars at DI
+.conv_hex:
     call extra_binseg                           ; We want to give data to the command
 
     xchg ax, dx                                 ; Function takes arg in AX, we have it in DX
@@ -895,7 +973,7 @@ general_routines:                               ; General functions
 
     jmp int_ret                                 ; We're done!
 
-.conv_dec_usigned:                              ; Convert word in DX to decimal ASCII chars at DI
+.conv_dec_usigned:
     call extra_binseg                           ; We want to give data to the command
 
     xchg ax, dx                                 ; Function takes arg in AX, we have it in DX
@@ -960,6 +1038,16 @@ data_kernseg:                                   ; Sets the data segment to the k
     ret                                         ; Return to caller
 
 
+data_fileseg:                                   ; Sets the data segment to the file buffer segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x1000
+    mov ds, ax                                  ; Segment the file buffer is at
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
 extra_binseg:                                   ; Sets the extra segment to the binary segment
     push ax                                     ; Save register state to stack
 
@@ -1004,7 +1092,7 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 8", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 9", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
 iface_command_bad   db "Bad command.", 0x00
