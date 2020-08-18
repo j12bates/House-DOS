@@ -9,7 +9,7 @@ I. Writing Commands/Implementation
 House-DOS commands are written in real mode x86 assembly language. There is no need to worry
 about segmentation or preserving register states, as the kernel takes care of this.
 
-There are 10 different system calls available to commands, and these are called by setting
+There are 19 various system calls available to commands, and these are called by setting
 parameters in various registers, and calling on interrupt 0x7E. Here is an example of a system
 call to print out a string:
 
@@ -83,10 +83,15 @@ III. Interface Functions
     GET KEYBOARD INPUT
         AH = 0x04
         DI = Buffer location
+        CX = Size of buffer
 
         Retrieves user input through the keyboard. Any input will be printed out in teletype
-        mode, and the input will be stored in the buffer pointed to by DI. Note that the buffer
-        size is limited to 16 bytes.
+        mode, and the input will be stored in the buffer pointed to by DI.
+
+    LINE-BREAK
+        AH = 0x05
+
+        Moves the cursor to the far left of the next line down.
 
     PRINT BYTES
         AH = 0x10
@@ -142,7 +147,7 @@ IV. Disk Functions
         Gets a certain quantity of lines from the file buffer, and stores that in the destination
         buffer.
 
-*   WRITE BYTES (INDEX-QUANTITY)
+    WRITE BYTES (INDEX-QUANTITY)
         AH = 0x68
         SI = Source buffer
         CX = Number of bytes
@@ -151,7 +156,7 @@ IV. Disk Functions
         WRITES a certain quantity of bytes from the source buffer into the file buffer at the
         given index.
 
-*   WRITE BYTES (INDEX-INDEX)
+    WRITE BYTES (INDEX-INDEX)
         AH = 0x69
         SI = Source buffer
         CX = End of source buffer
@@ -196,9 +201,15 @@ IV. Disk Functions
         INSERTS a certain quantity of lines from the source buffer into the file buffer at the
         given line number.
 
-*   WRITE TO DISK
+    CLEAR ENTIRE BUFFER
+        AH = 0x6E
+
+        Overwrites everything in the file buffer with zeroes.
+
+    WRITE TO DISK
         AH = 0x6F
         SI = X.3 filename
+        CX = File size
 
         Write file with given filename to disk.
 
