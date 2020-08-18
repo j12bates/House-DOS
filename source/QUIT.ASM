@@ -13,10 +13,10 @@
 main:
     mov ah, 0x02                        ; Print line
     mov si, msg
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
     mov ah, 0x03                        ; Ask for confirmation
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
     jc .return                          ; If not given, return control
 
@@ -27,14 +27,19 @@ main:
 
     mov ah, 0x02                        ; Print line
     mov si, msg_error
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
 .return:
+    mov ah, 0x02                        ; Print line
+    mov si, msg_cancel
+    int 0x7E
+
     mov ah, 0xFF                        ; We're done
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
 
 data:
 
 msg         db "Shutting down...", 0x00
+msg_cancel  db "Canceled.", 0x00
 msg_error   db "FATAL: Failed to shut down.", 0x00
