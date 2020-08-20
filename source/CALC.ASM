@@ -44,9 +44,10 @@ main:
     mov DI, input_buffer1   ;output to input_buffer1
     int 0x7e        
 
-    mov AH, 0x02            ;declaring print line
+    mov AH, 0x10            ;declaring print bytes
     mov SI, input_buffer1   ;setting the output
-    int 0x7e        
+    mov CX, 5               ;setting number of bytes
+    int 0x7e          
 
 .done:
     mov ah, 0xFF                        ; We're done!
