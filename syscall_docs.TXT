@@ -56,6 +56,14 @@ II. Basic Functions
         Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
         five-byte buffer pointed to by DI.
 
+    CONVERT UNSIGNED DECIMAL TO BINARY
+        AH = 0xF3
+        SI = 5-byte buffer for input number
+        Return:
+        DX = Binary value
+
+        Converts the ASCII decimal number in the five-byte input buffer to a binary value in DX.
+
 
 III. Interface Functions
 
