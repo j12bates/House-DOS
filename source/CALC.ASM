@@ -61,7 +61,8 @@ main:
     jmp .print              ;jump to print
 
 .sub:
-    sub DX, CX              ;subtracting the numbers
+    sub CX, DX              ;subtracting the numbers
+    mov DX, CX              
 
 .print:
     mov AH, 0xF1            ;declaring binary to unsigned decimal
