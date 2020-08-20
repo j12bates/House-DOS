@@ -117,7 +117,7 @@ command:                                        ; Main loop: Retrieve command fr
     cld                                         ; Ensure correct direction
 
 .char_filename:
-    lodsb                                       ; Load next char
+    lodsb                                       ; Load next char and advance
 
     cmp al, 0x00                                ; Is this a NULL char?
     je .spaces                                  ; If so, that's the end of the filename
@@ -125,10 +125,9 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x20                                ; Is this a SPACE?
     je .params                                  ; If so, that's also the end of the filename
 
-    call capitalize_char                        ; Capitalize this character
+    call capitalize_char                        ; Otherwise, capitalize this character
 
-    mov byte [di], al                           ; Otherwise, move this char into our filename
-    inc di                                      ; Move pointer forward
+    stosb                                       ; Move this into our filename and advance
     loop .char_filename                         ; Repeat
 
     jmp .bad_command                            ; There should have been a null/space by now
@@ -329,6 +328,7 @@ input:                                          ; Get input from user, store in 
     pusha                                       ; Push register states to stack
 
     mov word [input_buffer_addr], di            ; Save our address
+    mov word [input_end], di                    ; Put our address here too
 
     add cx, di                                  ; Find the end of the buffer
     mov word [input_buffer_limit], cx           ; Save this
@@ -336,12 +336,21 @@ input:                                          ; Get input from user, store in 
     mov bh, 0x00                                ; Page 0
     mov bl, 0b00000111                          ; Light grey
 
+    sub cx, di                                  ; Find the number of bytes in this buffer
+
+.zero:
+    mov byte [es:di], 0x00                      ; Otherwise, fill in a zero here
+    inc di                                      ; Advance the pointer
+    loop .zero                                  ; And repeat
+
+    mov di, word [input_buffer_addr]            ; Start at the beginning of our buffer
+
 .key:
     mov ah, 0x00                                ; Get keyboard input
     int 0x16                                    ; BIOS keyboard interrupt
 
     cmp ah, 0x1C                                ; Was the RETURN key pressed?
-    je .zero                                    ; If so, we're done getting input
+    je .terminate                               ; If so, we're done getting input
 
     cmp ah, 0x0E                                ; Was the BACKSPACE key pressed?
     je .backspace                               ; If so, erase last char and move cursor left
@@ -370,6 +379,9 @@ input:                                          ; Get input from user, store in 
 .backspace:
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't do a backspace
+
+    cmp byte [es:di], 0x00                      ; Are we at the end of the input?
+    jne .key                                    ; If not, we can't do a backspace
 
     mov ah, 0x0E                                ; Teletype output
     mov al, 0x08                                ; Backwards
@@ -415,16 +427,19 @@ input:                                          ; Get input from user, store in 
 
     jmp .key                                    ; Get more input
 
-.zero:
-    cmp di, word [input_buffer_limit]           ; Have we exhausted our buffer?
+.terminate:
+    cmp byte [es:di], 0x00                      ; Are we at the end of our input?
     je .done                                    ; If so, we're done
 
-    mov byte [es:di], 0x00                      ; Otherwise, fill in a zero here
-    inc di                                      ; Advance the pointer
-    jmp .zero                                   ; And repeat
+    inc di                                      ; Otherwise, advance pointer
+    jmp .terminate                              ; And repeat
 
 .done:
+    mov word [register_bckp_a], di              ; Preserve our return value
+
     popa                                        ; Restore register states
+    mov di, word [register_bckp_a]              ; Restore our return value
+
     ret                                         ; Return to caller
 
 
@@ -564,6 +579,10 @@ print_bytes:                                    ; Prints number of bytes (CX) st
 
 .char:
     lodsb                                       ; Load char and increment pointer
+
+    cmp al, 0x0A                                ; Is it a UNIX newline char?
+    je .newline
+
     int 0x10                                    ; BIOS VGA interrupt
     loop .char                                  ; Repeat
 
@@ -571,15 +590,17 @@ print_bytes:                                    ; Prints number of bytes (CX) st
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+.newline:
+    call line_break                             ; Do a line break
+    loop .char                                  ; Next char
+
 
 ; ========================================================================
 ; DISK SUBROUTINES
 ; ========================================================================
 
 get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
-    push cx                                     ; Push register state to stack
-    push si                                     ; Push register state to stack
-    push di                                     ; Push register state to stack
+    pusha                                       ; Save register states to stack
     push ax                                     ; Save our offset
 
 .search_init:
@@ -650,9 +671,14 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     mov ax, word [es:di]                        ; Return the word in AX
 
 .done:
-    pop di                                      ; Restore register state
-    pop si                                      ; Restore register state
-    pop cx                                      ; Restore register state
+    mov word [register_bckp_a], ax              ; Preserve our return value
+    mov word [register_bckp_b], dx              ; And the upper half if applicable
+
+    popa                                        ; Restore register states
+
+    mov ax, word [register_bckp_a]
+    mov dx, word [register_bckp_b]              ; Restore our return value
+
     ret                                         ; Return to caller
 
 .error_nf:
@@ -1029,7 +1055,7 @@ next_available_cluster:                         ; Get the next cluster available
     mov ax, 0x3000
     mov es, ax                                  ; The segment in which the FAT is loaded
 
-    mov di, 0x0000                              ; Start looking at offset 0
+    mov di, 0x0004                              ; Start looking at offset 5 (entry 2)
     mov cx, 0x4000                              ; Look through all the FAT entries
 
 .check_fat_entry:
@@ -1090,9 +1116,12 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     mov di, filename                            ; Place into our memory space for filenames
 
     mov cx, 0x0008                              ; 8 chars in the file NAME
+    cld                                         ; Ensure correct direction
 
 .name_char:
-    movsb                                       ; Move one byte and advance pointers
+    lodsb                                       ; Load next character
+    call capitalize_char                        ; Capitalize
+    stosb                                       ; Store resulting character
 
     cmp byte [si], 0x2E                         ; Is this next character the dot?
     je .dot                                     ; If so, move on
@@ -1103,14 +1132,23 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     dec cx                                      ; Avoid an O.B.O.E
     inc si                                      ; Get ready to read the extension
 
+    cmp cx, 0x0000                              ; Do we have any room for spaces?
+    je .ext                                     ; If not, jump to copying the extension
+
 .space:
     mov byte [es:di], 0x20                      ; Pad with a space
     inc di                                      ; Advance pointer
     loop .space                                 ; Repeat
 
-.ext_chars:
+.ext:      
     mov cx, 0x0003                              ; 3 chars in the file EXTENSION
-    rep movsb                                   ; Move one byte and advance pointers
+
+.ext_char:
+    lodsb                                       ; Load next character
+    call capitalize_char                        ; Capitalize
+    stosb                                       ; Store resulting character
+
+    loop .ext_char                              ; Repeat
     
 .done:
     popa                                        ; Restore register states
@@ -1217,10 +1255,6 @@ iface_routines:                                 ; Interface functions
 
 .confirm:
     call confirm                                ; Ask for confirmation
-
-    pushf                                       ; Save flags
-    call line_break                             ; Line break
-    popf                                        ; Restore flags
 
     jmp int_ret.preserve_flags                  ; We're done!
 
@@ -1447,6 +1481,7 @@ input_buffer        dq 0x0000000000000000
                     db 0x00
 
 input_buffer_addr   dw 0x0000
+input_end           dw 0x0000
 input_buffer_limit  dw 0x0000
 
 register_bckp_a     dw 0x0000
@@ -1476,11 +1511,11 @@ heads               dw 0x0000
 root_start          dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 10", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 11", 0x00
 iface_info          db "By Jacob Bates", 0x00
 iface_worked        db "This worked!", 0x00
 iface_command_bad   db "Bad command.", 0x00
-iface_confirm       db "Are you sure? Press Y to confirm: ", 0x00
+iface_confirm       db " Press Y to confirm: ", 0x00
 iface_done          db "Done!", 0x00
 iface_aborting      db "Aborting.", 0x00
 
