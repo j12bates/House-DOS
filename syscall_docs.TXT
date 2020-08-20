@@ -84,6 +84,8 @@ III. Interface Functions
         AH = 0x04
         DI = Buffer location
         CX = Size of buffer
+        Return:
+        DI = Initial value + Number of chars input
 
         Retrieves user input through the keyboard. Any input will be printed out in teletype
         mode, and the input will be stored in the buffer pointed to by DI.
@@ -124,6 +126,8 @@ IV. Disk Functions
         DI = Destination buffer
 
         Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
         CF = Set on error.
 
         Gets a certain quantity of bytes from the file buffer starting at the given index, and
@@ -134,6 +138,11 @@ IV. Disk Functions
         SI = Byte to start at
         CX = Byte to stop at (non-inclusive)
         DI = Destination buffer
+
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
+        CF = Set on error.
 
         Gets bytes from file buffer between the two indexes, and stores that in the destination
         buffer.
@@ -153,6 +162,10 @@ IV. Disk Functions
         CX = Number of bytes
         DI = Byte to start writing at
 
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
+
         WRITES a certain quantity of bytes from the source buffer into the file buffer at the
         given index.
 
@@ -161,6 +174,10 @@ IV. Disk Functions
         SI = Source buffer
         CX = End of source buffer
         DI = Byte to start writing at
+
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
 
         WRITES bytes from the buffer between the two indexes into the file buffer at the given
         index.
