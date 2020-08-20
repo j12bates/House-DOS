@@ -11,7 +11,7 @@
 ; ========================================================================
 
 main:
-    mov ah, 0x02                        ; Print line
+    mov ah, 0x01                        ; Print string
     mov si, msg
     int 0x7E
 

@@ -13,28 +13,36 @@
 main:
     mov ah, 0x02                        ; Print line
     mov si, msgA                        ; Message A
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
     mov si, msgB                        ; Message B
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
     mov si, msgC                        ; Message C
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
     mov si, msgD                        ; Message D
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
     mov si, msgE                        ; Message E
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
+
+    mov si, msgF                        ; Message F
+    int 0x7E
+
+    mov si, msgG                        ; Message G
+    int 0x7E
 
     mov ah, 0xFF                        ; We're done
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
 
 data:
 
-msgA        db "====== House-DOS Help ======", 0x00
-msgB        db "INFO: Display OS information", 0x00
-msgC        db "HELP: Display House-DOS help", 0x00
-msgD        db "EXIT: System Reboot", 0x00
-msgE        db "QUIT: System Shutdown", 0x00
+msgA        db "========= House-DOS Help =========", 0x00
+msgB        db "INFO:       Display OS information", 0x00
+msgC        db "HELP:       Display House-DOS help", 0x00
+msgD        db "EXIT:       System Reboot", 0x00
+msgE        db "QUIT:       System Shutdown", 0x00
+msgF        db "CAT:        Display file contents", 0x00
+msgG        db "WRITE:      Write text file", 0x00
