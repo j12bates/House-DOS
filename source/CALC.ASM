@@ -56,7 +56,7 @@ main:
     je .sub                     ; goto sub
     cmp AL, 0x2a              ; checking if -
     je .mult                     ; goto sub
-    cmp AL, 0x2d              ; checking if -
+    cmp AL, 0x2f              ; checking if -
     je .div                     ; goto sub
     jmp .print                  ; if not sub or add, print nothing
 
