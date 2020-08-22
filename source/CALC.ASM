@@ -54,6 +54,10 @@ main:
     je .add                     ;goto add
     cmp AL, 0x2d                ; checking if -
     je .sub                     ; goto sub
+    cmp AL, 0x2a              ; checking if -
+    je .mult                     ; goto sub
+    cmp AL, 0x2d              ; checking if -
+    je .div                     ; goto sub
     jmp .print                  ; if not sub or add, print nothing
 
 .add:
@@ -62,7 +66,21 @@ main:
 
 .sub:
     sub CX, DX              ;subtracting the numbers
-    mov DX, CX              
+    mov DX, CX  
+    jmp .print              ;jump to print
+
+.mult:
+    mov AX, DX          ; moving one of the factors into AX
+    mul CX              ;subtracting the numbers
+    mov DX, AX          ;moving the product into DX
+    jmp .print              ;jump to print
+
+.div:
+    mov BX, DX          ; moving the denominator into AX
+    mov DX, 0           ; clearing DX
+    mov AX, CX          ; moving CX into AX
+    div BX              ;subtracting the numbers
+    mov DX, AX          ;moving the product into DX
 
 .print:
     mov AH, 0xF1            ;declaring binary to unsigned decimal
