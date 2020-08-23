@@ -1,0 +1,654 @@
+; ========================================================================
+; House-DOS KERNEL: DISK SUBSYSTEM
+; 
+; Written by Jacob Bates
+; ========================================================================
+
+    BITS 16
+
+; ========================================================================
+; DISK SUBROUTINES
+; ========================================================================
+
+get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
+    pusha                                       ; Save register states to stack
+    push ax                                     ; Save our offset
+
+    call data_kernseg                           ; Segment we are loaded at
+
+.search_init:
+    mov si, iface_disk_search
+    call print_str                              ; Print message
+
+    mov ax, 0x3800
+    mov es, ax                                  ; Segment the root directory is at
+    mov di, 0x0000                              ; Start at offset 0
+
+    mov cx, word [root_entries]                 ; Number of entries to look through
+
+.check_entry:
+    push cx                                     ; Save the number of remaining entries
+
+    mov cx, 0x000B                              ; Compare the first 11 bytes
+    mov si, filename                            ; Compare against the filename requested
+    push di                                     ; Save our location
+    cld                                         ; Ensure correct direction
+
+    repe cmpsb                                  ; Compare!
+
+    pop di                                      ; Restore our location
+    pop cx                                      ; Restore the remaining entries
+
+    je .found                                   ; If equal, we found the entry
+
+    add di, 0x0020                              ; Otherwise, move pointer to next entry
+    loop .check_entry                           ; And repeat
+
+    jmp .error_nf                               ; If gone through everything, error
+
+.found:
+    push di                                     ; Save index to stack
+
+    shr di, 0x5                                 ; Divide by 32 to get the root entry number
+    mov word [root_entry], di                   ; Save this number
+
+    pop di                                      ; Restore index
+
+    mov si, iface_disk_found
+    call println                                ; Print message
+
+    pop ax                                      ; Restore our offset
+    mov ah, 0x00                                ; Clear upper byte
+    clc                                         ; No error
+
+    cmp al, 0x0E                                ; Items below this offset are byte-sized
+    jb .byte
+
+    cmp al, 0x1C                                ; Items between here and there are word-sized
+    jb .word
+
+    mov ax, word [es:di+0x1C]
+    mov dx, word [es:di+0x1E]                   ; Otherwise, return the file size in DX:AX
+    jmp .done                                   ; We're finished
+
+.byte:
+    add di, ax                                  ; Add our offset
+    mov al, byte [es:di]                        ; Return the byte in AL
+    jmp .done                                   ; We're finished
+
+.word:
+    add di, ax                                  ; Add our offset
+    mov ax, word [es:di]                        ; Return the word in AX
+
+.done:
+    mov word [register_bckp_a], ax              ; Preserve our return value
+    mov word [register_bckp_b], dx              ; And the upper half if applicable
+
+    popa                                        ; Restore register states
+
+    mov ax, word [register_bckp_a]
+    mov dx, word [register_bckp_b]              ; Restore our return value
+
+    ret                                         ; Return to caller
+
+.error_nf:
+    mov si, iface_disk_nf
+    call println                                ; Print message
+
+    pop ax                                      ; Restore for balance
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
+
+load_file:                                      ; Load file starting at cluster into buffer
+    pusha                                       ; Push register states to stack
+
+    call data_kernseg                           ; Segment in which we are loaded
+
+    mov word [buffer_pointer], 0x0000           ; Start loading at offset 0
+
+.load_cluster:
+    mov si, iface_disk_cluster
+    call print_str                              ; Print message
+
+    mov ax, word [cluster]                      ; Our cluster number
+    sub ax, 0x0002                              ; Clusters begin at 2
+    mul byte [sectors_cluster]                  ; Multiply to get sector number
+    add ax, word [root_start]                   ; Add start of root directory
+    add ax, 0x0020                              ; Root directory is 32 sectors
+    call calc_chs_ls                            ; Convert to CHS
+
+    mov ax, 0x1000
+    mov es, ax                                  ; Load file into this segment
+    mov bx, word [buffer_pointer]               ; At this offset
+
+    mov ah, 0x02                                ; Read disk sectors
+    mov al, byte [sectors_cluster]              ; 1 cluster
+
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .next_cluster                           ; If no error, set up for next cluster
+
+    call reset_disk                             ; Otherwise, reset the disk
+
+    mov ah, 0x02                                ; Read disk sectors
+    mov al, byte [sectors_cluster]              ; 1 cluster
+    int 0x13                                    ; BIOS disk interrupt
+    jc .error_read                              ; Error
+
+.next_cluster:
+    mov si, word [cluster]                      ; Our cluster number
+    shl si, 0x1                                 ; There are two bytes per entry in FAT16
+
+    push ds                                     ; Save our segment
+
+    mov ax, 0x3000
+    mov ds, ax                                  ; Segment where the FAT is loaded
+
+    mov ax, word [si]                           ; DS:SI is pointing to the FAT entry
+
+    pop ds                                      ; Restore segment
+    mov word [cluster], ax                      ; That entry contained our next cluster
+
+    cmp ax, 0xFFF8                              ; Is this the end of the file?
+    jae .done                                   ; If so, we're finished
+
+    mov ax, word [bytes_sector]
+    mul word [sectors_cluster]
+    add word [buffer_pointer], ax               ; Advance pointer by one cluster
+
+    cmp word [buffer_pointer], 0x0000           ; Have we used up our 64K?
+    je .error_size                              ; If so, error
+
+    jmp .load_cluster                           ; Load next cluster
+
+.done:
+    mov si, iface_done
+    call println                                ; Print message
+
+    clc                                         ; No error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_read:
+    mov si, iface_disk_eread
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_size:
+    mov si, iface_disk_esize
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+write_file:                                     ; Write file buffer to disk as file
+    pusha                                       ; Push register states to stack
+    push cx                                     ; Save our file size
+
+    call data_kernseg                           ; The segment we are loaded at
+
+    mov word [buffer_pointer], 0x0000           ; Start reading from offset 0
+
+.check_existence:
+    call get_file_cluster                       ; Check if file exists, get starting cluster if it does
+    jnc .file_exists                            ; If it exists, we need to ask for confirmation
+
+.create_new:
+    call next_available_cluster                 ; Get the next available cluster
+    jc .error_full                              ; If error, disk is full
+
+    mov si, iface_disk_search
+    call print_str                              ; Print message
+
+    mov ax, 0x3800
+    mov es, ax                                  ; The segment in which the root directory is loaded
+
+    mov di, 0x0000                              ; Start looking at offset 0
+    mov cx, word [root_entries]                 ; Look through all the possible root entries
+
+.check_root_entry:
+    cmp byte [es:di], 0x00                      ; Is this entry empty?
+    je .new_file_entry                          ; If so, set this entry up for our new file.
+
+    add di, 0x0020                              ; Otherwise, move to the next 32-byte entry
+    loop .check_root_entry                      ; And repeat
+
+    jmp .error_root                             ; If no entries are available, sorry!
+
+.new_file_entry:
+    mov si, iface_disk_empty
+    call println                                ; Print message
+
+    mov cx, 0x000B                              ; Copy 11 bytes
+    mov si, filename                            ; Our filename
+    push di                                     ; Save our location
+
+    rep movsb                                   ; Move the filename into the root entry
+
+    pop di                                      ; Restore our location
+    mov ax, word [cluster]
+    mov word [es:di+0x1A], ax                   ; Move our starting cluster into the correct field
+
+    pop cx                                      ; Restore our file size
+    mov word [es:di+0x1C], cx                   ; Move our file size into the correct field
+
+    jmp .write_cluster                          ; Start writing data
+
+.file_exists:
+    mov si, iface_disk_exists
+    call println                                ; Display message
+
+    call confirm                                ; Ask for confirmation
+    jc .abort                                   ; If not given, we're done
+
+.change_file_size:
+    mov ax, 0x3800
+    mov es, ax                                  ; The segment the root directory is loaded in
+
+    mov di, word [root_entry]                   ; The number of the root entry
+    shl di, 0x5                                 ; There are 32 bytes in each entry
+
+    pop cx                                      ; Restore our file size
+    mov word [es:di+0x1C], cx                   ; Move our file size into the correct field
+    mov word [es:di+0x1E], 0x0000               ; Upper word of file size is 0
+
+.write_cluster:
+    mov si, iface_disk_write
+    call print_str                              ; Display message
+
+    mov ax, word [cluster]                      ; Our cluster number
+    sub ax, 0x0002                              ; Clusters begin at 2
+    mul byte [sectors_cluster]                  ; Multiply to get sector number
+    add ax, word [root_start]                   ; Add start of root directory
+    add ax, 0x0020                              ; Root directory is 32 sectors
+    call calc_chs_ls                            ; Convert to CHS
+
+    mov ax, 0x1000
+    mov es, ax                                  ; File buffer is in this segment
+    mov bx, word [buffer_pointer]               ; Read at this offset
+
+    mov ah, 0x03                                ; Write disk sectors
+    mov al, byte [sectors_cluster]              ; 1 cluster
+
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .next_cluster                           ; If no error, set up for the next cluster
+
+    call reset_disk                             ; Otherwise, reset the disk
+
+    mov ah, 0x03                                ; Write disk sectors
+    mov al, byte [sectors_cluster]              ; 1 cluster
+    int 0x13                                    ; BIOS disk interrupt
+    jc .error_write                             ; If failed again, error
+
+.next_cluster:
+    mov ax, word [bytes_sector]
+    mul word [sectors_cluster]
+    add word [buffer_pointer], ax               ; Advance pointer by one cluster
+
+    mov ax, 0x3000
+    mov es, ax                                  ; The segment in which the FAT is loaded
+
+    mov di, word [cluster]                      ; The cluster we just wrote to
+    shl di, 0x1                                 ; There are 2 bytes per entry in FAT16
+    mov bx, word [es:di]                        ; The FAT entry for this cluster
+
+    cmp word [buffer_pointer], cx               ; Have we finished writing the entire file?
+    jae .end_file                               ; If so, we need to do a few things
+
+    cmp bx, 0x0000                              ; Was this cluster previously free?
+    je .change_fat_entry                        ; If so, we need to set it to the next available cluster
+
+    cmp bx, 0xFFF8                              ; Was this cluster previously EOF?
+    jae .change_fat_entry                       ; If so, we need to set it to the next available cluster
+
+    mov word [cluster], bx                      ; Otherwise, it is our next cluster to write to
+
+    jmp .write_cluster                          ; Load next cluster
+
+.change_fat_entry:
+    call next_available_cluster                 ; Get the next cluster available
+    jc .error_full                              ; If error, disk is full
+
+    mov bx, word [cluster]
+    mov word [es:di], bx                        ; Move this cluster number into our FAT entry
+
+    jmp .write_cluster                          ; We are ready to write the next cluster
+
+.end_file:
+    mov si, iface_done
+    call println                                ; Print message
+
+    mov word [es:di], 0xFFFF                    ; Place an end-of-file marker into this entry
+    mov di, bx                                  ; Move the previous value into DI
+
+.free_entry:
+    cmp di, 0x0000                              ; Was this cluster previously free?
+    je .apply                                   ; If so, we're done changing the FAT
+
+    shl di, 0x1                                 ; Otherwise, it is a new cluster number
+    mov bx, word [es:di]                        ; The FAT entry for that new cluster
+
+    mov word [es:di], 0x0000                    ; Mark that new cluster as free
+    mov di, bx                                  ; Work with the previous value next
+
+    jmp .free_entry                             ; Repeat
+
+.apply:
+    call apply                                  ; Apply FAT and root changes to disk
+    jc .end                                     ; If error, we're done
+
+.done:
+    mov si, iface_disk_saved
+    call println                                ; Print message
+
+    clc                                         ; No error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_full:
+    mov si, iface_disk_efull
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_root:
+    mov si, iface_disk_eroot
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_write:
+    mov si, iface_disk_ewrite
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.abort:
+    mov si, iface_aborting
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+apply:                                          ; Apply filesystem changes to disk
+    pusha                                       ; Push register states to stack
+
+    mov si, iface_disk_apply
+    call println                                ; Print message
+
+    mov si, iface_disk_wfats
+    call print_str                              ; Print message
+
+    mov cx, word [fats]                         ; Number of FATs to write to
+
+.write_fat:
+    push cx                                     ; Save our counter
+
+    mov bx, 0x0000                              ; Write from this segment
+
+    mov ax, word [sectors_fat]                  ; Sectors per FAT
+    mul cx                                      ; Number of sectors between this FAT and root directory
+    mov cx, ax                                  ; Store this number in here for now
+
+    mov ax, word [root_start]                   ; Start of the root directory
+    sub ax, cx                                  ; Subtract this number
+    call calc_chs_ls                            ; Convert to CHS Address
+
+    mov ax, word [sectors_fat]                  ; An entire FAT
+    mov ah, 0x03                                ; Write disk sectors
+
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .next_fat                               ; If no error, prepare to do the next one
+
+    call reset_disk                             ; Otherwise, reset the disk
+
+    mov ax, word [sectors_fat]                  ; An entire FAT
+    mov ah, 0x03                                ; Write disk sectors
+    int 0x13                                    ; BIOS disk interrupt
+    jc .error_write                             ; If failed again, error
+
+.next_fat:
+    pop cx                                      ; Restore our counter
+    loop .write_fat                             ; Repeat
+
+.write_root:
+    mov si, iface_done
+    call println                                ; Print message
+
+    mov si, iface_disk_wroot
+    call print_str                              ; Print message
+
+    mov ax, 0x3800
+    mov es, ax                                  ; The segment in which the root directory is loaded
+
+    mov ax, word [root_start]                   ; Start of the root directory
+    call calc_chs_ls                            ; Convert to CHS Address
+
+    mov ah, 0x03                                ; Write disk sectors
+    mov al, 0x20                                ; Root directory is 32 sectors
+
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .done                                   ; If no error, we are done
+
+    call reset_disk                             ; Otherwise, reset the disk
+
+    mov ah, 0x03                                ; Write disk sectors
+    mov al, 0x20                                ; Root directory is 32 sectors
+    int 0x13                                    ; BIOS disk interrupt
+    jc .error_write                             ; If failed again, error
+
+.done:
+    mov si, iface_done
+    call println                                ; Print message
+
+    mov si, iface_disk_applied
+    call println                                ; Print message
+
+    clc                                         ; No error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_write:
+    mov si, iface_disk_ewrite
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+next_available_cluster:                         ; Get the next cluster available
+    pusha                                       ; Push register states to stack
+
+    mov ax, 0x3000
+    mov es, ax                                  ; The segment in which the FAT is loaded
+
+    mov di, 0x0004                              ; Start looking at offset 4 (entry 2)
+    mov cx, 0x3FFE                              ; Look through all the FAT entries
+
+.check_fat_entry:
+    cmp word [es:di], 0x0000                    ; Is this FAT entry unused?
+    je .done                                    ; If so, we've found it
+
+    add di, 0x0002                              ; Otherwise, move to the next two-byte entry
+    loop .check_fat_entry                       ; And repeat
+
+    stc                                         ; If no clusters are free, error
+    jmp .end                                    ; We're done
+
+.done:
+    shr di, 0x1                                 ; There are two bytes per entry in FAT16
+    mov word [cluster], di                      ; The number of this entry is our cluster number
+
+    clc                                         ; No error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+calc_chs_ls:                                    ; Setup Cylinder-Head-Sector from LBA (AX)
+    mov dx, 0x0000
+    div word [sectors_track]
+    mov cl, dl
+    inc cl                                      ; Sector number
+
+    mov dx, 0x0000
+    div word [heads]
+    mov dh, dl                                  ; The remainder is the head number
+    mov ch, al                                  ; The quotient is the cylinder number
+
+    mov dl, byte [drive_num]                    ; Drive number
+    ret                                         ; Return to caller
+
+
+reset_disk:                                     ; Reset the disk
+    push ax                                     ; Push register states to stack
+
+    mov si, iface_disk_reset
+    call print_str                              ; Print message
+
+    mov ah, 0x00                                ; Reset disk
+    mov dl, byte [drive_num]
+
+    int 0x13                                    ; BIOS disk interrupt
+    jc reboot_fatal                             ; If there was an error, reboot
+    
+    pop ax                                      ; Otherwise, restore register states
+    ret                                         ; Return to caller
+
+
+conv_x3_83:                                     ; Convert X.3 filename in DS:SI to an 8.3 for searching
+    pusha                                       ; Push register states to stack
+
+    call extra_kernseg                          ; Write to the segment we're loaded in
+    mov di, filename                            ; Place into our memory space for filenames
+
+    mov cx, 0x0008                              ; 8 chars in the file NAME
+    cld                                         ; Ensure correct direction
+
+.name_char:
+    lodsb                                       ; Load next character
+    call capitalize_char                        ; Capitalize
+    stosb                                       ; Store resulting character
+
+    cmp byte [si], 0x2E                         ; Is this next character the dot?
+    je .dot                                     ; If so, move on
+
+    loop .name_char                             ; Otherwise, repeat
+
+    jmp .error_filename                         ; If there hasn't been a dot, error
+
+.dot:
+    dec cx                                      ; Avoid an O.B.O.E
+    inc si                                      ; Get ready to read the extension
+
+    cmp cx, 0x0000                              ; Do we have any room for spaces?
+    je .ext                                     ; If not, jump to copying the extension
+
+.space:
+    mov byte [es:di], 0x20                      ; Pad with a space
+    inc di                                      ; Advance pointer
+    loop .space                                 ; Repeat
+
+.ext:      
+    mov cx, 0x0003                              ; 3 chars in the file EXTENSION
+
+.ext_char:
+    lodsb                                       ; Load next character
+    call capitalize_char                        ; Capitalize
+    stosb                                       ; Store resulting character
+
+    loop .ext_char                              ; Repeat
+
+    clc                                         ; If we're done, no error
+    
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_filename:
+    call data_kernseg                           ; The segment we're loaded in
+
+    mov si, iface_disk_efname
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+get_file_cluster:                               ; Get the starting cluster for a file
+    pusha                                       ; Save register states to stack
+
+    mov al, 0x1A                                ; Read the starting cluster
+    call get_file_info                          ; Get from the root directory
+    jc .done                                    ; If error, stop
+
+    mov word [cluster], ax                      ; Store as cluster number
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+
+; ========================================================================
+; DATA SECTION
+; ========================================================================
+
+disk_data:
+
+filename            db "        "
+filename_extension  db "   "
+
+bin_extension       db "BIN"
+hob_extension       db "HOB"
+
+drive_num           db 0x00
+cluster             dw 0x0000
+root_entry          dw 0x0000
+buffer_pointer      dw 0x0000
+buffer_segment      dw 0x0000
+
+bytes_sector        dw 0x0000
+sectors_cluster     db 0x00
+reserved            dw 0x0000
+fats                db 0x00
+root_entries        dw 0x0000
+sectors_fat         dw 0x0000
+sectors_track       dw 0x0000
+heads               dw 0x0000
+root_start          dw 0x0000
+
+iface_disk_apply    db "Applying changes to disk...", 0x00
+iface_disk_applied  db "Changes applied to disk.", 0x00
+iface_disk_saved    db "File saved.", 0x00
+iface_disk_search   db "Searching root directory...", 0x00
+iface_disk_found    db "Found file!", 0x00
+iface_disk_empty    db "Found empty entry!", 0x00
+iface_disk_exists   db "File already exists.", 0x00
+iface_disk_cluster  db "Loading cluster...", 0x00
+iface_disk_write    db "Writing to cluster...", 0x00
+iface_disk_wfats    db "Writing FATs to disk...", 0x00
+iface_disk_wroot    db "Writing root directory...", 0x00
+iface_disk_reset    db "Resetting disk...", 0x00
+iface_disk_nf       db "FATAL: Specified file not found.", 0x00
+iface_disk_esize    db "FATAL: File too large to load.", 0x00
+iface_disk_efull    db "FATAL: No clusters available.", 0x00
+iface_disk_eroot    db "FATAL: No root entries available.", 0x00
+iface_disk_eread    db "FATAL: Error while reading disk.", 0x00
+iface_disk_ewrite   db "FATAL: Error while writing to disk.", 0x00
+iface_disk_efname   db "FATAL: Not a valid filename.", 0x00
+
