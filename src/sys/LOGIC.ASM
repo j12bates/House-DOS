@@ -81,6 +81,49 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
     ret                                         ; Return to caller
 
 
+conv_dec_unsigned_word:                         ; Convert ASCII decimal at DS:SI to binary, store in DX
+    pusha                                       ; Push register states to stack
+    mov cx, 0x0005                              ; 5 digits in a 16-bit unsigned integer
+    mov dx, 0x0000                              ; Clear this out
+    
+.digit:
+    lodsb                                       ; Load a byte
+    sub al, 0x30                                ; ASCII digits start here
+
+    cmp al, 0x09                                ; Are we an actual digit?
+    ja .error_nan                               ; If not, error
+
+    mov ah, 0x00                                ; Upper byte is 0
+    add ax, dx                                  ; Add the binary value to our sum
+
+    loop .multiply                              ; If we have more digits to go, multiply
+
+    mov dx, ax                                  ; Otherwise, move back into the correct register
+    jmp .done                                   ; We're done
+
+.multiply:
+    mov dx, 0x000A                              ; We're using decimal notation
+    mul dx                                      ; Set up for the next place value
+    mov dx, ax                                  ; Move back into the correct register
+
+    jmp .digit
+
+.done:
+    mov word [register_bckp_a], dx              ; Preserve our output
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore output
+
+    ret                                         ; Return to caller
+    
+.error_nan:
+    mov si, iface_error_nan                     ; Error message
+    call println                                ; Print line
+
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
+
 capitalize_char:                                ; Capitalize char in AL
     cmp al, 0x61                                ; Are we between lowercase A
     jl .end
@@ -93,3 +136,10 @@ capitalize_char:                                ; Capitalize char in AL
     ret                                         ; Return to caller
 
 
+; ========================================================================
+; DATA SECTION
+; ========================================================================
+
+logic_data:
+
+iface_error_nan     db "ERROR: Not a Number.", 0x00

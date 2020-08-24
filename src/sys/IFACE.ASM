@@ -283,6 +283,41 @@ println:                                        ; Prints String in DS:SI, then d
     ret                                         ; Return to caller
 
 
+block:                                          ; Draws a block of size CX color BL bits 3-0 at DH, DL
+    pusha                                       ; Save register states to stack
+    push cx                                     ; Save our block size
+
+    mov word [register_bckp_a], dx              ; Save our requested location
+
+.get_position:
+    mov ah, 0x03                                ; Get cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+    push dx                                     ; Save initial cursor position
+
+.set_position:
+    mov ah, 0x02                                ; Set cursor position
+    mov dx, word [register_bckp_a]              ; Our requested location
+    int 0x10                                    ; BIOS VGA interrupt
+
+    pop dx                                      ; Restore initial cursor position
+
+.draw:
+    mov ah, 0x09                                ; Write char/attribute
+    mov al, 0xDB                                ; Block char
+    pop cx                                      ; Restore our block size
+    int 0x10                                    ; BIOS VGA interrupt
+
+.restore_cursor:
+    mov ah, 0x02                                ; Set cursor position
+    int 0x10                                    ; BIOS VGA interrupt
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 done:                                           ; Prints the DONE message, then does a line break
     pusha                                       ; Save register states to stack
 
