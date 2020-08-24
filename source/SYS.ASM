@@ -220,8 +220,14 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x05
     je iface_routines.line                      ; Line break
 
+    cmp ah, 0x06
+    je iface_routines.clear                     ; Clear screen
+
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
+
+    cmp ah, 0x11
+    je iface_routines.block                     ; Draw block
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -257,6 +263,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0xF1
     je general_routines.conv_dec_usigned        ; Convert to decimal notation (unsigned)
+
+    cmp ah, 0xF3
+    je general_routines.conv_word_dec           ; Convert decimal notation to binary value
 
     jmp int_ret                                 ; If invalid function number, we're done!
 
@@ -300,10 +309,20 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret                                 ; We're done!
 
+.clear:
+    call clear                                  ; Clear screen
+
+    jmp int_ret                                 ; We're done!
+
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
 
     call print_bytes                            ; Print bytes
+
+    jmp int_ret                                 ; We're done!
+
+.block:
+    call block                                  ; Draw block
 
     jmp int_ret                                 ; We're done!
 
@@ -419,6 +438,13 @@ general_routines:                               ; General functions
 
     jmp int_ret                                 ; We're done!
 
+.conv_word_dec:
+    call data_binseg                            ; We want to access data from command
+
+    call conv_dec_unsigned_word                 ; Convert to binary value
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
 
 int_ret:                                        ; Return back to command
     push ax                                     ; Save register state to stack
@@ -469,8 +495,8 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 12", 0x00
-iface_info          db "By Jacob Bates", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 13", 0x00
+iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
 
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00
