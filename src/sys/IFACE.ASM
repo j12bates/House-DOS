@@ -64,9 +64,13 @@ input:                                          ; Get input from user, store in 
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't do a backspace
 
+    cmp di, word [input_buffer_limit]           ; Are we at the rightmost limit?
+    je .backspace_verified                      ; If so, we may not have a NULL char
+
     cmp byte [es:di], 0x00                      ; Are we at the end of the input?
     jne .key                                    ; If not, we can't do a backspace
 
+.backspace_verified:
     mov ah, 0x0E                                ; Teletype output
     mov al, 0x08                                ; Backwards
     int 0x10                                    ; BIOS VGA interrupt
@@ -283,8 +287,9 @@ println:                                        ; Prints String in DS:SI, then d
     ret                                         ; Return to caller
 
 
-block:                                          ; Draws a block of size CX color BL bits 3-0 at DH, DL
+block:                                          ; Draws a block of char AL size CX color BL bits 3-0 at DH, DL
     pusha                                       ; Save register states to stack
+    push ax                                     ; Save our character
     push cx                                     ; Save our block size
 
     mov word [register_bckp_a], dx              ; Save our requested location
@@ -304,9 +309,9 @@ block:                                          ; Draws a block of size CX color
     pop dx                                      ; Restore initial cursor position
 
 .draw:
-    mov ah, 0x09                                ; Write char/attribute
-    mov al, 0xDB                                ; Block char
     pop cx                                      ; Restore our block size
+    pop ax                                      ; Restore our character
+    mov ah, 0x09                                ; Write char/attribute
     int 0x10                                    ; BIOS VGA interrupt
 
 .restore_cursor:
@@ -315,6 +320,26 @@ block:                                          ; Draws a block of size CX color
 
 .done:
     popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+get_key_nonblocking:                            ; Returns scan code/ASCII of key pressed in AX, CF set if no key
+    pusha                                       ; Save register states to stack
+
+    mov ah, 0x01                                ; Get key (nonblocking)
+    int 0x16                                    ; BIOS keyboard interrupt
+
+    jne .done                                   ; If the zero flag isn't set, there was a key pressed
+
+.no_key:
+    stc                                         ; Set carry flag for no key
+
+.done:
+    mov word [register_bckp_a], ax              ; Save our key
+
+    popa                                        ; Restore register states
+    mov ax, word [register_bckp_a]              ; Restore our key
+
     ret                                         ; Return to caller
 
 
