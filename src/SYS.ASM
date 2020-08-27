@@ -57,11 +57,14 @@ start:                                          ; House-DOS code
 
     mov ax, 0x0000
     mov es, ax                                  ; The IVT is in this segment
+
     mov di, 0x7E                                ; We will be changing the entry for this interrupt
     shl di, 0x2                                 ; 4 bytes per entry
 
-    mov word [es:di], 0x0000                    ; Handler (kernel) is loaded at offset 0
-    mov word [es:di+0x02], 0x2000               ; Segment 0x2000
+    mov word [es:di], start                     ; Handler (kernel) starts at this offset
+    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
+
+    call random_seed                            ; Create a random number seed
 
     call clear                                  ; Clear screen
 
@@ -174,6 +177,11 @@ command:                                        ; Main loop: Retrieve command fr
     jmp command                                 ; Try again
 
 
+handback:                                       ; Routine to run to manually perform a handback
+    mov ah, 0xFF                                ; Handback
+    jmp start                                   ; Jump to the beginning of the kernel
+
+
 ; ========================================================================
 ; SUBSYSTEMS
 ; ========================================================================
@@ -182,6 +190,7 @@ command:                                        ; Main loop: Retrieve command fr
     %INCLUDE "sys/LOGIC.ASM"
     %INCLUDE "sys/IFACE.ASM"
     %INCLUDE "sys/DISK.ASM"
+    %INCLUDE "sys/MISC.ASM"
 
 
 ; ========================================================================
@@ -229,6 +238,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x11
     je iface_routines.block                     ; Draw block
 
+    cmp ah, 0x12
+    je iface_routines.key_nonblocking           ; Get key (nonblocking)
+
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
     je disk_routines.verify                     ; Verify file
@@ -258,14 +270,30 @@ syscall_handler:                                ; System call handler
     je disk_routines.get_file_size              ; Verify and get size of file
 
 .general_funcs:                                 ; General functions
+    cmp ah, 0xA0
+    je general_routines.random                  ; Generate random number
+
+    cmp ah, 0xA1
+    je general_routines.random_seed             ; Generate random number seed
+
+    cmp ah, 0xC0
+    je general_routines.sleep_milli             ; Sleep milliseconds
+
+    cmp ah, 0xC1
+    je general_routines.sleep_hertz             ; Sleep a certain number of frames at a certain frequency
+
+.logical_funcs:                                 ; Logical functions
     cmp ah, 0xF0
-    je general_routines.conv_hex                ; Convert to hexadecimal notation
+    je logical_routines.conv_hex                ; Convert to hexadecimal notation
 
     cmp ah, 0xF1
-    je general_routines.conv_dec_usigned        ; Convert to decimal notation (unsigned)
+    je logical_routines.conv_dec_usigned        ; Convert to decimal notation (unsigned)
+
+    cmp ah, 0xF2
+    je logical_routines.conv_hex_word           ; Convert hexadecimal notation to binary value
 
     cmp ah, 0xF3
-    je general_routines.conv_word_dec           ; Convert decimal notation to binary value
+    je logical_routines.conv_dec_word           ; Convert decimal notation to binary value
 
     jmp int_ret                                 ; If invalid function number, we're done!
 
@@ -323,6 +351,34 @@ iface_routines:                                 ; Interface functions
 
 .block:
     call block                                  ; Draw block
+
+    jmp int_ret                                 ; We're done!
+
+.key_nonblocking:
+    call get_key_nonblocking                    ; Get key
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+
+general_routines:                               ; General functions
+
+.random:
+    call random                                 ; Generate random number
+
+    jmp int_ret                                 ; We're done!
+
+.random_seed:
+    call random_seed                            ; Generate random number seed
+
+    jmp int_ret                                 ; We're done!
+
+.sleep_milli:
+    call sleep                                  ; Sleep
+
+    jmp int_ret                                 ; We're done!
+
+.sleep_hertz:
+    call sleep_freq                             ; Sleep a certain number of frames at a certain frequency
 
     jmp int_ret                                 ; We're done!
 
@@ -418,7 +474,7 @@ disk_routines:                                  ; Disk functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 
-general_routines:                               ; General functions
+logical_routines:                               ; Logical functions
 
 .conv_hex:
     call extra_binseg                           ; We want to give data to the command
@@ -438,7 +494,14 @@ general_routines:                               ; General functions
 
     jmp int_ret                                 ; We're done!
 
-.conv_word_dec:
+.conv_hex_word:
+    call data_binseg                            ; We want to access data from command
+
+    call conv_hex_word                          ; Convert to binary value
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.conv_dec_word:
     call data_binseg                            ; We want to access data from command
 
     call conv_dec_unsigned_word                 ; Convert to binary value
@@ -495,7 +558,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 13", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 14", 0x00
 iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
 
