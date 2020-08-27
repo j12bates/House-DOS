@@ -9,9 +9,9 @@ I. Writing Commands/Implementation
 House-DOS commands are written in real mode x86 assembly language. There is no need to worry
 about segmentation or preserving register states, as the kernel takes care of this.
 
-There are 19 various system calls available to commands, and these are called by setting
-parameters in various registers, and calling on interrupt 0x7E. Here is an example of a system
-call to print out a string:
+There are various system calls available to commands, and these are called by setting parameters
+in various registers, and calling on interrupt 0x7E. Here is an example of a system call to print
+out a string:
 
     mov ah, 0x02
     mov si, string_mem_location
@@ -40,32 +40,69 @@ II. Basic Functions
         Signals the end of the command. When this is used, command execution will stop and
         House-DOS will prompt the user for a new command.
 
+    GENERATE RANDOM NUMBER
+        AH = 0xA0
+        Return:
+        DX = Random number
+
+        Generates and returns a very poorly-generated random number.
+
+    GENERATE RANDOM NUMBER SEED
+        AH = 0xA1
+
+        Generates a new random seed. (Is ineffective if used multiple times a second.)
+
+    SLEEP MILLISECONDS
+        AH = 0xC0
+        CX = Number of milleseconds
+
+        Halts execution for the specified number of milliseconds.
+
+    SLEEP FRAMES
+        AH = 0xC1
+        BX = Framerate/Frequency
+        CX = Number of frames
+
+        Halts instruction for the specified number of frames if a frame is 1/Frequency seconds
+        long.
+
+
+III. Logic Functions
+
     CONVERT TO HEX
         AH = 0xF0
         DX = Value to convert
-        DI = 4-byte buffer for result
+        DI = 4-byte output buffer
 
         Converts the value in DX into ASCII hexadecimal notation, which is stored in the four-
         byte buffer pointed to by DI.
 
-    CONVERT TO UNSIGNED DECIMAL
+    CONVERT TO UNSIGNED ASCII DECIMAL
         AH = 0xF1
         DX = Value to convert
-        DI = 5-byte buffer for result
+        DI = 5-byte output buffer
 
         Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
         five-byte buffer pointed to by DI.
 
+    CONVERT HEX TO BINARY VALUE
+        AH = 0xF2
+        SI = 4-byte input buffer
+        Return:
+        DX = Binary value
+
+        Converts the ASCII hexadecimal number in the input buffer to a binary value in DX.
+
     CONVERT ASCII DECIMAL TO BINARY VALUE
         AH = 0xF3
-        SI = 5-byte buffer for input number
+        SI = 5-byte input buffer
         Return:
         DX = Binary value
 
         Converts the ASCII decimal number in the five-byte input buffer to a binary value in DX.
 
 
-III. Interface Functions
+IV. Interface Functions
 
     PRINT-STRING
         AH = 0x01
@@ -117,15 +154,25 @@ III. Interface Functions
 
     DRAW BLOCK
         AH = 0x11
+        AL = Char ASCII code
         BL = Color (Bit 0 = Blue, Bit 1 = Green, Bit 2 = Red, Bit 3 = Intensity)
         CX = Block length
         DH = Row number
         DL = Col number
 
-        Draws a block of a specific length and color starting at the specified spot.
-    
+        Draws a block of a specific length, color, and character starting at the specified spot.
 
-IV. Disk Functions
+    GET CURRENT KEYBOARD CHARACTER
+        AH = 0x12
+        Return:
+        AH = Key scan code
+        AL = ASCII code
+        CF = Set if no key pressed, cleared if key is being pressed
+
+        Returns the scan code and ASCII code of the key being pressed on the keyboard.
+
+
+V. Disk Functions
 
     VERIFY FILE EXISTS
         AH = 0x60
