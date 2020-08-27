@@ -81,6 +81,48 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
     ret                                         ; Return to caller
 
 
+conv_hex_word:                                  ; Convert hexadecimal dword at DS:SI to binary value in DX
+    pusha                                       ; Save register states to stack
+    mov cx, 0x0004                              ; 1 byte per nibble
+    mov dx, 0x0000                              ; Clear this out
+
+.nibble:
+    lodsb                                       ; Load a byte
+    sub al, 0x30                                ; ASCII digits start here
+
+    cmp al, 0x09                                ; Are we a digit 0-9?
+    jna .shift                                  ; If so, shift and add this value
+
+    sub al, 0x07                                ; Otherwise, we should be a digit A-F
+
+    cmp al, 0x09                                ; Was our value between 0-9 and A-F?
+    jna .error_nan                              ; If so, it wasn't a number
+
+    cmp al, 0x0F                                ; Was the value something else?
+    ja .error_nan                               ; If so, it wasn't a number
+
+.shift:
+    shl dx, 0x4                                 ; 4 bits in a nibble
+    add dl, al                                  ; Add our new nibble
+
+    loop .nibble                                ; Repeat
+
+.done:
+    mov word [register_bckp_a], dx              ; Save our value
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore our value
+
+    ret                                         ; Return to caller
+
+.error_nan:
+    mov si, iface_error_nan                     ; Error message
+    call println                                ; Print line
+
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
+
 conv_dec_unsigned_word:                         ; Convert ASCII decimal at DS:SI to binary, store in DX
     pusha                                       ; Push register states to stack
     mov cx, 0x0005                              ; 5 digits in a 16-bit unsigned integer
