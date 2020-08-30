@@ -329,14 +329,20 @@ get_key_nonblocking:                            ; Returns scan code/ASCII of key
     mov ah, 0x01                                ; Get key (nonblocking)
     int 0x16                                    ; BIOS keyboard interrupt
 
-    jne .done                                   ; If the zero flag isn't set, there was a key pressed
-
-.no_key:
-    stc                                         ; Set carry flag for no key
-
-.done:
     mov word [register_bckp_a], ax              ; Save our key
 
+    je .no_key                                  ; If the zero flag is set, there was no key pressed
+
+.remove:
+    mov ah, 0x00                                ; Otherwise, remove the key from the keyboard buffer
+    int 0x16                                    ; BIOS keyboard interrupt
+
+    jmp .done                                   ; We're done
+
+.no_key:
+    stc                                         ; Set carry flag for no key 
+
+.done:
     popa                                        ; Restore register states
     mov ax, word [register_bckp_a]              ; Restore our key
 

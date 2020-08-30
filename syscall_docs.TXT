@@ -40,6 +40,39 @@ II. Basic Functions
         Signals the end of the command. When this is used, command execution will stop and
         House-DOS will prompt the user for a new command.
 
+*   GET UNIX TIME
+        AH = 0xD0
+        Return:
+        DX:AX = UNIX time
+
+        Returns the current UNIX timestamp.
+
+    GET SECONDS SINCE MIDNIGHT
+        AH = 0xD1
+        Return:
+        DX:AX = Number of seconds
+
+        Returns the number of seconds since 00:00:00.
+
+*   GET DAYS SINCE UNIX EPOCH
+        AH = 0xD2
+        Return:
+        AX = Number of days
+
+        Returns the number of days since 1970-01-01.
+
+    GET TIMESTAMP
+        AH = 0xD3
+        DI = 8-byte output buffer
+
+        Stores the current time in HH:MM:SS form in the buffer pointed to by DI.
+
+    GET DATESTAMP
+        AH = 0xD4
+        DI = 10-byte output buffer
+
+        Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
+
     GENERATE RANDOM NUMBER
         AH = 0xA0
         Return:
@@ -66,24 +99,35 @@ II. Basic Functions
         Halts instruction for the specified number of frames if a frame is 1/Frequency seconds
         long.
 
+    PC SPEAKER TONE
+        AH = 0xC2
+        DX = Frequency
+
+        Plays tone of specified frequency on the PC speaker.
+
+    MUTE PC SPEAKER
+        AH = 0xC3
+
+        Stops the PC speaker until a new tone is played.
+
 
 III. Logic Functions
 
-    CONVERT TO HEX
+    CONVERT WORD TO HEX
         AH = 0xF0
         DX = Value to convert
         DI = 4-byte output buffer
 
         Converts the value in DX into ASCII hexadecimal notation, which is stored in the four-
-        byte buffer pointed to by DI.
+        byte output buffer.
 
-    CONVERT TO UNSIGNED ASCII DECIMAL
+    CONVERT WORD TO UNSIGNED ASCII DECIMAL
         AH = 0xF1
         DX = Value to convert
         DI = 5-byte output buffer
 
         Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
-        five-byte buffer pointed to by DI.
+        five-byte output buffer.
 
     CONVERT HEX TO BINARY VALUE
         AH = 0xF2
@@ -91,7 +135,8 @@ III. Logic Functions
         Return:
         DX = Binary value
 
-        Converts the ASCII hexadecimal number in the input buffer to a binary value in DX.
+        Converts the ASCII hexadecimal number in the four-byte input buffer to a binary value in
+        DX.
 
     CONVERT ASCII DECIMAL TO BINARY VALUE
         AH = 0xF3
@@ -100,6 +145,22 @@ III. Logic Functions
         DX = Binary value
 
         Converts the ASCII decimal number in the five-byte input buffer to a binary value in DX.
+
+    CONVERT BYTE TO HEX
+        AH = 0xF4
+        DL = Value to convert
+        DI = 2-byte output buffer
+
+        Converts the value in DL into ASCII hexadecimal notation, which is stored in the two-
+        byte output buffer.
+
+    CONVERT BYTE TO UNSIGNED ASCII DECIMAL
+        AH = 0xF5
+        DL = Value to convert
+        DI = 3-byte output buffer
+
+        Converts the value in DL into ASCII decimal notation (unsigned), which is stored in the
+        three-byte output buffer.
 
 
 IV. Interface Functions

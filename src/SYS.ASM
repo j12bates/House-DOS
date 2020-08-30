@@ -58,10 +58,16 @@ start:                                          ; House-DOS code
     mov ax, 0x0000
     mov es, ax                                  ; The IVT is in this segment
 
-    mov di, 0x7E                                ; We will be changing the entry for this interrupt
+    mov di, 0x007E                              ; We will be changing the entry for this interrupt
     shl di, 0x2                                 ; 4 bytes per entry
 
     mov word [es:di], start                     ; Handler (kernel) starts at this offset
+    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
+
+    mov di, 0x001B                              ; We will be changing the entry for the CTRL+BREAK handler
+    shl di, 0x2                                 ; 4 bytes per entry
+
+    mov word [es:di], re_init                   ; Manual re-initialization code is here
     mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
 
     call random_seed                            ; Create a random number seed
@@ -177,8 +183,8 @@ command:                                        ; Main loop: Retrieve command fr
     jmp command                                 ; Try again
 
 
-handback:                                       ; Routine to run to manually perform a handback
-    mov ah, 0xFF                                ; Handback
+re_init:                                        ; Routine to run to manually re-initialize
+    mov ah, 0x00                                ; Re-initialize
     jmp start                                   ; Jump to the beginning of the kernel
 
 
@@ -282,18 +288,39 @@ syscall_handler:                                ; System call handler
     cmp ah, 0xC1
     je general_routines.sleep_hertz             ; Sleep a certain number of frames at a certain frequency
 
+    cmp ah, 0xC2
+    je general_routines.speaker                 ; Play PC speaker tone
+
+    cmp ah, 0xC3
+    je general_routines.speaker_off             ; Turn off PC speaker
+
+    cmp ah, 0xD1
+    je general_routines.seconds                 ; Get seconds since midnight
+
+    cmp ah, 0xD3
+    je general_routines.timestamp               ; Get current timestamp
+
+    cmp ah, 0xD4
+    je general_routines.datestamp               ; Get current datestamp
+
 .logical_funcs:                                 ; Logical functions
     cmp ah, 0xF0
-    je logical_routines.conv_hex                ; Convert to hexadecimal notation
+    je logical_routines.conv_word_hex           ; Convert word to hexadecimal notation
 
     cmp ah, 0xF1
-    je logical_routines.conv_dec_usigned        ; Convert to decimal notation (unsigned)
+    je logical_routines.conv_word_dec_usigned   ; Convert word to decimal notation (unsigned)
 
     cmp ah, 0xF2
-    je logical_routines.conv_hex_word           ; Convert hexadecimal notation to binary value
+    je logical_routines.conv_hex_word           ; Convert hexadecimal notation to binary word
 
     cmp ah, 0xF3
-    je logical_routines.conv_dec_word           ; Convert decimal notation to binary value
+    je logical_routines.conv_dec_word           ; Convert decimal notation to binary word
+
+    cmp ah, 0xF4
+    je logical_routines.conv_byte_hex           ; Convert byte to hexadecimal notation
+
+    cmp ah, 0xF5
+    je logical_routines.conv_byte_dec_usigned   ; Convert byte to decimal notation (unsigned)
 
     jmp int_ret                                 ; If invalid function number, we're done!
 
@@ -381,6 +408,38 @@ general_routines:                               ; General functions
     call sleep_freq                             ; Sleep a certain number of frames at a certain frequency
 
     jmp int_ret                                 ; We're done!
+
+.speaker:
+    call speaker_tone                           ; Play tone on PC speaker
+
+    jmp int_ret                                 ; We're done!
+
+.speaker_off:
+    call speaker_off                            ; Turn off PC speaker
+
+    jmp int_ret                                 ; We're done!
+
+.seconds:
+    call get_time                               ; Get RTC time
+    call conv_rtctime_unix                      ; Convert to seconds
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.timestamp:
+    call extra_binseg                           ; We want to give data to the command
+
+    call get_time                               ; Get RTC time
+    call conv_rtctime_stamp                     ; Convert to timestamp
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.datestamp:
+    call extra_binseg                           ; We want to give data to the command
+
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_stamp                     ; Convert to datestamp
+
+    jmp int_ret.preserve_flags                  ; We're done!
 
 
 disk_routines:                                  ; Disk functions
@@ -476,7 +535,7 @@ disk_routines:                                  ; Disk functions
 
 logical_routines:                               ; Logical functions
 
-.conv_hex:
+.conv_word_hex:
     call extra_binseg                           ; We want to give data to the command
 
     xchg ax, dx                                 ; Function takes arg in AX, we have it in DX
@@ -485,7 +544,7 @@ logical_routines:                               ; Logical functions
 
     jmp int_ret                                 ; We're done!
 
-.conv_dec_usigned:
+.conv_word_dec_usigned:
     call extra_binseg                           ; We want to give data to the command
 
     xchg ax, dx                                 ; Function takes arg in AX, we have it in DX
@@ -507,6 +566,24 @@ logical_routines:                               ; Logical functions
     call conv_dec_unsigned_word                 ; Convert to binary value
 
     jmp int_ret.preserve_flags                  ; We're done!
+
+.conv_byte_hex:
+    call extra_binseg                           ; We want to give data to the command
+
+    xchg al, dl                                 ; Function takes arg in AL, we have it in DL
+    call conv_byte_hex                          ; Do the conversion
+    xchg dl, al                                 ; Put everything back the way it was
+
+    jmp int_ret                                 ; We're done!
+
+.conv_byte_dec_usigned:
+    call extra_binseg                           ; We want to give data to the command
+
+    xchg al, dl                                 ; Function takes arg in AL, we have it in DL
+    call conv_byte_dec_unsigned                 ; Do the conversion
+    xchg dl, al                                 ; Put everything back the way it was
+
+    jmp int_ret                                 ; We're done!
 
 
 int_ret:                                        ; Return back to command
@@ -558,7 +635,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 14", 0x00
+iface_welcome       db "House-DOS v0.0.0, Build 15", 0x00
 iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
 
