@@ -81,6 +81,83 @@ sleep_freq:                                     ; Sleep the number of frames in 
     jmp .done                                   ; We're done
 
 
+get_time:                                       ; Get RTC system time
+    push ax                                     ; Save register state to stack
+
+    mov ah, 0x02                                ; Get RTC time
+    int 0x1A                                    ; BIOS RTC interrupt
+
+    jc .error_rtc                               ; If failed, error
+
+.done:
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+.error_rtc:
+    push si                                     ; Save register state to stack
+    mov si, iface_error_rtc
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    pop si                                      ; Restore register state
+    jmp .done                                   ; We're done
+
+
+get_date:                                       ; Get RTC system date
+    push ax                                     ; Save register state to stack
+
+    mov ah, 0x04                                ; Get RTC time
+    int 0x1A                                    ; BIOS RTC interrupt
+
+    jc .error_rtc                               ; If failed, error
+
+.done:
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+.error_rtc:
+    push si                                     ; Save register state to stack
+    mov si, iface_error_rtc
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    pop si                                      ; Restore register state
+    jmp .done                                   ; We're done
+
+
+speaker_tone:                                   ; Play a tone of frequency in DX on the PC speaker
+    pusha                                       ; Save register states to stack
+
+    mov al, 0xB6                                ; PC Speaker mode
+    out 0x43, al                                ; Configure PIT
+
+    mov ax, dx                                  ; Move our frequency into AX so we can output it
+
+    out 0x42, al                                ; Output the lower byte of the frequency
+    mov al, ah
+    out 0x42, al                                ; Output the higher byte of the frequency
+
+    in al, 0x61                                 ; Get value from this I/O port
+    or al, 0b00000011                           ; Set the rightmost two bits
+    out 0x61, al                                ; Set this back in place to turn on the PC speaker
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+speaker_off:
+    push ax                                     ; Save register state to stack
+
+    in al, 0x61                                 ; Get value from this I/O port
+    and al, 0b11111100                          ; Clear the rightmost two bits
+    out 0x61, al                                ; Set this back in place to turn off the PC speaker
+    
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
 misc_data:
 
 random_num          dw 0x0000
+
+iface_error_rtc     db "FATAL: RTC Error. Try again.", 0x00
