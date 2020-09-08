@@ -10,6 +10,10 @@
 ; LOGICAL/CONVERSION SUBROUTINES
 ; ========================================================================
 
+; CONVERT WORD TO HEX: Converts word-size value to ASCII hexadecimal notation
+; IN: AX = Value to convert; ES:DI = Destination buffer (4 bytes)
+; OUT: None
+
 conv_word_hex:                                  ; Convert AX to ASCII hexadecimal dword at ES:DI
     pusha                                       ; Push register states to stack
     mov cx, 0x0004                              ; Four nibbles
@@ -41,6 +45,10 @@ conv_word_hex:                                  ; Convert AX to ASCII hexadecima
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; CONVERT WORD TO UNSIGNED DECIMAL: Converts word-size value to ASCII decimal notation
+; IN: AX = Value to convert; ES:DI = Destination buffer (5 bytes)
+; OUT: None
 
 conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at ES:DI
     pusha                                       ; Push register states to stack
@@ -104,95 +112,9 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
     ret                                         ; Return to caller
 
 
-conv_hex_word:                                  ; Convert hexadecimal dword at DS:SI to binary value in DX
-    pusha                                       ; Save register states to stack
-    mov cx, 0x0004                              ; 1 byte per nibble
-    mov dx, 0x0000                              ; Clear this out
-
-.nibble:
-    lodsb                                       ; Load a byte
-    sub al, 0x30                                ; ASCII digits start here
-
-    cmp al, 0x09                                ; Are we a digit 0-9?
-    jna .shift                                  ; If so, shift and add this value
-
-    sub al, 0x07                                ; Otherwise, we should be a digit A-F
-
-    cmp al, 0x09                                ; Was our value between 0-9 and A-F?
-    jna .error_nan                              ; If so, it wasn't a number
-
-    cmp al, 0x0F                                ; Was the value something else?
-    ja .error_nan                               ; If so, it wasn't a number
-
-.shift:
-    shl dx, 0x4                                 ; 4 bits in a nibble
-    add dl, al                                  ; Add our new nibble
-
-    loop .nibble                                ; Repeat
-
-.done:
-    mov word [register_bckp_a], dx              ; Save our value
-
-    popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore our value
-
-    ret                                         ; Return to caller
-
-.error_nan:
-    mov si, iface_error_nan                     ; Error message
-    call println                                ; Print line
-
-    stc                                         ; Carry flag for error
-    jmp .done                                   ; We're done
-
-
-conv_dec_unsigned_word:                         ; Convert ASCII decimal at DS:SI to binary, store in DX
-    pusha                                       ; Push register states to stack
-    mov cx, 0x0005                              ; 5 digits in a 16-bit unsigned integer
-    mov dx, 0x0000                              ; Clear this out
-    
-.digit:
-    lodsb                                       ; Load a byte
-
-    sub al, 0x30                                ; ASCII digits start here
-
-    cmp al, 0x09                                ; Are we an actual digit?
-    ja .error_nan                               ; If not, error
-
-    mov ah, 0x00                                ; Upper byte is 0
-    add ax, dx                                  ; Add the binary value to our sum
-
-    cmp byte [si], 0x00                         ; Is the next character a NULL char?
-    je .finish                                  ; If so, we're done
-
-    loop .multiply                              ; If we have more digits to go, multiply
-
-.finish:
-    mov dx, ax                                  ; Otherwise, move back into the correct register
-    jmp .done                                   ; We're done
-
-.multiply:
-    mov dx, 0x000A                              ; We're using decimal notation
-    mul dx                                      ; Set up for the next place value
-    mov dx, ax                                  ; Move back into the correct register
-
-    jmp .digit
-
-.done:
-    mov word [register_bckp_a], dx              ; Preserve our output
-
-    popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore output
-
-    ret                                         ; Return to caller
-    
-.error_nan:
-    mov si, iface_error_nan                     ; Error message
-    call println                                ; Print line
-
-    stc                                         ; Carry flag for error
-    jmp .done                                   ; We're done
-
+; CONVERT BYTE TO HEX: Converts byte-size value to ASCII hexadecimal notation
+; IN: AL = Value to convert; ES:DI = Destination buffer (2 bytes)
+; OUT: None
 
 conv_byte_hex:                                  ; Convert AL to ASCII hexadecimal word at ES:DI
     pusha                                       ; Save register states to stack
@@ -230,6 +152,10 @@ conv_byte_hex:                                  ; Convert AL to ASCII hexadecima
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; CONVERT BYTE TO UNSIGNED DECIMAL: Converts byte-size value to ASCII decimal notation
+; IN: AL = Value to convert; ES:DI = Destination buffer (3 bytes)
+; OUT: None
 
 conv_byte_dec_unsigned:                         ; Convert AL to ASCII decimal at ES:DI
     pusha                                       ; Save register states to stack
@@ -286,27 +212,260 @@ conv_byte_dec_unsigned:                         ; Convert AL to ASCII decimal at
     ret                                         ; Return to caller
 
 
-conv_rtctime_unix:                              ; Convert an RTC time to a number of seconds (stored in DX:AX)
+; CONVERT HEX TO WORD: Converts ASCII hexadecimal notation to word-size value
+; IN: DS:SI = Source buffer (4 bytes)
+; OUT: DX = Resulting value
+
+conv_hex_word:                                  ; Convert hexadecimal dword at DS:SI to binary, store in DX
+    push cx                                     ; Save register state to stack
+
+    mov cx, 0x0004                              ; 4-nibble hex value
+    call conv_hex_bin                           ; Convert to a binary value
+
+.done:
+    pop cx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; CONVERT HEX TO BYTE: Converts ASCII hexadecimal notation to byte-size value
+; IN: DS:SI = Source buffer (2 bytes)
+; OUT: DL = Resulting value
+
+conv_hex_byte:                                  ; Convert hexadecimal word at DS:SI to binary, store in DL
+    push cx
+    push dx                                     ; Save register states to stack
+
+    mov cx, 0x0002                              ; 2-nibble hex value
+    call conv_hex_bin                           ; Convert to a binary value
+
+    pop cx                                      ; Restore DX
+    mov dh, ch                                  ; Make sure DH was how we left it
+
+.done:
+    pop cx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; CONVERT UNSIGNED DECIMAL TO WORD: Converts ASCII decimal notation to word-size value
+; IN: DS:SI = Source buffer (5 bytes)
+; OUT: DX = Resulting value
+
+conv_dec_unsigned_word:
+    push cx                                     ; Save register state to stack
+
+    mov cx, 0x0005                              ; 16-bit decimal values max at 65,535 (5-digit)
+    call conv_dec_unsigned_bin                  ; Convert to a binary value
+
+.done:
+    pop cx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; CONVERT UNSIGNED DECIMAL TO BYTE: Converts ASCII decimal notation to byte-size value
+; IN: DS:SI = Source buffer (3 bytes)
+; OUT: DL = Resulting value
+
+conv_dec_unsigned_byte:                         ; Convert ASCII decimal at DS:SI to binary, store in DL
+    push cx
+    push dx                                     ; Save register states to stack
+
+    mov cx, 0x0003                              ; 8-bit decimal values max at 255 (3-digit)
+    call conv_dec_unsigned_bin                  ; Convert to a binary value
+
+    pop cx                                      ; Restore DX
+    mov dh, ch                                  ; Make sure DH was how we left it
+
+.done:
+    pop cx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; CONVERT HEX TO BINARY: Converts ASCII hexadecimal notation to binary value
+; IN: CX = Number of hexadecimal digits (bits 0-2, max 4); DS:SI = Source buffer
+; OUT: DX = Resulting value
+
+conv_hex_bin:                                   ; Convert hexadecimal at DS:SI to binary in DX (CX = digits)
+    pusha                                       ; Save register states to stack
+
+    dec cx                                      ; Decrement counter to clear bits
+    and cx, 0b00000011                          ; Only look at the rightmost two bits
+    inc cx                                      ; Re-increment counter
+
+    mov dx, 0x0000                              ; Clear this out
+
+.nibble:
+    lodsb                                       ; Load a byte
+    sub al, 0x30                                ; ASCII digits start here
+
+    cmp al, 0x09                                ; Are we a digit 0-9?
+    jna .shift                                  ; If so, shift and add this value
+
+    sub al, 0x07                                ; Otherwise, we should be a digit A-F
+
+    cmp al, 0x09                                ; Was our value between 0-9 and A-F?
+    jna .error_nan                              ; If so, it wasn't a number
+
+    cmp al, 0x0F                                ; Was the value something else?
+    ja .error_nan                               ; If so, it wasn't a number
+
+.shift:
+    shl dx, 0x4                                 ; 4 bits in a nibble
+    add dl, al                                  ; Add our new nibble
+
+    loop .nibble                                ; Repeat
+
+.done:
+    clc                                         ; No error
+
+.end:
+    mov word [register_bckp_a], dx              ; Save our value
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore our value
+
+    ret                                         ; Return to caller
+
+.error_nan:
+    mov si, iface_error_nan                     ; Error message
+    call println                                ; Print line
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+; CONVERT UNSIGNED DECIMAL TO BINARY: Converts ASCII decimal notation to binary value
+; IN: CX = Number of decimal digits (bits 0-2, max 5); DS:SI = Source buffer
+; OUT: DX = Resulting value
+
+conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI to binary, store in DX
+    pusha                                       ; Push register states to stack
+
+    and cx, 0b00000111                          ; Only look at the rightmost three bits
+    cmp cx, 0x0005                              ; Up to 5 digits in a 16-bit unsigned integer
+    ja .error_size                              ; If we have invalid input, error
+
+    mov dx, 0x0000                              ; Clear this out
+   
+.digit:
+    lodsb                                       ; Load a byte
+
+    sub al, 0x30                                ; ASCII digits start here
+
+    cmp al, 0x09                                ; Are we an actual digit?
+    ja .error_nan                               ; If not, error
+
+    mov ah, 0x00                                ; Upper byte is 0
+    add ax, dx                                  ; Add the binary value to our sum
+
+    cmp byte [si], 0x00                         ; Is the next character a NULL char?
+    je .finish                                  ; If so, we're done
+
+    loop .multiply                              ; If we have more digits to go, multiply
+
+.finish:
+    mov dx, ax                                  ; Otherwise, move back into the correct register
+    jmp .done                                   ; We're done
+
+.multiply:
+    mov dx, 0x000A                              ; We're using decimal notation
+    mul dx                                      ; Set up for the next place value
+    mov dx, ax                                  ; Move back into the correct register
+
+    jmp .digit
+
+.done:
+    clc                                         ; No error
+
+.end:
+    mov word [register_bckp_a], dx              ; Preserve our output
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore output
+
+    ret                                         ; Return to caller
+
+.error_nan:
+    mov si, iface_error_nan                     ; Error message
+    call println                                ; Print line
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_size:
+    mov si, iface_error_space
+    call println                                ; Error message
+
+    stc                                         ; Carry flag for error
+    je .end                                     ; We're done
+
+
+; GENERATE UNIX TIMESTAMP: Creates a UNIX timestamp from time and date
+; IN: CF:AX = Seconds elapsed since 00:00:00; DX = Days elapsed since 1970-01-01
+; OUT: DX:AX = Timestamp
+
+unix_timestamp:                                 ; Make a UNIX timestamp from seconds in CF:AX and days in DX
+    push bx                                     ; Save register state to stack
+    push ax                                     ; Preserve seconds
+    pushf                                       ; Preserve flags
+
+.days:
+    mov ax, dx                                  ; Place the number of days here
+    mov bx, 0x02A3                              ; 1/128 of a day
+    mul bx                                      ; Multiply
+    shl dx, 0x7                                 ; Multiply by 128 to get full days
+
+    push ax                                     ; Preserve this value
+    shr ax, 0x9                                 ; Shift to get bits to carry over
+    add dx, ax                                  ; Add these bits
+
+    pop ax                                      ; Restore value
+    shl ax, 0x7                                 ; Multiply by 128 to get full days
+
+.carry:
+    popf                                        ; Restore flags
+    pop bx                                      ; Restore seconds
+    jnc .seconds                                ; If there was no overflow in calculating seconds, proceed
+
+    inc dx                                      ; Otherwise, increment the leftmost word
+
+.seconds:
+    add ax, bx                                  ; Add seconds in
+    jnc .done                                   ; If there was no overflow, we're done
+
+    inc dx                                      ; Otherwise, increment the leftmost word
+
+.done:
+    pop bx                                      ; Restore register state
+    ret                                         ; Return to caller    
+
+
+; CONVERT RTC TIME FORMAT TO SECONDS: Calculates a number of seconds from an RTC time
+; IN: RTC TIME (CX = HH:MM; DH = Seconds)
+; OUT: CF:AX = Number of seconds
+
+conv_rtctime_seconds:                           ; Convert an RTC time to a number of seconds in CF:AX
     pusha                                       ; Save register states to stack
 
 .hours:
     mov al, ch                                  ; Hours are stored here
     call conv_rtcval_byte                       ; Convert to a proper value
 
+    push dx                                     ; Preserve seconds
+
     mov ah, 0x00                                ; Upper byte of factor is zero
     mov bx, 0x0E10                              ; Number of seconds in an hour
     mul bx                                      ; Multiply
 
-    push dx
+.minutes:
+    pop dx                                      ; Restore seconds
+
     push ax                                     ; Save value to stack
 
-.minutes:
     mov al, cl                                  ; Minutes are stored here
     call conv_rtcval_byte                       ; Convert to a proper value
 
-    mov ah, 0x00                                ; Upper byte of factor is zero
-    mov bx, 0x003C                              ; Number of seconds in a minute
-    mul bx                                      ; Multiply
+    mov bl, 0x3C                                ; Number of seconds in a minute
+    mul bl                                      ; Multiply
 
     push ax                                     ; Save value to stack
 
@@ -317,23 +476,132 @@ conv_rtctime_unix:                              ; Convert an RTC time to a numbe
     mov ah, 0x00                                ; Upper byte is zero
 
     pop bx                                      ; Restore seconds from minutes
-    add ax, bx                                  ; Add
+    add ax, bx                                  ; Add to total
 
     pop bx                                      ; Restore seconds from hours
-    add ax, bx                                  ; Add
+    add ax, bx                                  ; Add to total
 
-    pop dx                                      ; Restore upper word of hours
+    clc                                         ; Clear the carry flag for now
+    cmp dl, 0b00000001                          ; Was that bit set?
+    jne .done                                   ; If not, proceed
+
+    stc                                         ; Otherwise, set the carry flag to indicate over 64K seconds
 
 .done:
-    mov word [register_bckp_a], ax
-    mov word [register_bckp_b], dx              ; Save our value
+    mov word [register_bckp_a], ax              ; Save our value
 
     popa                                        ; Restore register states
-    mov ax, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our value
+    mov ax, word [register_bckp_a]              ; Restore our value
 
     ret                                         ; Return to caller
 
+
+; CONVERT RTC DATE FORMAT TO DAYS: Calculates the number of days since 1970-01-01 from an RTC date
+; IN: RTC DATE (CX = YYYY; DX = MM:DD)
+; OUT: DX = Number of days
+
+conv_rtcdate_days:                              ; Convert an RTC date to a number of days in DX
+    pusha                                       ; Push register states to stack
+
+    mov ax, 0x2000
+    mov ds, ax
+    mov es, ax                                  ; The segment we're loaded in
+
+.years:
+    push dx                                     ; Save month-day
+
+    mov ax, cx                                  ; Year is stored here
+    mov di, dec_src                             ; Our destination buffer
+    call conv_word_hex                          ; Convert to hex (RTC values are weird)
+
+    mov si, dec_src                             ; Where our value was just placed
+    call conv_dec_unsigned_word                 ; Read as decimal number (to reiterate, RTC values are weird)
+
+    mov ax, dx                                  ; Save in AX
+    sub ax, 0x07B0                              ; Start years at 1968 for now (it was a leap year)
+
+    push ax                                     ; Save year
+
+    mov bx, 0x0004                              ; Leap year every four years
+    div bl                                      ; Divide
+    mov bl, al                                  ; Number of leap years
+
+    cmp ah, 0x00                                ; Is it currently a leap year?
+    jne .multiply_years                         ; If not, proceed
+    
+    cmp dh, 0x02                                ; Has February passed?
+    jg .multiply_years                          ; If so, proceed
+
+    dec bl                                      ; Otherwise, don't count the leap-day
+
+.multiply_years:
+    pop ax                                      ; Restore year
+
+    sub ax, 0x0002                              ; Start years at 1970
+    mov dx, 0x016D                              ; 365 days in a year
+    mul dx                                      ; Multiply
+
+    add ax, bx                                  ; Add 1 day for every leap year
+
+    pop dx                                      ; Restore month-day
+    push ax                                     ; Save value to stack
+
+.months:
+    mov al, dh                                  ; Month is stored here
+    dec al                                      ; Avoid an O.B.O.E
+    mov ah, 0x00                                ; Clear upper byte
+
+    mov bl, 0x1F                                ; There are up to 31 days in a month
+    mul bl                                      ; Multiply
+
+.irregularities:
+    cmp dh, 0x02                                ; Has February passed?
+    jle .days                                   ; If not, proceed
+    sub ax, 0x0003                              ; Otherwise, we're three days ahead
+
+    cmp dh, 0x04                                ; Has April passed?
+    jle .days                                   ; If not, proceed
+    dec ax                                      ; Otherwise, we're a day ahead
+
+    cmp dh, 0x06                                ; Has June passed?
+    jle .days                                   ; If not, proceed
+    dec ax                                      ; Otherwise, we're a day ahead
+
+    cmp dh, 0x09                                ; Has September passed?
+    jle .days                                   ; If not, proceed
+    dec ax                                      ; Otherwise, we're a day ahead
+
+    cmp dh, 0x0B                                ; Has November passed?
+    jle .days                                   ; If not, proceed
+    dec ax                                      ; Otherwise, we're a day ahead
+
+.days:
+    push ax                                     ; Save value to stack
+
+    mov al, dl                                  ; Day is stored here
+    call conv_rtcval_byte                       ; Convert to a proper value
+
+    mov ah, 0x00                                ; Clear upper byte
+    dec ax                                      ; Avoid an O.B.O.E
+    
+    pop bx                                      ; Restore days from months
+    add ax, bx                                  ; Add to total
+
+    pop bx                                      ; Restore days from years
+    add ax, bx                                  ; Add to total
+
+.done:
+    mov word [register_bckp_a], ax              ; Save our value
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore our value into the correct register
+
+    ret                                         ; Return to caller
+
+
+; CONVERT RTC TIME TO ASCII TIMESTAMP: Creates a HH:MM:SS timestamp from an RTC time
+; IN: RTC TIME (CX = HH:MM; DH = Seconds); ES:DI = Destination buffer (8 bytes)
+; OUT: None
 
 conv_rtctime_stamp:                             ; Convert an RTC time to a standard HH:MM:SS timestamp at ES:DI
     pusha                                       ; Save register states to stack
@@ -365,6 +633,10 @@ conv_rtctime_stamp:                             ; Convert an RTC time to a stand
     ret                                         ; Return to caller
 
 
+; CONVERT RTC DATE TO ASCII DATESTAMP: Creates a YYYY-MM-DD datestamp from an RTC date
+; IN: RTC DATE (CX = YYYY, DX = MM:DD); ES:DI = Destination buffer
+; OUT: None
+
 conv_rtcdate_stamp:                             ; Convert an RTC date to a standard YYYY-MM-DD stamp at ES:DI
     pusha                                       ; Save register states to stack
 
@@ -395,20 +667,32 @@ conv_rtcdate_stamp:                             ; Convert an RTC date to a stand
     ret                                         ; Return to caller
 
 
+; CONVERT RTC VALUE: Converts an RTC value to a proper value
+; IN: AL = RTC value to convert
+; OUT: AL = Resulting value
+
 conv_rtcval_byte:                               ; Convert an RTC value in AL to an actual binary value
-    cmp al, 0x10                                ; Are we above 0x10?
-    jl .done                                    ; If not, we're done
+    pusha                                       ; Save register states to stack
 
-    sub al, 0x06                                ; Otherwise, subtract
+    mov di, dec_src                             ; Output buffer
+    call conv_byte_hex                          ; Convert to hex (RTC values are weird)
 
-    cmp al, 0x1A                                ; Was it above 0x20?
-    jl .done                                    ; If not, we're done
-
-    sub al, 0x06                                ; Otherwise, subtract
+    mov cx, 0x0002                              ; 2-digit max
+    mov si, dec_src                             ; Input buffer
+    call conv_dec_unsigned_bin                  ; Read as decimal (to reiterate, RTC values are weird)
 
 .done:
+    mov byte [rtc_byte], dl                     ; Preserve value
+
+    popa                                        ; Restore register states
+    mov al, byte [rtc_byte]                     ; Restore value into correct register
+
     ret                                         ; Return to caller
 
+
+; CAPITALIZE ASCII CHARACTER: Capitalizes an ASCII character if possible
+; IN: AL = Character
+; OUT: AL = Capitalized character
 
 capitalize_char:                                ; Capitalize char in AL
     cmp al, 0x61                                ; Are we between lowercase A
@@ -422,67 +706,16 @@ capitalize_char:                                ; Capitalize char in AL
     ret                                         ; Return to caller
 
 
-power_ten:                                      ; Raise ten to the power in CL, store in DX:AX
-    pusha                                       ; Save register states to stack
-
-    mov ax, 0x0001                              ; Start at 1
-    mov bx, 0x000A                              ; Multiply by Ten
-
-    cmp cl, 0x0A                                ; Is the power too big?
-    ja .error_space                             ; If so, error
-
-    mov ch, 0x00                                ; Clear the upper byte of the counter
-    shr cx, 0x1                                 ; Divide by two
-    pushf                                       ; We're going to need this later
-
-    cmp ch, 0x00                                ; Are we about to multiply zero times?
-    je .check_odd                               ; If so, don't attempt
-
-.find_root:
-    mul bx                                      ; Multiply
-    loop .find_root                             ; Repeat
-
-.check_odd:
-    popf                                        ; Restore flags from before
-    jnc .final_product                          ; If not an odd number, we are ready to multiply
-
-    push ax                                     ; Otherwise, save our current value
-    mul bx                                      ; Multiply once more
-
-    pop bx                                      ; Restore our value
-    mul bx                                      ; And multiply by IT
-
-    jmp .done                                   ; We're done!
-
-.final_product:
-    mov bx, ax                                  ; Copy our value
-    mul bx                                      ; Square it to get the final product
-
-    clc                                         ; No error
-
-.done:
-    mov word [register_bckp_a], ax
-    mov word [register_bckp_b], dx              ; Save our value
-
-    popa                                        ; Restore register states
-    mov ax, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our value
-
-    ret                                         ; Return to caller
-
-.error_space:
-    mov si, iface_error_space
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
-    jmp .done                                   ; We're done
-
-
 ; ========================================================================
 ; DATA SECTION
 ; ========================================================================
 
 logic_data:
+
+dec_src             dd 0x00000000
+                    db 0x00
+
+rtc_byte            db 0x00
 
 iface_error_nan     db "ERROR: Not a Number.", 0x00
 iface_error_space   db "ERROR: Memory size too small.", 0x00

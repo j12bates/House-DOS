@@ -277,6 +277,41 @@ print_bytes:                                    ; Prints number of bytes (CX) st
     loop .char                                  ; Next char
 
 
+display_cursor:                                 ; Display cursor if CF flag is cleared; otherwise, hide it
+    pusha                                       ; Save register states to stack
+
+    mov ah, 0x01                                ; Set cursor mode
+    mov ch, 0b00000110                          ; Slow blink, scan line 6
+    mov cl, 0b00000111                          ; Scan line 7
+
+    jnc .done                                   ; If cleared, proceed
+    or ch, 0b00100000                           ; Otherwise, make cursor invisible
+
+.done:
+    int 0x10                                    ; BIOS VGA interrupt
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+move_cursor:                                    ; Move cursor to DH, DL
+    pusha                                       ; Save register states to stack
+
+    cmp dh, 0x19                                ; Are we out of bounds?
+    jae .done                                   ; If so, we're done
+
+    cmp dl, 0x50                                ; Are we out of bounds?
+    jae .done                                   ; If so, we're done
+
+    mov ah, 0x02                                ; Set cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller    
+
+
 println:                                        ; Prints String in DS:SI, then does a line break
     pusha                                       ; Save register states to stack
 
@@ -302,9 +337,8 @@ block:                                          ; Draws a block of char AL size 
     push dx                                     ; Save initial cursor position
 
 .set_position:
-    mov ah, 0x02                                ; Set cursor position
     mov dx, word [register_bckp_a]              ; Our requested location
-    int 0x10                                    ; BIOS VGA interrupt
+    call move_cursor                            ; Set cursor position
 
     pop dx                                      ; Restore initial cursor position
 

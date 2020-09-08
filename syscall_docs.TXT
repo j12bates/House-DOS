@@ -40,7 +40,7 @@ II. Basic Functions
         Signals the end of the command. When this is used, command execution will stop and
         House-DOS will prompt the user for a new command.
 
-*   GET UNIX TIME
+    GET UNIX TIME
         AH = 0xD0
         Return:
         DX:AX = UNIX time
@@ -54,7 +54,7 @@ II. Basic Functions
 
         Returns the number of seconds since 00:00:00.
 
-*   GET DAYS SINCE UNIX EPOCH
+    GET DAYS SINCE UNIX EPOCH
         AH = 0xD2
         Return:
         AX = Number of days
@@ -87,7 +87,7 @@ II. Basic Functions
 
     SLEEP MILLISECONDS
         AH = 0xC0
-        CX = Number of milleseconds
+        CX = Number of milliseconds
 
         Halts execution for the specified number of milliseconds.
 
@@ -129,22 +129,25 @@ III. Logic Functions
         Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
         five-byte output buffer.
 
-    CONVERT HEX TO BINARY VALUE
+    CONVERT HEX TO WORD
         AH = 0xF2
         SI = 4-byte input buffer
         Return:
         DX = Binary value
+        CF = Set on error
 
-        Converts the ASCII hexadecimal number in the four-byte input buffer to a binary value in
-        DX.
+        Converts the ASCII hexadecimal number in the four-byte input buffer to a word-size binary
+        value in DX.
 
-    CONVERT ASCII DECIMAL TO BINARY VALUE
+    CONVERT ASCII DECIMAL TO WORD
         AH = 0xF3
         SI = 5-byte input buffer
         Return:
         DX = Binary value
+        CF = Set on error
 
-        Converts the ASCII decimal number in the five-byte input buffer to a binary value in DX.
+        Converts the ASCII decimal number in the five-byte input buffer to a word-size binary
+        value in DX.
 
     CONVERT BYTE TO HEX
         AH = 0xF4
@@ -161,6 +164,26 @@ III. Logic Functions
 
         Converts the value in DL into ASCII decimal notation (unsigned), which is stored in the
         three-byte output buffer.
+
+    CONVERT HEX TO BYTE
+        AH = 0xF6
+        SI = 2-byte input buffer
+        Return:
+        DL = Binary value
+        CF = Set on error
+
+        Converts the ASCII hexadecimal number in the two-byte input buffer to a byte-size binary
+        value in DX.
+
+    CONVERT ASCII DECIMAL TO BYTE
+        AH = 0xF7
+        SI = 3-byte input buffer
+        Return:
+        DL = Binary value
+        CF = Set on error
+
+        Converts the ASCII decimal number in the three-byte input buffer to a byte-size binary
+        value.
 
 
 IV. Interface Functions
@@ -205,6 +228,19 @@ IV. Interface Functions
         AH = 0x06
 
         Clears the screen.
+
+    SHOW/HIDE CURSOR
+        AH = 0x07
+        CF = Cleared for show, set for hide
+
+        Shows or hides the cursor.
+
+    SET CURSOR POSITION
+        AH = 0x08
+        DH = Row number
+        DL = Col number
+
+        Moves the cursor to the specified position.
 
     PRINT BYTES
         AH = 0x10
