@@ -11,7 +11,9 @@
 ; ========================================================================
 
 start:                                          ; House-DOS code
+    pushf                                       ; Save flags
     push bx                                     ; Save register state to stack
+
     mov bx, 0x2000
     mov ds, bx                                  ; The segment in which we are
 
@@ -67,7 +69,7 @@ start:                                          ; House-DOS code
     mov di, 0x001B                              ; We will be changing the entry for the CTRL+BREAK handler
     shl di, 0x2                                 ; 4 bytes per entry
 
-    mov word [es:di], re_init                   ; Manual re-initialization code is here
+    mov word [es:di], handback_manual           ; Manual handback code is here
     mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
 
     call random_seed                            ; Create a random number seed
@@ -104,10 +106,18 @@ main:                                           ; Main code for House-DOS kernel
     jmp syscall_handler                         ; OTHERWISE, a system function was called
 
 .handback:
+    popf                                        ; Get this out of the stack
     add sp, 0x0006                              ; Get rid of all the stuff in the stack from INT 0x7E
+
+    clc                                         ; Show cursor
+    call display_cursor                         ; Make sure cursor is visible
+
+    call speaker_off                            ; Turn off speaker
 
 
 command:                                        ; Main loop: Retrieve command from user
+    popf                                        ; Get this out of the stack
+
     call line_break                             ; Line break
     call prompt                                 ; Setup prompt
 
@@ -183,9 +193,9 @@ command:                                        ; Main loop: Retrieve command fr
     jmp command                                 ; Try again
 
 
-re_init:                                        ; Routine to run to manually re-initialize
-    mov ah, 0x00                                ; Re-initialize
-    jmp start                                   ; Jump to the beginning of the kernel
+handback_manual:                                ; Routine to manually perform handback
+    mov ah, 0xFF                                ; Handback
+    int 0x7E
 
 
 ; ========================================================================
@@ -237,6 +247,12 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x06
     je iface_routines.clear                     ; Clear screen
+
+    cmp ah, 0x07
+    je iface_routines.cursor                    ; Show/hide cursor
+
+    cmp ah, 0x08
+    je iface_routines.cursor_position           ; Set cursor position
 
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
@@ -294,8 +310,14 @@ syscall_handler:                                ; System call handler
     cmp ah, 0xC3
     je general_routines.speaker_off             ; Turn off PC speaker
 
+    cmp ah, 0xD0
+    je general_routines.unix                    ; Get current UNIX time
+
     cmp ah, 0xD1
     je general_routines.seconds                 ; Get seconds since midnight
+
+    cmp ah, 0xD2
+    je general_routines.days                    ; Get days since UNIX epoch
 
     cmp ah, 0xD3
     je general_routines.timestamp               ; Get current timestamp
@@ -321,6 +343,12 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0xF5
     je logical_routines.conv_byte_dec_usigned   ; Convert byte to decimal notation (unsigned)
+
+    cmp ah, 0xF6
+    je logical_routines.conv_hex_byte           ; Convert hexadecimal notation to binary byte
+
+    cmp ah, 0xF7
+    je logical_routines.conv_dec_byte           ; Convert decimal notation to binary byte
 
     jmp int_ret                                 ; If invalid function number, we're done!
 
@@ -366,6 +394,18 @@ iface_routines:                                 ; Interface functions
 
 .clear:
     call clear                                  ; Clear screen
+
+    jmp int_ret                                 ; We're done!
+
+.cursor:
+    popf                                        ; We'll need the flags
+
+    call display_cursor                         ; Show/hide cursor
+
+    jmp int_ret.flags_used                      ; We're done!
+
+.cursor_position:
+    call move_cursor                            ; Set cursor position
 
     jmp int_ret                                 ; We're done!
 
@@ -419,11 +459,28 @@ general_routines:                               ; General functions
 
     jmp int_ret                                 ; We're done!
 
+.unix:
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_days                      ; Convert to days
+
+    call get_time                               ; Get RTC time
+    call conv_rtctime_seconds                   ; Convert to seconds
+
+    call unix_timestamp                         ; Generate UNIX timestamp
+
+    jmp int_ret                                 ; We're done!
+
 .seconds:
     call get_time                               ; Get RTC time
-    call conv_rtctime_unix                      ; Convert to seconds
+    call conv_rtctime_seconds                   ; Convert to seconds
 
     jmp int_ret.preserve_flags                  ; We're done!
+
+.days:
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_days                      ; Convert to days
+
+    jmp int_ret                                 ; We're done!
 
 .timestamp:
     call extra_binseg                           ; We want to give data to the command
@@ -585,8 +642,25 @@ logical_routines:                               ; Logical functions
 
     jmp int_ret                                 ; We're done!
 
+.conv_hex_byte:
+    call data_binseg                            ; We want to access data from the command
+
+    call conv_hex_byte                          ; Convert to binary value
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.conv_dec_byte:
+    call data_binseg                            ; We want to access data from the command
+
+    call conv_dec_unsigned_byte                 ; Convert to binary value
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
 
 int_ret:                                        ; Return back to command
+    popf                                        ; Restore flags
+
+.flags_used:
     push ax                                     ; Save register state to stack
     mov ax, 0x4000
     mov ds, ax                                  ; The segment our command is loaded in
@@ -600,11 +674,14 @@ int_ret:                                        ; Return back to command
     mov word [register_bckp_a], ax
     mov word [register_bckp_b], bx              ; Save register states to backup
 
+    inc sp
+    inc sp                                      ; Move stack pointer past the FLAGS image
+
     pop ax                                      ; Pop instruction pointer
     pop bx                                      ; Pop code segment
 
     inc sp
-    inc sp                                      ; Move stack pointer past the FLAGS image
+    inc sp                                      ; Move stack pointer past the FLAGS image from INT
 
     push bx                                     ; Push code segment
     push ax                                     ; Push instruction pointer
@@ -635,7 +712,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.0, Build 15", 0x00
+iface_welcome       db "House-DOS v0.0.1, Build 16; Compiled 2020-09-08", 0x00
 iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
 
