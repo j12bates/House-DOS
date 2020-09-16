@@ -291,6 +291,15 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x70
     je disk_routines.get_file_size              ; Verify and get size of file
 
+    cmp ah, 0x78
+    je disk_routines.rename                     ; Rename file
+
+    cmp ah, 0x79
+    je disk_routines.delete                     ; Delete file
+
+    cmp ah, 0x7F
+    je disk_routines.apply                      ; Apply filesystem changes
+
 .general_funcs:                                 ; General functions
     cmp ah, 0xA0
     je general_routines.random                  ; Generate random number
@@ -589,6 +598,25 @@ disk_routines:                                  ; Disk functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
+.rename:
+    call data_binseg                            ; We want to access data from the command
+
+    call conv_x3_83                             ; Convert filename to proper format
+    jc int_ret.preserve_flags                   ; If error, we're done
+
+    call rename                                 ; Rename
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.delete:
+    call delete                                 ; Delete
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.apply:
+    call prompt_apply                           ; Apply filesystem changes
+
+    jmp int_ret.preserve_flags                  ; We're done!
 
 logical_routines:                               ; Logical functions
 
@@ -712,7 +740,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1, Build 16; Compiled 2020-09-08", 0x00
+iface_welcome       db "House-DOS v0.0.1, Build 17; Compiled 2020-09-16", 0x00
 iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
 

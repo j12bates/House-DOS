@@ -53,7 +53,7 @@ conv_word_hex:                                  ; Convert AX to ASCII hexadecima
 conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at ES:DI
     pusha                                       ; Push register states to stack
 
-    mov word [register_bckp_a], ax              ; Save our number
+    mov word [input_number], ax                 ; Save our number
 
 .clear:
     mov cx, 0x0005                              ; There are up to 5 digits in a 16-bit unsigned number
@@ -70,17 +70,20 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
     mov bx, 0x000A                              ; Divisor is 10
 
 .length:
-    cmp word [register_bckp_a], ax              ; Are we less than this power of 10?
+    cmp word [input_number], ax                 ; Are we less than this power of 10?
     jae .calc                                   ; If not, continue
     
     div bx                                      ; Otherwise, check the next power down
     loop .length                                ; Get rid of a leading zero, and check the next one
 
+.zero:
+    mov cx, 0x0001                              ; Zero should have 1 digit
+
 .calc:
-    mov ax, word [register_bckp_a]              ; Restore our number
+    mov ax, word [input_number]                 ; Restore our number
 
 .digit:
-    mov word [register_bckp_a], ax              ; Save our number
+    mov word [input_number], ax                 ; Save our number
     push cx                                     ; Save our counter
 
     mov ax, 0x0001                              ; One
@@ -96,7 +99,7 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
 .calc_digit:
     mov bx, ax                                  ; Save our place value
     pop cx                                      ; Restore our counter
-    mov ax, word [register_bckp_a]              ; Restore our number
+    mov ax, word [input_number]                 ; Restore our number
 
     mov dx, 0x0000                              ; Upper word of dividend is zero
     div bx                                      ; Divide to find the digit in that place value
@@ -716,6 +719,8 @@ dec_src             dd 0x00000000
                     db 0x00
 
 rtc_byte            db 0x00
+
+input_number        dw 0x0000
 
 iface_error_nan     db "ERROR: Not a Number.", 0x00
 iface_error_space   db "ERROR: Memory size too small.", 0x00

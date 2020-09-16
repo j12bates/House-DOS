@@ -42,6 +42,7 @@ II. Basic Functions
 
     GET UNIX TIME
         AH = 0xD0
+
         Return:
         DX:AX = UNIX time
 
@@ -49,6 +50,7 @@ II. Basic Functions
 
     GET SECONDS SINCE MIDNIGHT
         AH = 0xD1
+
         Return:
         DX:AX = Number of seconds
 
@@ -56,6 +58,7 @@ II. Basic Functions
 
     GET DAYS SINCE UNIX EPOCH
         AH = 0xD2
+
         Return:
         AX = Number of days
 
@@ -75,6 +78,7 @@ II. Basic Functions
 
     GENERATE RANDOM NUMBER
         AH = 0xA0
+
         Return:
         DX = Random number
 
@@ -132,6 +136,7 @@ III. Logic Functions
     CONVERT HEX TO WORD
         AH = 0xF2
         SI = 4-byte input buffer
+
         Return:
         DX = Binary value
         CF = Set on error
@@ -142,6 +147,7 @@ III. Logic Functions
     CONVERT ASCII DECIMAL TO WORD
         AH = 0xF3
         SI = 5-byte input buffer
+
         Return:
         DX = Binary value
         CF = Set on error
@@ -168,6 +174,7 @@ III. Logic Functions
     CONVERT HEX TO BYTE
         AH = 0xF6
         SI = 2-byte input buffer
+
         Return:
         DL = Binary value
         CF = Set on error
@@ -178,6 +185,7 @@ III. Logic Functions
     CONVERT ASCII DECIMAL TO BYTE
         AH = 0xF7
         SI = 3-byte input buffer
+
         Return:
         DL = Binary value
         CF = Set on error
@@ -213,6 +221,7 @@ IV. Interface Functions
         AH = 0x04
         DI = Buffer location
         CX = Size of buffer
+
         Return:
         DI = Initial value + Number of chars input
 
@@ -261,6 +270,7 @@ IV. Interface Functions
 
     GET CURRENT KEYBOARD CHARACTER
         AH = 0x12
+
         Return:
         AH = Key scan code
         AL = ASCII code
@@ -405,4 +415,30 @@ V. Disk Functions
         DX:AX = File size in bytes
 
         Returns the size of the file with the filename given.
+
+    RENAME FILE
+        AH = 0x78
+        SI = X.3 filename to rename to
+
+        Return:
+        CF = Set on error
+
+        Renames the verified file.
+
+    DELETE FILE
+        AH = 0x79
+
+        Return:
+        CF = Set on error
+
+        Deletes the verified file.
+
+    APPLY FILESYSTEM CHANGES
+        AH = 0x7F
+
+        Return:
+        CF = Set on error
+
+        Writes the FAT and directory to the disk as they are in memory; thereby applying all
+        renames and deletions.
 
