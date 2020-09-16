@@ -740,7 +740,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1, Build 17; Compiled 2020-09-08", 0x00
+iface_welcome       db "House-DOS v0.0.1, Build 17; Compiled 2020-09-16", 0x00
 iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
 
