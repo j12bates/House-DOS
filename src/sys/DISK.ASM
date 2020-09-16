@@ -10,6 +10,10 @@
 ; DISK SUBROUTINES
 ; ========================================================================
 
+; GET FILE INFO: Retrieves value from the directory entry of a certain file
+; IN: AL = Offset from start of entry
+; OUT: AL/AX/DX:AX = Return value (size is automatically detected from offset); [root_entry] = Number of the root entry; CF = Set on error
+
 get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
     pusha                                       ; Save register states to stack
     push ax                                     ; Save our offset
@@ -100,6 +104,10 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     jmp .done                                   ; We're done
 
 
+; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
+; IN: [cluster] = Starting cluster number (run get_file_cluster to set this up)
+; OUT: CF = Set on error
+
 load_file:                                      ; Load file starting at cluster into buffer
     pusha                                       ; Push register states to stack
 
@@ -186,6 +194,10 @@ load_file:                                      ; Load file starting at cluster 
     jmp .end                                    ; We're done
 
 
+; WRITE FILE TO DISK: Writes contents of file buffer to a file on the disk and applies any filesystem changes
+; IN: [filename] = Valid filename (run conv_x3_83 to set this up)
+; OUT: CF = Set on error
+
 write_file:                                     ; Write file buffer to disk as file
     pusha                                       ; Push register states to stack
     push cx                                     ; Save our file size
@@ -193,6 +205,13 @@ write_file:                                     ; Write file buffer to disk as f
     call data_kernseg                           ; The segment we are loaded at
 
     mov word [buffer_pointer], 0x0000           ; Start reading from offset 0
+
+.pre_apply:
+    mov si, iface_disk_applyw
+    call println                                ; Print message
+
+    call prompt_apply                           ; Apply filesystem changes before writing file
+    jc .abort                                   ; If not authorized, abort
 
 .check_existence:
     call get_file_cluster                       ; Check if file exists, get starting cluster if it does
@@ -211,12 +230,22 @@ write_file:                                     ; Write file buffer to disk as f
     mov di, 0x0000                              ; Start looking at offset 0
     mov cx, word [root_entries]                 ; Look through all the possible root entries
 
-.check_root_entry:
-    cmp byte [es:di], 0x00                      ; Is this entry empty?
+.check_root_entry_unused:
+    cmp byte [es:di], 0x00                      ; Is this entry unused?
     je .new_file_entry                          ; If so, set this entry up for our new file.
 
     add di, 0x0020                              ; Otherwise, move to the next 32-byte entry
-    loop .check_root_entry                      ; And repeat
+    loop .check_root_entry_unused               ; And repeat
+
+    mov di, 0x0000                              ; Start looking at offset 0
+    mov cx, word [root_entries]                 ; Look through all the possible root entries
+
+.check_root_entry_empty:
+    cmp byte [es:di], 0xE5                      ; Is this entry empty?
+    je .new_file_entry                          ; If so, set this entry up for our new file.
+
+    add di, 0x0020                              ; Otherwise, move to the next 32-byte entry
+    loop .check_root_entry_empty                ; And repeat
 
     jmp .error_root                             ; If no entries are available, sorry!
 
@@ -381,6 +410,10 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done
 
 
+; APPLY FILESYSTEM CHANGES: Writes the current contents of the FAT and the root directory to the disk
+; IN: None
+; OUT: CF = Set on error
+
 apply:                                          ; Apply filesystem changes to disk
     pusha                                       ; Push register states to stack
 
@@ -395,7 +428,9 @@ apply:                                          ; Apply filesystem changes to di
 .write_fat:
     push cx                                     ; Save our counter
 
-    mov bx, 0x0000                              ; Write from this segment
+    mov ax, 0x3000
+    mov es, ax                                  ; Write from this segment
+    mov bx, 0x0000                              ; Starting at offset 0
 
     mov ax, word [sectors_fat]                  ; Sectors per FAT
     mul cx                                      ; Number of sectors between this FAT and root directory
@@ -449,6 +484,9 @@ apply:                                          ; Apply filesystem changes to di
     jc .error_write                             ; If failed again, error
 
 .done:
+    mov word [renames], 0x0000                  ; Reset the rename counter
+    mov word [deletions], 0x0000                ; Reset the deletions counter
+
     mov si, iface_done
     call println                                ; Print message
 
@@ -468,6 +506,85 @@ apply:                                          ; Apply filesystem changes to di
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
+
+; RENAME FILE: Renames a specific file
+; IN: [filename] = Filename to rename to; [root_entry] = Root entry of file to rename (run get_file_info to set this up)
+; OUT: CF = Set on error
+
+rename:                                         ; Rename a file
+    pusha                                       ; Push register states to stack
+
+    call data_kernseg                           ; The segment we're loaded in
+    push word [root_entry]                      ; Save our root entry
+
+.check_dest_exists:
+    mov ah, 0x0B                                ; Attribute byte
+    call get_file_info                          ; Check if this file already exists
+    jnc .error_exists                           ; If so, error
+
+.modify_name:
+    mov si, filename                            ; Our filename
+
+    mov ax, 0x3800
+    mov es, ax                                  ; The segment our root directory is loaded in
+
+    pop di                                      ; Restore the root entry
+    shl di, 0x5                                 ; 32 bytes per entry
+
+    mov cx, 0x000B                              ; Write 11 bytes
+    cld                                         ; Ensure correct direction
+    
+    rep movsb                                   ; Write
+
+.done:
+    inc word [renames]                          ; Increment our changes counter
+
+    mov si, iface_disk_renamed
+    call println                                ; Print message
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_exists:
+    mov si, iface_disk_eexists
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+; DELETE FILE: Deletes a specific file (Overwrites first char of directory entry with 0xE5)
+; IN: [root_entry] = Root entry of file to delete (run get_file_info to set up)
+; OUT: CF = Set on error
+
+delete:                                         ; Delete a file
+    pusha                                       ; Push register states to stack
+
+.delete:
+    mov ax, 0x3800
+    mov es, ax                                  ; The segment our root directory is loaded in
+
+    mov di, word [root_entry]                   ; The directory entry for the file
+    shl di, 0x5                                 ; 32 bytes per entry
+
+    mov al, 0xE5                                ; "Deleted" character
+    stosb                                       ; Write
+
+.done:
+    inc word [deletions]                        ; Increment our changes counter
+
+    mov si, iface_disk_deleted
+    call println                                ; Print message
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
+; IN: None
+; OUT: [cluster] = Cluster number; CF = Set on error
 
 next_available_cluster:                         ; Get the next cluster available
     pusha                                       ; Push register states to stack
@@ -499,6 +616,76 @@ next_available_cluster:                         ; Get the next cluster available
     ret                                         ; Return to caller
 
 
+; ASK TO APPLY CHANGES: Shows filesystem changes, prompts the user to authenticate, then applies changes
+; IN: None
+; OUT: CF = Set if not authenticated
+
+prompt_apply:                                   ; Prompt the user to authenticate filesystem changes
+    pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; We want to access our own variables
+    call extra_kernseg                          ; We want to write to our own variables
+
+.check:
+    cmp word [renames], 0x0000                  ; Do we have any renames?
+    jne .numbers                                ; If so, proceed
+
+    cmp word [deletions], 0x0000                ; Do we have any deletions?
+    jne .numbers                                ; If so, proceed
+
+    mov si, iface_disk_nochange
+    call println                                ; Otherwise, we have no changes to apply
+
+    clc                                         ; There wasn't an error
+    jmp .end                                    ; We're done
+
+.numbers:
+    mov ax, word [renames]                      ; The number of renames
+    mov di, iface_disk_changesB                 ; Our spot in the message
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
+    mov ax, word [deletions]                    ; The number of deletions
+    mov di, iface_disk_changesD                 ; Our spot in the message
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
+.message:
+    mov si, iface_disk_changesA                 ; Print the message, one section at a time
+    call print_str
+
+    mov si, iface_disk_changesB
+    call print_str
+
+    mov si, iface_disk_changesC
+    call print_str
+
+    mov si, iface_disk_changesD
+    call print_str
+
+    mov si, iface_disk_changesE
+    call print_str
+
+.apply:
+    call confirm                                ; Ask for confirmation
+    jc .error_cancelled                         ; If not given, cancel
+
+    call apply                                  ; Otherwise, apply filesystem changes
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_cancelled:
+    mov si, iface_disk_cancel
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+; CONVERT LOGICAL TO CHS ADDRESS: Sets up Cylinder-Head-Sector notation from logical block number
+; IN: AX = Block number
+; OUT: INT 13 Parameters (CX = Cylinder, Sector; DX = Head, Drive)
+
 calc_chs_ls:                                    ; Setup Cylinder-Head-Sector from LBA (AX)
     mov dx, 0x0000
     div word [sectors_track]
@@ -513,6 +700,10 @@ calc_chs_ls:                                    ; Setup Cylinder-Head-Sector fro
     mov dl, byte [drive_num]                    ; Drive number
     ret                                         ; Return to caller
 
+
+; RESET DISK: Resets the disk, and reboots if failed
+; IN: None
+; OUT: None
 
 reset_disk:                                     ; Reset the disk
     push ax                                     ; Push register states to stack
@@ -529,6 +720,10 @@ reset_disk:                                     ; Reset the disk
     pop ax                                      ; Otherwise, restore register states
     ret                                         ; Return to caller
 
+
+; CONVERT X.3 FILENAME TO 8.3: Converts a standard X.3 filename to the 8.3 format
+; IN: DS:SI = Source Buffer (X.3 filename)
+; OUT: [filename] = 8.3 filename, ready for use
 
 conv_x3_83:                                     ; Convert X.3 filename in DS:SI to an 8.3 for searching
     pusha                                       ; Push register states to stack
@@ -589,6 +784,10 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     jmp .end                                    ; We're done
 
 
+; GET FILE STARTING CLUSTER: Gets the starting cluster for the specified file
+; IN: [filename] = 8.3 filename (run conv_x3_83 to set this up)
+; OUT: [cluster] = Starting cluster of file, ready for use
+
 get_file_cluster:                               ; Get the starting cluster for a file
     pusha                                       ; Save register states to stack
 
@@ -632,19 +831,38 @@ sectors_track       dw 0x0000
 heads               dw 0x0000
 root_start          dw 0x0000
 
+renames             dw 0x0000
+deletions           dw 0x0000
+
+iface_disk_changesA db "This will result in ", 0x00
+iface_disk_changesB dd 0x00000000
+                    db 0x00
+iface_disk_changesC db " renames, ", 0x00
+iface_disk_changesD dd 0x00000000
+                    db 0x00
+iface_disk_changesE db " deletions. This cannot be undone.", 0x00
+
 iface_disk_apply    db "Applying changes to disk...", 0x00
 iface_disk_applied  db "Changes applied to disk.", 0x00
+iface_disk_rback    db "Rolling back changes...", 0x00
 iface_disk_saved    db "File saved.", 0x00
 iface_disk_search   db "Searching root directory...", 0x00
 iface_disk_found    db "Found file!", 0x00
 iface_disk_empty    db "Found empty entry!", 0x00
 iface_disk_exists   db "File already exists.", 0x00
+iface_disk_applyw   db "Filesystem changes must be applied.", 0x00
 iface_disk_cluster  db "Loading cluster...", 0x00
 iface_disk_write    db "Writing to cluster...", 0x00
 iface_disk_wfats    db "Writing FATs to disk...", 0x00
 iface_disk_wroot    db "Writing root directory...", 0x00
 iface_disk_reset    db "Resetting disk...", 0x00
+iface_disk_cancel   db "Operation cancelled.", 0x00
+iface_disk_renamed  db "File renamed. Changes to be applied.", 0x00
+iface_disk_deleted  db "File deleted. Changes to be applied.", 0x00
+iface_disk_nochange db "No changes to apply.", 0x00
+
 iface_disk_nf       db "FATAL: Specified file not found.", 0x00
+iface_disk_eexists  db "FATAL: File already exists.", 0x00
 iface_disk_esize    db "FATAL: File too large to load.", 0x00
 iface_disk_efull    db "FATAL: No clusters available.", 0x00
 iface_disk_eroot    db "FATAL: No root entries available.", 0x00

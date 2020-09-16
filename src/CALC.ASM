@@ -13,7 +13,7 @@
 main:
     mov AH, 0x02             ;declaring print line
     mov SI, request_operator ;setting the output
-    int 0x7e                
+    int 0x7e
 
     mov AH, 0x04            ;declaring get input
     mov DI, input_buffer3   ;locaiton of the input buffer
@@ -54,9 +54,9 @@ main:
     je .add                     ;goto add
     cmp AL, 0x2d                ; checking if -
     je .sub                     ; goto sub
-    cmp AL, 0x2a              ; checking if -
+    cmp AL, 0x2a              ; checking if *
     je .mult                     ; goto sub
-    cmp AL, 0x2f              ; checking if -
+    cmp AL, 0x2f              ; checking if /
     je .div                     ; goto sub
     jmp .print                  ; if not sub or add, print nothing
 
