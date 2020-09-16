@@ -12,4 +12,4 @@ Creating a disk image:
   4. Mount the image as a loop device, copy all the assembled source files to the device (Except `BOOT.BIN`), and unmount the loop device.
 
 Creating commands:
-  House-DOS commands are written in real-mode x86 assembly. There are a few different system calls available; a reference can be found in `syscall_docs.TXT`. More system calls coming soon, including disk/file functionality, and more.
+  House-DOS commands are written in real-mode x86 assembly. There are a few different system calls available; a reference can be found in `syscall_docs.TXT`. System calls are always being added.
