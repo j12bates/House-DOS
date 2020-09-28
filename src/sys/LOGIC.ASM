@@ -53,6 +53,8 @@ conv_word_hex:                                  ; Convert AX to ASCII hexadecima
 conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at ES:DI
     pusha                                       ; Push register states to stack
 
+    call data_kernseg                           ; We want to use kernel variables
+
     mov word [input_number], ax                 ; Save our number
 
 .clear:
@@ -177,10 +179,10 @@ conv_byte_dec_unsigned:                         ; Convert AL to ASCII decimal at
 
 .digits:
     cmp al, 0x64                                ; Are we less than this power of ten?
-    jnl .hundreds                               ; If not, start here
+    jnb .hundreds                               ; If not, start here
 
     cmp al, 0x0A                                ; Are we less than ten?
-    jnl .tens                                   ; If not, start here
+    jnb .tens                                   ; If not, start here
 
     jmp .units                                  ; Otherwise, start here
 
@@ -253,7 +255,7 @@ conv_hex_byte:                                  ; Convert hexadecimal word at DS
 ; IN: DS:SI = Source buffer (5 bytes)
 ; OUT: DX = Resulting value
 
-conv_dec_unsigned_word:
+conv_dec_unsigned_word:                         ; Convert ASCII decimal at DS:SI to binary, store in DX
     push cx                                     ; Save register state to stack
 
     mov cx, 0x0005                              ; 16-bit decimal values max at 65,535 (5-digit)
@@ -321,6 +323,7 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
     clc                                         ; No error
 
 .end:
+    call data_kernseg                           ; We're about to access kernel variables
     mov word [register_bckp_a], dx              ; Save our value
 
     popa                                        ; Restore register states
@@ -329,6 +332,7 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
     ret                                         ; Return to caller
 
 .error_nan:
+    call data_kernseg                           ; We're about to access kernel variables
     mov si, iface_error_nan                     ; Error message
     call println                                ; Print line
 
@@ -380,6 +384,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     clc                                         ; No error
 
 .end:
+    call data_kernseg                           ; We're about to access kernel variables
     mov word [register_bckp_a], dx              ; Preserve our output
 
     popa                                        ; Restore register states
@@ -388,6 +393,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     ret                                         ; Return to caller
 
 .error_nan:
+    call data_kernseg                           ; We're about to access kernel variables
     mov si, iface_error_nan                     ; Error message
     call println                                ; Print line
 
@@ -395,6 +401,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     jmp .end                                    ; We're done
 
 .error_size:
+    call data_kernseg                           ; We're about to access kernel variables
     mov si, iface_error_space
     call println                                ; Error message
 
@@ -442,12 +449,38 @@ unix_timestamp:                                 ; Make a UNIX timestamp from sec
     ret                                         ; Return to caller    
 
 
+; DISASSEMBLE UNIX TIMESTAMP: Converts a UNIX timestamp to time and date
+; IN: DX:AX = UNIX Timestamp
+; OUT: CF:AX = Seconds elapsed since 00:00:00; DX = Days elapsed since 1970-01-01
+
+dis_unix_timestamp:                             ; Convert UNIX timestamp to seconds in CF:AX and days in DX
+    push bx                                     ; Save register state to stack
+
+.days:
+    mov bx, 0xA8C0                              ; Half of a day
+    div bx                                      ; Divide
+
+    xchg ax, dx                                 ; Seconds will be in the remainder, should be in AX
+    shr dx, 0x1                                 ; Divide by 2 to get full days
+
+    jnc .done                                   ; If there was an even number of half-days, we're done
+
+.add_half_day:
+    add ax, 0xA8C0                              ; Add an extra 43.2K seconds
+
+.done:
+    pop bx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
 ; CONVERT RTC TIME FORMAT TO SECONDS: Calculates a number of seconds from an RTC time
 ; IN: RTC TIME (CX = HH:MM; DH = Seconds)
 ; OUT: CF:AX = Number of seconds
 
 conv_rtctime_seconds:                           ; Convert an RTC time to a number of seconds in CF:AX
     pusha                                       ; Save register states to stack
+
+    call setup_segments                         ; Set up segments
 
 .hours:
     mov al, ch                                  ; Hours are stored here
@@ -460,7 +493,7 @@ conv_rtctime_seconds:                           ; Convert an RTC time to a numbe
     mul bx                                      ; Multiply
 
 .minutes:
-    pop dx                                      ; Restore seconds
+    pop bx                                      ; Restore seconds to the BX register
 
     push ax                                     ; Save value to stack
 
@@ -473,7 +506,7 @@ conv_rtctime_seconds:                           ; Convert an RTC time to a numbe
     push ax                                     ; Save value to stack
 
 .seconds:
-    mov al, dh                                  ; Seconds are stored here
+    mov al, bh                                  ; Seconds are stored here
     call conv_rtcval_byte                       ; Convert to a proper value
 
     mov ah, 0x00                                ; Upper byte is zero
@@ -485,8 +518,8 @@ conv_rtctime_seconds:                           ; Convert an RTC time to a numbe
     add ax, bx                                  ; Add to total
 
     clc                                         ; Clear the carry flag for now
-    cmp dl, 0b00000001                          ; Was that bit set?
-    jne .done                                   ; If not, proceed
+    test dl, 0b00000001                         ; Was that bit set?
+    jz .done                                    ; If not, proceed
 
     stc                                         ; Otherwise, set the carry flag to indicate over 64K seconds
 
@@ -506,9 +539,7 @@ conv_rtctime_seconds:                           ; Convert an RTC time to a numbe
 conv_rtcdate_days:                              ; Convert an RTC date to a number of days in DX
     pusha                                       ; Push register states to stack
 
-    mov ax, 0x2000
-    mov ds, ax
-    mov es, ax                                  ; The segment we're loaded in
+    call setup_segments                         ; Set up segments
 
 .years:
     push dx                                     ; Save month-day
@@ -551,8 +582,10 @@ conv_rtcdate_days:                              ; Convert an RTC date to a numbe
 
 .months:
     mov al, dh                                  ; Month is stored here
-    dec al                                      ; Avoid an O.B.O.E
+    call conv_rtcval_byte                       ; Convert to a proper value
+
     mov ah, 0x00                                ; Clear upper byte
+    dec ax                                      ; Avoid an O.B.O.E
 
     mov bl, 0x1F                                ; There are up to 31 days in a month
     mul bl                                      ; Multiply
@@ -600,6 +633,183 @@ conv_rtcdate_days:                              ; Convert an RTC date to a numbe
     mov dx, word [register_bckp_a]              ; Restore our value into the correct register
 
     ret                                         ; Return to caller
+
+
+; CONVERT SECONDS TO RTC TIME: Creates an RTC time from a number of seconds
+; IN: CF:AX = Number of seconds
+; OUT: RTC Time (CX = HH:MM; DH = Seconds)
+
+conv_seconds_rtctime:                           ; Convert the number of seconds in CF:AX to an RTC time
+    pusha                                       ; Save register states to stack
+
+    call setup_segments                         ; Set up segments
+
+    mov dx, 0x0000                              ; Clear upper word
+
+    jnc .hours                                  ; If carry flag not set, proceed
+    mov dx, 0x0001                              ; Otherwise, set rightmost bit of upper word
+
+.hours:
+    mov bx, 0x0E10                              ; Number of seconds in an hour
+    div bx                                      ; Divide
+
+    push ax                                     ; Push to stack
+
+.minutes:
+    mov ax, dx                                  ; Use remainder
+    mov bl, 0x3C                                ; Number of seconds in a minute
+    div bl                                      ; Divide
+
+    push ax                                     ; Push to stack
+
+.rtc:
+    mov al, ah                                  ; Remainder should be number of seconds
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov dh, al                                  ; Seconds should be in DH
+
+    pop ax                                      ; Number of minutes
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov cl, al                                  ; Minutes should be in CL
+
+    pop ax                                      ; Number of hours
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov ch, al                                  ; Hours should be in CH
+
+.done:
+    mov word [register_bckp_a], cx
+    mov word [register_bckp_b], dx              ; Preserve our RTC time
+
+    popa                                        ; Restore register states
+
+    mov cx, word [register_bckp_a]
+    mov dx, word [register_bckp_b]              ; Restore our RTC time
+
+    ret                                         ; Return to caller
+
+
+; CONVERT DAYS TO RTC DATE: Creates an RTC date from a number of days
+; IN: DX = Number of days
+; OUT: RTC Date (CX = YYYY; DX = MM:DD), CF = Set on error
+
+conv_days_rtcdate:                              ; Convert number of days in DX to an RTC date
+    pusha
+
+    call setup_segments                         ; Set up segments
+
+    mov ax, dx                                  ; Number of days is our dividend
+    mov dx, 0x0000                              ; Upper word of dividend is zero
+
+.years:
+    mov bx, 0x016D                              ; Number of days in a common year
+    div bx                                      ; Divide
+
+    mov bx, ax                                  ; Number of years since 1970
+    add bx, 0x0002                              ; Our input was days from 1970, but 1968 was a leap year
+    shr bx, 0x2                                 ; Divide by 4 to get the number of leap years passed
+    dec bx                                      ; Avoid an O.B.O.E
+    sub dx, bx                                  ; We've already accounted for an extra day each leap year
+
+    add ax, 0x07B2                              ; Add 1970 to make it a year number
+    push ax                                     ; Push year to stack
+
+    and al, 0b00000011                          ; Mod 4
+    cmp al, 0x00                                ; Check if it is divisible by 4
+    pushf                                       ; Save result to stack
+
+.months:
+    mov ax, 0x0001                              ; Start month here
+    mov bx, 0x001F                              ; January was 31 days
+    
+    call .check_month                           ; Check January
+
+    mov bx, 0x1C                                ; February is 28 days
+    popf                                        ; Restore modulus result
+    jne .feb                                    ; If not a leap year, proceed
+    inc bx                                      ; Otherwise, February is 29 days
+    
+.feb:
+    call .check_month                           ; Check February
+
+    mov cx, 0x0002                              ; Repeat next step once
+
+.march_june:
+    call .check_month                           ; Check March/May
+
+    dec bx                                      ; April/June is 30 days
+    call .check_month                           ; Check April/June
+
+    loop .march_june                            ; Repeat
+
+    call .check_month                           ; Check July
+    call .check_month                           ; Check August
+
+    mov cx, 0x0002                              ; Repeat next step once
+
+.september_december:
+    dec bx                                      ; September/November is 30 days
+    call .check_month                           ; Check September/November
+
+    call .check_month                           ; Check October/December
+
+    loop .september_december                    ; Repeat
+
+    jmp .error_idk                              ; If we've made it here, something's wrong
+
+.check_month:
+    cmp dx, bx                                  ; Are we past this month?
+    jb .found_month                             ; If so, proceed
+
+    inc ax                                      ; Otherwise, it may be the next month
+    sub dx, bx                                  ; We've just accounted for these days
+    mov bx, 0x1F                                ; Months typically are 31 days
+
+    ret                                         ; Go back
+
+.found_month:
+    pop bx                                      ; Restore for balance
+    push ax                                     ; Push month to stack
+
+.rtc:
+    mov ax, dx                                  ; Remainder should contain the number of days
+    inc al                                      ; Avoid an O.B.O.E
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov dl, al                                  ; Day should be in DL
+
+    pop ax                                      ; Restore month
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov dh, al                                  ; Month should be in DH
+
+    pop ax                                      ; Restore year
+    push dx                                     ; Save month-day
+
+    mov di, dec_src                             ; Destination buffer
+    call conv_word_dec_unsigned                 ; Convert to decimal (RTC values are weird)
+
+    mov si, dec_src                             ; Source buffer
+    call conv_hex_word                          ; Read as hexadecimal (To reiterate, RTC values are weird)
+    mov cx, dx                                  ; Year should be in CX
+
+    pop dx                                      ; Restore month-day
+    clc                                         ; No error
+
+.done:
+    mov word [register_bckp_a], cx
+    mov word [register_bckp_b], dx              ; Preserve our RTC date
+
+    popa                                        ; Restore register states
+
+    mov cx, word [register_bckp_a]
+    mov dx, word [register_bckp_b]              ; Restore our RTC date
+
+    ret                                         ; Return to caller
+
+.error_idk:
+    mov si, iface_error_idk
+    call println                                ; Print message
+
+    pop ax                                      ; Restore for balance
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
 
 
 ; CONVERT RTC TIME TO ASCII TIMESTAMP: Creates a HH:MM:SS timestamp from an RTC time
@@ -693,6 +903,46 @@ conv_rtcval_byte:                               ; Convert an RTC value in AL to 
     ret                                         ; Return to caller
 
 
+; CREATE RTC VALUE: Convert a proper value to an RTC value
+; IN: AL = Value to convert
+; OUT: AL = RTC value, CF = Set on error
+
+conv_byte_rtcval:                               ; Convert a binary value in AL to an RTC value
+    pusha                                       ; Save register states to stack
+
+    cmp al, 0x63                                ; Are we above 99?
+    jae .error                                  ; If so, error
+
+    mov di, dec_src                             ; Output buffer
+
+    cmp al, 0x09                                ; Are we above 9?
+    ja .convert                                 ; If so, proceed
+
+    mov byte [es:di], 0x30                      ; Otherwise, add in a leading zero
+    inc di                                      ; And increment pointer
+
+.convert:
+    call conv_byte_dec_unsigned                 ; Convert to decimal (RTC values are weird)
+
+    mov si, dec_src                             ; Input buffer
+    call conv_hex_byte                          ; Read as hex (to reiterate, RTC values are weird)
+    clc                                         ; No error
+
+.done:
+    mov byte [rtc_byte], dl                     ; Preserve value
+
+    popa                                        ; Restore register states
+    mov al, byte [rtc_byte]                     ; Restore value into correct register
+
+    ret                                         ; Return to caller
+
+.error:
+    mov dl, al                                  ; Preserve the value of AL
+
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
+
 ; CAPITALIZE ASCII CHARACTER: Capitalizes an ASCII character if possible
 ; IN: AL = Character
 ; OUT: AL = Capitalized character
@@ -722,5 +972,5 @@ rtc_byte            db 0x00
 
 input_number        dw 0x0000
 
-iface_error_nan     db "ERROR: Not a Number.", 0x00
+iface_error_nan     db "ERROR: Not a number.", 0x00
 iface_error_space   db "ERROR: Memory size too small.", 0x00

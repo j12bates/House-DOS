@@ -124,7 +124,7 @@ load_file:                                      ; Load file starting at cluster 
     mul byte [sectors_cluster]                  ; Multiply to get sector number
     add ax, word [root_start]                   ; Add start of root directory
     add ax, 0x0020                              ; Root directory is 32 sectors
-    call calc_chs_ls                            ; Convert to CHS
+    call conv_ls_chs                            ; Convert to CHS
 
     mov ax, 0x1000
     mov es, ax                                  ; Load file into this segment
@@ -270,7 +270,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .file_exists:
     mov si, iface_disk_exists
-    call println                                ; Display message
+    call print_str                              ; Display message
 
     call confirm                                ; Ask for confirmation
     jc .abort                                   ; If not given, we're done
@@ -295,7 +295,7 @@ write_file:                                     ; Write file buffer to disk as f
     mul byte [sectors_cluster]                  ; Multiply to get sector number
     add ax, word [root_start]                   ; Add start of root directory
     add ax, 0x0020                              ; Root directory is 32 sectors
-    call calc_chs_ls                            ; Convert to CHS
+    call conv_ls_chs                            ; Convert to CHS
 
     mov ax, 0x1000
     mov es, ax                                  ; File buffer is in this segment
@@ -406,6 +406,7 @@ write_file:                                     ; Write file buffer to disk as f
     mov si, iface_aborting
     call println                                ; Print message
 
+    pop ax                                      ; Restore for balance
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
@@ -438,7 +439,7 @@ apply:                                          ; Apply filesystem changes to di
 
     mov ax, word [root_start]                   ; Start of the root directory
     sub ax, cx                                  ; Subtract this number
-    call calc_chs_ls                            ; Convert to CHS Address
+    call conv_ls_chs                            ; Convert to CHS Address
 
     mov ax, word [sectors_fat]                  ; An entire FAT
     mov ah, 0x03                                ; Write disk sectors
@@ -468,7 +469,7 @@ apply:                                          ; Apply filesystem changes to di
     mov es, ax                                  ; The segment in which the root directory is loaded
 
     mov ax, word [root_start]                   ; Start of the root directory
-    call calc_chs_ls                            ; Convert to CHS Address
+    call conv_ls_chs                            ; Convert to CHS Address
 
     mov ah, 0x03                                ; Write disk sectors
     mov al, 0x20                                ; Root directory is 32 sectors
@@ -507,14 +508,88 @@ apply:                                          ; Apply filesystem changes to di
     jmp .end                                    ; We're done
 
 
+; ROLLBACK FILESYSTEM: Reloads the FAT and root directory into memory
+; IN: None
+; OUT: CF = Set on error
+
+rollback:                                       ; Rollback filesystem
+    pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; Get data from the segment we're loaded in
+
+    mov si, iface_disk_rback
+    call println                                ; Print message
+
+.load_fat:
+    mov ax, 0x3000
+    mov es, ax                                  ; Load FAT into this segment
+    mov bx, 0x0000                              ; Starting at offset 0
+
+    mov ax, word [reserved]                     ; First sector of FAT 1
+    call conv_ls_chs                            ; Convert to CHS address
+
+    mov ah, 0x02                                ; Read disk sectors
+    mov al, byte [sectors_fat]                  ; Read the entire FAT
+
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .load_root                              ; If no error, continue
+
+    call reset_disk                             ; Otherwise, reset the disk
+
+    mov ah, 0x02                                ; Read disk sectors
+    mov al, byte [sectors_fat]                  ; Read the entire FAT
+    int 0x13                                    ; BIOS disk interrupt
+    jc .error_read                              ; If failed, error
+
+.load_root:
+    mov ax, 0x3800
+    mov es, ax                                  ; Load root directory into this segment
+
+    mov ax, word [root_start]                   ; First sector of root directory
+    call conv_ls_chs                            ; Convert to CHS address
+
+    mov ah, 0x02                                ; Read disk sectors
+    mov al, 0x20                                ; Root directory is 32 sectors
+
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .done                                   ; If no error, we're done!
+
+    call reset_disk                             ; Otherwise, reset the disk
+
+    mov ah, 0x02                                ; Read disk sectors
+    mov al, 0x20                                ; Root directory is 32 sectors
+    int 0x13                                    ; BIOS disk interrupt
+    jc .error_read                              ; If failed, error
+
+.done:
+    mov word [renames], 0x0000                  ; Reset the rename counter
+    mov word [deletions], 0x0000                ; Reset the deletions counter
+
+    mov si, iface_disk_rdback
+    call println                                ; Print message
+
+    clc                                         ; No error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_read:
+    mov si, iface_disk_eread
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done   
+
+
 ; RENAME FILE: Renames a specific file
 ; IN: [filename] = Filename to rename to; [root_entry] = Root entry of file to rename (run get_file_info to set this up)
 ; OUT: CF = Set on error
 
 rename:                                         ; Rename a file
-    pusha                                       ; Push register states to stack
+    pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; The segment we're loaded in
+    call data_kernseg                           ; Get data from the segment we're loaded in
     push word [root_entry]                      ; Save our root entry
 
 .check_dest_exists:
@@ -682,11 +757,38 @@ prompt_apply:                                   ; Prompt the user to authenticat
     jmp .end                                    ; We're done
 
 
+; ASK TO ROLLBACK FILESYSTEM: Prompts the user to authenticate filesystem rollback
+; IN: None
+; OUT: CF = Set on error
+
+prompt_rollback:                                ; Prompt the user to authenticate filesystem rollback
+    push si                                     ; Save register state to stack
+
+    mov si, iface_ays
+    call print_str                              ; Print message
+
+    call confirm                                ; Ask for confirmation
+    jc .error_cancelled                         ; If not given, cancel
+
+    call rollback                               ; Otherwise, rollback filesystem
+
+.end:
+    pop si                                      ; Restore register state
+    ret                                         ; Return to caller
+
+.error_cancelled:
+    mov si, iface_disk_cancel
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
 ; CONVERT LOGICAL TO CHS ADDRESS: Sets up Cylinder-Head-Sector notation from logical block number
 ; IN: AX = Block number
 ; OUT: INT 13 Parameters (CX = Cylinder, Sector; DX = Head, Drive)
 
-calc_chs_ls:                                    ; Setup Cylinder-Head-Sector from LBA (AX)
+conv_ls_chs:                                    ; Setup Cylinder-Head-Sector from LBA (AX)
     mov dx, 0x0000
     div word [sectors_track]
     mov cl, dl
@@ -844,7 +946,8 @@ iface_disk_changesE db " deletions. This cannot be undone.", 0x00
 
 iface_disk_apply    db "Applying changes to disk...", 0x00
 iface_disk_applied  db "Changes applied to disk.", 0x00
-iface_disk_rback    db "Rolling back changes...", 0x00
+iface_disk_rback    db "Rolling back...", 0x00
+iface_disk_rdback   db "Filesystem re-loaded.", 0x00
 iface_disk_saved    db "File saved.", 0x00
 iface_disk_search   db "Searching root directory...", 0x00
 iface_disk_found    db "Found file!", 0x00
