@@ -52,6 +52,9 @@ main:
     mov si, msgP                        ; Message P
     int 0x7E
 
+    mov si, msgR                        ; Message R
+    int 0x7E
+
     mov ah, 0xFF                        ; We're done
     int 0x7E
 
@@ -68,6 +71,7 @@ msgG        db "WRITE:      Write a text file", 0x00
 msgH        db "RENAME:     Rename a file", 0x00
 msgK        db "DELETE:     Delete a file", 0x00
 msgL        db "APPLY:      Apply changes to disk", 0x00
-msgM        db "COPY:       Copy a file", 0x00
-msgN        db "CALC:       Perform arithmetic", 0x00
-msgP        db "DATE:       Display time and date", 0x00
+msgM        db "ROLLBACK:   Rollback filesystem", 0x00
+msgN        db "COPY:       Copy a file", 0x00
+msgP        db "CALC:       Perform arithmetic", 0x00
+msgR        db "DATE:       Display time and date", 0x00
