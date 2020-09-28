@@ -26,6 +26,6 @@ main:
 
 data:
 
-msgA        db "House-DOS v0.0.1, Build 17", 0x00
-msgB        db "Written by Jacob Bates", 0x00
-msgC        db "Compiled 2020-09-16", 0x00
+msgA        db "House-DOS v0.0.1 NATE, Build 18", 0x00
+msgB        db "By Jacob and Jet", 0x00
+msgC        db "Compiled 2020-09-28", 0x00

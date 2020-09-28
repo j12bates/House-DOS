@@ -24,6 +24,8 @@ main:
     mov si, fname                       ; Filename
     int 0x7E
 
+    jc .done                            ; If failed, error
+
     mov ah, 0x79                        ; Delete file
     int 0x7E
 

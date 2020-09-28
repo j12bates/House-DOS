@@ -210,10 +210,21 @@ handback_manual:                                ; Routine to manually perform ha
 
 
 ; ========================================================================
-; ERROR SUBROUTINES
+; SUBROUTINES
 ; ========================================================================
 
-reboot_fatal:
+setup_segments:                                 ; Setup DS and ES to the kernel segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x2000
+    mov ds, ax
+    mov es, ax                                  ; The segment we're loaded in
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+reboot_fatal:                                   ; Declare fatal error and reboot
     mov si, iface_fatal_reboot
     call print_str                              ; Print message
 
@@ -297,6 +308,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x79
     je disk_routines.delete                     ; Delete file
 
+    cmp ah, 0x7E
+    je disk_routines.rollback                   ; Rollback filesystem
+
     cmp ah, 0x7F
     je disk_routines.apply                      ; Apply filesystem changes
 
@@ -323,16 +337,13 @@ syscall_handler:                                ; System call handler
     je general_routines.unix                    ; Get current UNIX time
 
     cmp ah, 0xD1
-    je general_routines.seconds                 ; Get seconds since midnight
+    je general_routines.seconds_days            ; Convert UNIX timestamp to seconds/days
 
     cmp ah, 0xD2
-    je general_routines.days                    ; Get days since UNIX epoch
+    je general_routines.timestamp               ; Convert UNIX timestamp to ASCII timestamp
 
     cmp ah, 0xD3
-    je general_routines.timestamp               ; Get current timestamp
-
-    cmp ah, 0xD4
-    je general_routines.datestamp               ; Get current datestamp
+    je general_routines.datestamp               ; Convert UNIX timestamp to ASCII datestamp
 
 .logical_funcs:                                 ; Logical functions
     cmp ah, 0xF0
@@ -469,43 +480,62 @@ general_routines:                               ; General functions
     jmp int_ret                                 ; We're done!
 
 .unix:
+    push cx                                     ; Preserve this value
+
     call get_date                               ; Get RTC date
     call conv_rtcdate_days                      ; Convert to days
 
+    push ax                                     ; Preserve this value
+    push dx                                     ; Save days
     call get_time                               ; Get RTC time
     call conv_rtctime_seconds                   ; Convert to seconds
 
+    pop dx                                      ; Restore days
     call unix_timestamp                         ; Generate UNIX timestamp
 
+    mov bx, ax                                  ; This should be stored in BX
+    pop ax                                      ; Restore this value
+    pop cx                                      ; Restore this value
     jmp int_ret                                 ; We're done!
 
-.seconds:
-    call get_time                               ; Get RTC time
-    call conv_rtctime_seconds                   ; Convert to seconds
+.seconds_days:
+    push ax                                     ; Preserve this value
 
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in BX, we want AX
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+
+    pop ax                                      ; Restore this value
     jmp int_ret.preserve_flags                  ; We're done!
-
-.days:
-    call get_date                               ; Get RTC date
-    call conv_rtcdate_days                      ; Convert to days
-
-    jmp int_ret                                 ; We're done!
 
 .timestamp:
-    call extra_binseg                           ; We want to give data to the command
+    pusha                                       ; Save register states to stack
 
-    call get_time                               ; Get RTC time
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in BX, we want AX
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+
+    call conv_seconds_rtctime                   ; Convert to RTC time
+
+    call extra_binseg                           ; We want to give data to the command
     call conv_rtctime_stamp                     ; Convert to timestamp
 
-    jmp int_ret.preserve_flags                  ; We're done!
+    popa                                        ; Restore register states
+
+    jmp int_ret                                 ; We're done!
 
 .datestamp:
-    call extra_binseg                           ; We want to give data to the command
+    pusha                                       ; Save register states to stack
 
-    call get_date                               ; Get RTC date
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in BX, we want AX
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+
+    call conv_days_rtcdate                      ; Convert to RTC date
+
+    call extra_binseg                           ; We want to give data to the command
     call conv_rtcdate_stamp                     ; Convert to datestamp
 
-    jmp int_ret.preserve_flags                  ; We're done!
+    popa                                        ; Restore register states
+
+    jmp int_ret                                 ; We're done!
 
 
 disk_routines:                                  ; Disk functions
@@ -610,6 +640,11 @@ disk_routines:                                  ; Disk functions
 
 .delete:
     call delete                                 ; Delete
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.rollback:
+    call prompt_rollback                        ; Rollback filesystem
 
     jmp int_ret.preserve_flags                  ; We're done!
 
@@ -740,9 +775,13 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1, Build 17; Compiled 2020-09-16", 0x00
+iface_welcome       db "House-DOS v0.0.1 NATE, Build 18; Compiled 2020-09-28", 0x00
 iface_info          db "By Jacob and Jet", 0x00
 iface_command_bad   db "Bad command.", 0x00
+
+iface_ays           db "Are you sure?", 0x00
+
+iface_error_idk     db "FATAL: Something went wrong.", 0x00
 
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00
 

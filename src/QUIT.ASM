@@ -41,5 +41,5 @@ main:
 data:
 
 msg         db "Shutting down...", 0x00
-msg_cancel  db "Canceled.", 0x00
+msg_cancel  db "Cancelled.", 0x00
 msg_error   db "FATAL: Failed to shut down.", 0x00

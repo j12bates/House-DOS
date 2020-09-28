@@ -44,34 +44,30 @@ II. Basic Functions
         AH = 0xD0
 
         Return:
-        DX:AX = UNIX time
+        DX:BX = UNIX time
 
         Returns the current UNIX timestamp.
 
-    GET SECONDS SINCE MIDNIGHT
+    CONVERT UNIX TIME TO SECONDS/DAYS
         AH = 0xD1
+        DX:BX = UNIX timestamp
 
         Return:
-        DX:AX = Number of seconds
+        DX = Number of days
+        CF:AX = Number of seconds
 
-        Returns the number of seconds since 00:00:00.
+        Returns the number of seconds since 00:00:00 and the number of days since 1970-01-01.
 
-    GET DAYS SINCE UNIX EPOCH
+    CONVERT UNIX TIME TO ASCII TIMESTAMP
         AH = 0xD2
-
-        Return:
-        AX = Number of days
-
-        Returns the number of days since 1970-01-01.
-
-    GET TIMESTAMP
-        AH = 0xD3
+        DX:BX = UNIX timestamp
         DI = 8-byte output buffer
 
         Stores the current time in HH:MM:SS form in the buffer pointed to by DI.
 
-    GET DATESTAMP
-        AH = 0xD4
+    CONVERT UNIX TIME TO ASCII DATESTAMP
+        AH = 0xD3
+        DX:BX = UNIX timestamp
         DI = 10-byte output buffer
 
         Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
@@ -433,12 +429,21 @@ V. Disk Functions
 
         Deletes the verified file.
 
+    ROLLBACK FILESYSTEM
+        AH = 0x7E
+
+        Return:
+        CF = Set on error
+
+        Re-loads the FAT and directory from the disk into memory, thereby getting rid of all
+        filesystem changes since last apply.
+
     APPLY FILESYSTEM CHANGES
         AH = 0x7F
 
         Return:
         CF = Set on error
 
-        Writes the FAT and directory to the disk as they are in memory; thereby applying all
+        Writes the FAT and directory to the disk as they are in memory, thereby applying all
         renames and deletions.
 
