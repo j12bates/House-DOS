@@ -57,6 +57,13 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     mov word [root_entry], di                   ; Save this number
 
     pop di                                      ; Restore index
+    push es                                     ; Preserve segment
+
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_fat                       ; Convert to FAT format
+
+    pop es                                      ; Restore segment
+    mov word [es:di+0x12], ax                   ; Move the access date into the correct field
 
     mov si, iface_disk_found
     call println                                ; Print message
@@ -266,6 +273,22 @@ write_file:                                     ; Write file buffer to disk as f
     pop cx                                      ; Restore our file size
     mov word [es:di+0x1C], cx                   ; Move our file size into the correct field
 
+    push es                                     ; Save our segment
+
+    call get_time                               ; Get RTC time
+    call conv_rtctime_fat                       ; Convert to FAT time format
+
+    pop es                                      ; Restore our segment
+    mov word [es:di+0x0E], ax                   ; Move the creation time into the correct field
+
+    push es                                     ; Preserve segment
+
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_fat                       ; Convert to FAT time format
+
+    pop es                                      ; Restore segment
+    mov word [es:di+0x10], ax                   ; Move the creation date into the correct field
+
     jmp .write_cluster                          ; Start writing data
 
 .file_exists:
@@ -285,6 +308,23 @@ write_file:                                     ; Write file buffer to disk as f
     pop cx                                      ; Restore our file size
     mov word [es:di+0x1C], cx                   ; Move our file size into the correct field
     mov word [es:di+0x1E], 0x0000               ; Upper word of file size is 0
+
+.modify_time_date:
+    push es                                     ; Preserve segment
+
+    call get_time                               ; Get RTC time
+    call conv_rtctime_fat                       ; Convert to FAT time format
+
+    pop es                                      ; Restore segment
+    mov word [es:di+0x16], ax                   ; Move the write time into the correct field
+
+    push es                                     ; Preserve segment
+
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_fat                       ; Convert to FAT time format
+
+    pop es                                      ; Restore segment
+    mov word [es:di+0x18], ax                   ; Move the write date into the correct field
 
 .write_cluster:
     mov si, iface_disk_write

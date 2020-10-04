@@ -213,6 +213,10 @@ handback_manual:                                ; Routine to manually perform ha
 ; SUBROUTINES
 ; ========================================================================
 
+; SET UP SEGMENTS: Sets both segment registers to the kernel segment
+; IN: None
+; OUT: DS = 0x2000, ES = 0x2000
+
 setup_segments:                                 ; Setup DS and ES to the kernel segment
     push ax                                     ; Save register state to stack
 
@@ -223,6 +227,67 @@ setup_segments:                                 ; Setup DS and ES to the kernel 
     pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
+
+; SHUT DOWN: Asks to apply any filesystem changes, performs a BIOS shutdown
+; IN: None
+; OUT: None
+
+shutdown:                                       ; Check for filesystem changes and shutdown
+    pusha                                       ; Save register states to stack
+
+    call prompt_apply                           ; Prompt the user to authenticate filesystem changes
+
+    mov si, iface_shutdown
+    call print_str                              ; Display message
+
+    call confirm                                ; Ask for confirmation
+    jc .done                                    ; If not given, we're done
+
+    mov ax, 0x5307
+    mov bx, 0x0001
+    mov cx, 0x0003
+    int 0x15                                    ; Otherwise, BIOS shutdown
+
+    jmp reboot_fatal                            ; If it didn't work, error
+
+.done:
+    mov si, iface_cancelled
+    call println                                ; Display message
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; REBOOT: Asks to apply any filesystem changes, reboots the system
+; IN: None
+; OUT: None
+
+reboot:                                         ; Check for filesystem changes and reboot
+    pusha                                       ; Save register states to stack
+
+    call prompt_apply                           ; Prompt the user to authenticate filesystem changes
+
+    mov si, iface_reboot
+    call print_str                              ; Display message
+
+    call confirm                                ; Ask for confirmation
+    jc .done                                    ; If not given, we're done
+
+    int 0x19                                    ; Otherwise, reboot
+
+    jmp reboot_fatal                            ; If it didn't work, error
+
+.done:
+    mov si, iface_cancelled
+    call println                                ; Display message
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; FATAL ERROR AND REBOOT: Declares a fatal error and reboots the system
+; IN: None
+; OUT: None
 
 reboot_fatal:                                   ; Declare fatal error and reboot
     mov si, iface_fatal_reboot
@@ -264,6 +329,12 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x08
     je iface_routines.cursor_position           ; Set cursor position
+
+    cmp ah, 0x09
+    je iface_routines.pause_keypress            ; Wait for a keypress
+
+    cmp ah, 0x0A
+    je iface_routines.screen                    ; Set attribute of entire screen
 
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
@@ -320,6 +391,12 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0xA1
     je general_routines.random_seed             ; Generate random number seed
+
+    cmp ah, 0xA2
+    je general_routines.shutdown                ; Shut down system
+
+    cmp ah, 0xA3
+    je general_routines.reboot                  ; Reboot system
 
     cmp ah, 0xC0
     je general_routines.sleep_milli             ; Sleep milliseconds
@@ -429,6 +506,16 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret                                 ; We're done!
 
+.pause_keypress:
+    call pause_keypress                         ; Pause for keypress
+
+    jmp int_ret                                 ; We're done!
+
+.screen:
+    call screen_attribute                       ; Set attribute for entire screen
+
+    jmp int_ret                                 ; We're done!
+
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
 
@@ -456,6 +543,16 @@ general_routines:                               ; General functions
 
 .random_seed:
     call random_seed                            ; Generate random number seed
+
+    jmp int_ret                                 ; We're done!
+
+.shutdown:
+    call shutdown                               ; BIOS shutdown
+
+    jmp int_ret                                 ; We're done!
+
+.reboot:
+    call reboot                                 ; Reboot
 
     jmp int_ret                                 ; We're done!
 
@@ -775,9 +872,12 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1 NATE, Build 18; Compiled 2020-09-28", 0x00
-iface_info          db "By Jacob and Jet", 0x00
+iface_welcome       db "House-DOS v0.0.1 NATE, Build 19; Compiled 2020-10-03", 0x00
+iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
+iface_shutdown      db "Shutting down...", 0x00
+iface_reboot        db "Rebooting...", 0x00
+iface_cancelled     db "Cancelled.", 0x00
 
 iface_ays           db "Are you sure?", 0x00
 

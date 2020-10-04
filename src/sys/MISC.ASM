@@ -10,8 +10,14 @@
 ; MISCELLANEOUS ROUTINES
 ; ========================================================================
 
+; GENERATE RANDOM NUMBER: Generate a word-sized pseudorandom number
+; IN: None
+; OUT: DX = Pseudorandom number
+
 random:                                         ; Return a random number of size word in DX
     pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; We will be using kernel variables
 
     mov ax, word [random_num]                   ; Load our last random number
     mov dx, 0xB827                              ; Random prime number
@@ -26,6 +32,10 @@ random:                                         ; Return a random number of size
     ret                                         ; Return to caller
 
 
+; GENERATE RANDOM NUMBER SEED: Creates a new random number seed based on time
+; IN: NONE
+; OUT: [random_num] = New seed
+
 random_seed:                                    ; Generate a random number seed based on the time
     pusha                                       ; Save register states to stack
 
@@ -37,7 +47,11 @@ random_seed:                                    ; Generate a random number seed 
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
-    
+
+
+; SLEEP MILLISECONDS: Pauses execution for a specified number of milliseconds
+; IN: CX = Number of milliseconds
+; OUT: None
 
 sleep:                                          ; Sleep the number of milliseconds in CX
     pusha                                       ; Save register states to stack
@@ -54,12 +68,20 @@ sleep:                                          ; Sleep the number of millisecon
     ret                                         ; Return to caller
 
 
+; SLEEP FRAMES: Pauses execution for a certain number of frames at a specific frequency
+; IN: BX = Frequency, CX = Number of frames
+; OUT: None
+
 sleep_freq:                                     ; Sleep the number of frames in CX at the frequency in BX
     pusha                                       ; Save register states to stack
 
     cmp bx, 0x0010                              ; Is the frequency at least 16 Hz?
-    jb .error                                   ; If not, error
+    jnb .calculate                              ; If so, proceed
 
+    shl bx, 0x4                                 ; Otherwise, multiply by sixteen to avoid breaking the division
+    shl cx, 0x4                                 ; Multiply this by sixteen as well
+
+.calculate:
     mov dx, 0x000F                              ; Upper word of 1,000,000
     mov ax, 0x4240                              ; Lower word of 1,000,000
 
@@ -76,10 +98,10 @@ sleep_freq:                                     ; Sleep the number of frames in 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
-.error:
-    stc                                         ; Carry flag for error
-    jmp .done                                   ; We're done
 
+; GET RTC TIME: Gets the current time from the Real-Time Clock
+; IN: None
+; OUT: RTC Time (CX = HH:MM; DH = Seconds)
 
 get_time:                                       ; Get RTC system time
     push ax                                     ; Save register state to stack
@@ -103,6 +125,10 @@ get_time:                                       ; Get RTC system time
     jmp .done                                   ; We're done
 
 
+; GET RTC DATE: Gets the current date from the Real-Time Clock
+; IN: None
+; OUT: RTC Date (CX = YYYY; DX = MM:DD)
+
 get_date:                                       ; Get RTC system date
     push ax                                     ; Save register state to stack
 
@@ -125,6 +151,10 @@ get_date:                                       ; Get RTC system date
     jmp .done                                   ; We're done
 
 
+; PLAY PC SPEAKER TONE: Plays a tone of specified frequency on the PC speaker
+; IN: DX = Frequency
+; OUT: None
+
 speaker_tone:                                   ; Play a tone of frequency in DX on the PC speaker
     pusha                                       ; Save register states to stack
 
@@ -144,6 +174,10 @@ speaker_tone:                                   ; Play a tone of frequency in DX
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; MUTE PC SPEAKER: Mutes the PC speaker until a new tone is played
+; IN: None
+; OUT: None
 
 speaker_off:
     push ax                                     ; Save register state to stack
