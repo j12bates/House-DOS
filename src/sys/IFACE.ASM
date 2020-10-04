@@ -13,6 +13,8 @@
 input:                                          ; Get input from user, store in paragraph ES:DI
     pusha                                       ; Push register states to stack
 
+    call data_kernseg                           ; We will be using kernel variables
+
     mov word [input_buffer_addr], di            ; Save our address
     mov word [input_end], di                    ; Put our address here too
 
@@ -51,11 +53,7 @@ input:                                          ; Get input from user, store in 
     jge .key                                    ; If so, don't continue
 
 .record:
-    mov ah, 0x0E                                ; Teletype output
-    mov bh, 0x00                                ; Page 0
-    mov bl, 0b00000111                          ; Light grey
-
-    int 0x10                                    ; BIOS VGA interrupt (print the char)
+    call teletype_output                        ; Write character
 
     stosb                                       ; Store this char in our buffer
     jmp .key                                    ; Get more input
@@ -71,12 +69,12 @@ input:                                          ; Get input from user, store in 
     jne .key                                    ; If not, we can't do a backspace
 
 .backspace_verified:
-    mov ah, 0x0E                                ; Teletype output
     mov al, 0x08                                ; Backwards
-    int 0x10                                    ; BIOS VGA interrupt
+    call teletype_output                        ; Write character
 
-    mov ah, 0x09                                ; Write char
+    mov ah, 0x0A                                ; Write char
     mov al, 0x20                                ; Space
+    mov bh, 0x00                                ; Page 0
     mov cx, 0x01                                ; Write once
     int 0x10                                    ; BIOS VGA interrupt
 
@@ -89,9 +87,8 @@ input:                                          ; Get input from user, store in 
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't move left
 
-    mov ah, 0x0E                                ; Teletype output
     mov al, 0x08                                ; Backwards
-    int 0x10                                    ; BIOS VGA interrupt
+    call teletype_output                        ; Write character
 
     dec di                                      ; Decrement the pointer
 
@@ -147,7 +144,6 @@ confirm:                                        ; Ask the user to confirm
 
     mov ah, 0x0E                                ; Teletype output
     mov bh, 0x00
-    mov bl, 0b00000111
     int 0x10                                    ; Display the char we typed
 
     and al, 0b11011111                          ; Capitalize
@@ -169,6 +165,10 @@ confirm:                                        ; Ask the user to confirm
 ; DISPLAY SUBROUTINES
 ; ========================================================================
 
+; CLEAR SCREEN: Completely clears the screen
+; IN: None
+; OUT: None
+
 clear:                                          ; Clear screen
     pusha                                       ; Push register states to stack
 
@@ -180,26 +180,80 @@ clear:                                          ; Clear screen
     ret                                         ; Return to caller
 
 
-print_str:                                      ; Prints String in DS:SI
-    pusha                                       ; Push register states to stack
+; WRITE CHAR TO TELETYPE: Writes a char and moves cursor forward (works with new lines)
+; IN: AL = ASCII character to write
+; OUT: None
 
-    mov ah, 0x0E                                ; Teletype output
+teletype_output:                                ; Write character in teletype mode
+    pusha                                       ; Save register states to stack
+
+    mov ah, 0x03                                ; Get cursor position
     mov bh, 0x00                                ; Page 0
-    mov bl, 0b00000111                          ; Light grey
+    int 0x10                                    ; BIOS VGA interrupt
+
+    cmp al, 0x08                                ; Is this a backspace?
+    je .backspace                               ; If so, do a backspace
+
+    cmp dx, 0x184F                              ; Are we in the bottom-right corner?
+    je .scroll                                  ; If so, scroll everything up
+
+.write:
+    mov ah, 0x0E                                ; Teletype output
+    int 0x10                                    ; BIOS VGA interrupt
+
+.done:
+    popa                                        ; Restore register state
+    ret                                         ; Return to caller
+
+.backspace:
+    cmp dl, 0x00                                ; Are we in the leftmost col?
+    jne .write                                  ; If not, proceed normally
+
+    cmp dh, 0x00                                ; Are we in the uppermost row?
+    je .done                                    ; If so, do nothing
+
+    dec dh                                      ; One row up
+    mov dl, 0x4F                                ; Rightmost col
+    call move_cursor                            ; Move the cursor
+
+    jmp .done                                   ; We're done!
+
+.scroll:
+    mov ah, 0x0A                                ; Write char
+    mov cx, 0x0001                              ; Write once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    call line_break                             ; Do a line break
+
+    jmp .done                                   ; We're done!
+    
+
+; PRINT STRING: Prints out a string in teletype mode
+; IN: DS:SI = Location of string to print
+; OUT: None
+
+print_str:                                      ; Prints String in DS:SI
+    pusha                                       ; Save register states to stack
+
     cld                                         ; Ensure correct direction
 
 .char:
     lodsb                                       ; Load in next character
+
     cmp al, 0x00                                ; Is this a null character?
     je .ret                                     ; If so, we're done
 
-    int 0x10                                    ; Otherwise, BIOS VGA interrupt
+    call teletype_output                        ; Otherwise, write char
     jmp .char                                   ; And repeat
 
 .ret:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; LINE BREAK: Moves the cursor down one line (scrolls everything else up if no lines available)
+; IN: None
+; OUT: None
 
 line_break:                                     ; Moves cursor down one line
     pusha                                       ; Push register states to stack
@@ -211,9 +265,12 @@ line_break:                                     ; Moves cursor down one line
     cmp dh, 0x18                                ; Are we already at the bottom?
     jl .break                                   ; If so, just move the cursor
 
+    mov ah, 0x08                                ; Get character and attribute
+    int 0x10                                    ; BIOS VGA interrupt
+    mov bh, ah                                  ; Write the next line with this attribute
+
     mov ah, 0x06                                ; Scroll up
     mov al, 0x01                                ; 1 line
-    mov bh, 0b00000111                          ; Light grey
     mov cx, 0x0000                              ; Upper left
     mov dx, 0x1950                              ; Bottom right
     int 0x10                                    ; BIOS VGA interrupt
@@ -231,12 +288,15 @@ line_break:                                     ; Moves cursor down one line
     ret                                         ; Return to caller
 
 
+; DISPLAY PROMPT: Displays the command prompt
+; IN: None
+; OUT: None
+
 prompt:                                         ; Set up a prompt for the user
     pusha                                       ; Push register states to stack
 
     mov ah, 0x0E                                ; Teletype output
     mov bh, 0x00                                ; Page 0
-    mov bl, 0b00000111                          ; Light grey
 
     mov al, 0x20                                ; Space
     int 0x10                                    ; BIOS VGA interrupt
@@ -254,9 +314,6 @@ prompt:                                         ; Set up a prompt for the user
 print_bytes:                                    ; Prints number of bytes (CX) starting at DS:SI
     pusha                                       ; Push register states to stack
 
-    mov ah, 0x0E                                ; Teletype output
-    mov bh, 0x00                                ; Page 0
-    mov bl, 0b00000111                          ; Light grey
     cld                                         ; Ensure correct direction
 
 .char:
@@ -265,7 +322,7 @@ print_bytes:                                    ; Prints number of bytes (CX) st
     cmp al, 0x0A                                ; Is it a UNIX newline char?
     je .newline
 
-    int 0x10                                    ; BIOS VGA interrupt
+    call teletype_output                        ; Write character
     loop .char                                  ; Repeat
 
 .done:
@@ -357,6 +414,54 @@ block:                                          ; Draws a block of char AL size 
     ret                                         ; Return to caller
 
 
+; SET ATTRIBUTE OF ENTIRE SCREEN: Sets the foreground/background colors of all characters on the screen
+; IN: BL = Attribute (Bit 7 = Blink; Bits 6-4 = Background; Bits 3-0 = Foreground)
+; OUT: None
+
+screen_attribute:                               ; Set the attribute of all characters on screen
+    pusha                                       ; Save register states to stack
+
+.cursor:
+    mov ah, 0x03                                ; Get cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+    push dx                                     ; Preserve cursor position
+
+    mov dx, 0x0000                              ; 0, 0
+    call move_cursor                            ; Set cursor position
+
+    mov cx, 0x07D0                              ; There are 2000 characters total
+
+.char:
+    mov ah, 0x08                                ; Read char
+    int 0x10                                    ; BIOS VGA interrupt
+
+    push cx                                     ; Save our loop counter
+
+    mov ah, 0x09                                ; Write char
+    mov cx, 0x0001                              ; Only print once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    pop cx                                      ; Restore our loop counter
+    loop .next_char                             ; Set up for the next character
+
+    jmp .done                                   ; Otherwise, we're done!
+
+.next_char:
+    mov ah, 0x0E                                ; Teletype output (we want to move the cursor forward)
+    int 0x10                                    ; BIOS VGA interrupt
+
+    jmp .char                                   ; Repeat
+
+.done:
+    pop dx                                      ; Restore cursor position
+    call move_cursor                            ; Set cursor position
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 get_key_nonblocking:                            ; Returns scan code/ASCII of key pressed in AX, CF set if no key
     pusha                                       ; Save register states to stack
 
@@ -380,6 +485,21 @@ get_key_nonblocking:                            ; Returns scan code/ASCII of key
     popa                                        ; Restore register states
     mov ax, word [register_bckp_a]              ; Restore our key
 
+    ret                                         ; Return to caller
+
+
+pause_keypress:                                 ; Pause until the user presses a key
+    pusha                                       ; Save register states to stack
+
+    mov si, iface_press_cont
+    call print_str                              ; Print message
+
+    mov ah, 0x00                                ; Wait for keypress
+    int 0x16                                    ; BIOS keyboard interrupt
+
+    call line_break                             ; Line break
+
+    popa                                        ; Restore register states
     ret                                         ; Return to caller
 
 
@@ -409,3 +529,4 @@ input_buffer_limit  dw 0x0000
 iface_done          db "Done!", 0x00
 iface_aborting      db "Aborting.", 0x00
 iface_confirm       db " Press Y to confirm: ", 0x00
+iface_press_cont    db "Press any key to continue...", 0x00

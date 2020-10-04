@@ -717,8 +717,8 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
     pushf                                       ; Save result to stack
 
 .months:
-    mov ax, 0x0001                              ; Start month here
-    mov bx, 0x001F                              ; January was 31 days
+    mov ax, 0x0001                              ; Start month number here
+    mov bx, 0x001F                              ; January is 31 days
     
     call .check_month                           ; Check January
 
@@ -880,6 +880,98 @@ conv_rtcdate_stamp:                             ; Convert an RTC date to a stand
     ret                                         ; Return to caller
 
 
+; CONVERT RTC TIME TO FAT TIME: Converts RTC time format to FAT time format
+; IN: RTC TIME (CX = HH:MM; DH = Seconds)
+; OUT: AX = time
+
+conv_rtctime_fat:                               ; Convert an RTC time to the FAT time format
+    pusha                                       ; Save register states to stack
+
+    mov bx, 0x0000                              ; Clear out BX (we will store our time in here for now)
+
+.hours:
+    mov ax, 0x0000                              ; Clear out AX
+
+    mov al, ch                                  ; Hours are here
+    call conv_rtcval_byte                       ; Convert to proper value
+
+    shl ax, 0xB                                 ; Hour is bits 15-11
+    or bx, ax                                   ; Set our bits in place in BX
+
+.minutes:
+    mov ax, 0x0000                              ; Clear out AX
+
+    mov al, cl                                  ; Minutes are here
+    call conv_rtcval_byte                       ; Convert to proper value
+
+    shl ax, 0x5                                 ; Minutes are bits 10-5
+    or bx, ax                                   ; Set our bits in place in BX
+
+.seconds:
+    mov ax, 0x0000                              ; Clear out AX
+
+    mov al, dh                                  ; Seconds are here
+    call conv_rtcval_byte                       ; Convert to proper value
+
+    shr ax, 0x1                                 ; Quasi-seconds are bits 4-0
+    or bx, ax                                   ; Set our bits in place in BX
+
+.done:
+    mov word [register_bckp_a], bx              ; Preserve output
+
+    popa                                        ; Restore register states
+    mov ax, word [register_bckp_a]              ; Restore output into the correct register
+
+    ret                                         ; Return to caller
+
+
+; CONVERT RTC DATE TO FAT DATE: Converts RTC date format to FAT time format
+; IN: RTC DATE (CX = YYYY, DX = MM:DD)
+; OUT: AX = date
+
+conv_rtcdate_fat:                               ; Convert an RTC date to FAT date format
+    pusha                                       ; Save register states to stack
+
+    mov bx, 0x0000                              ; Clear out BX (we will store our date in here for now)
+
+.months:
+    mov ax, 0x0000                              ; Clear out AX
+
+    mov al, dh                                  ; Months are stored here
+    call conv_rtcval_byte                       ; Convert to a proper value
+
+    shl ax, 0x5                                 ; Months are in bits 8-5
+    or bx, ax                                   ; Set our bits in place in BX
+
+.days:
+    mov ax, 0x0000                              ; Clear out AX
+
+    mov al, dl                                  ; Days are stored here
+    call conv_rtcval_byte                       ; Convert to a proper value
+
+    or bx, ax                                   ; Set our bits in place in BX
+
+.years:
+    mov ax, cx                                  ; Year is stored here
+    mov di, dec_src                             ; Our destination buffer
+    call conv_word_hex                          ; Convert to hex (RTC values are weird)
+
+    mov si, dec_src                             ; Where our value was just placed
+    call conv_dec_unsigned_word                 ; Read as decimal number (to reiterate, RTC values are weird)
+
+    sub dx, 0x07BC                              ; FAT years start at 1980
+    shl dx, 0x9                                 ; Years are in bits 15-9
+    or bx, dx                                   ; Set our bits in place in BX
+
+.done:
+    mov word [register_bckp_a], bx              ; Preserve output
+
+    popa                                        ; Restore register states
+    mov ax, word [register_bckp_a]              ; Restore output into the correct register
+
+    ret                                         ; Return to caller    
+
+
 ; CONVERT RTC VALUE: Converts an RTC value to a proper value
 ; IN: AL = RTC value to convert
 ; OUT: AL = Resulting value
@@ -887,6 +979,7 @@ conv_rtcdate_stamp:                             ; Convert an RTC date to a stand
 conv_rtcval_byte:                               ; Convert an RTC value in AL to an actual binary value
     pusha                                       ; Save register states to stack
 
+    call setup_segments                         ; We are going to be writing to and referencing kernel vars
     mov di, dec_src                             ; Output buffer
     call conv_byte_hex                          ; Convert to hex (RTC values are weird)
 

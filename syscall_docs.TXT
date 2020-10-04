@@ -48,67 +48,15 @@ II. Basic Functions
 
         Returns the current UNIX timestamp.
 
-    CONVERT UNIX TIME TO SECONDS/DAYS
-        AH = 0xD1
-        DX:BX = UNIX timestamp
+    SHUT DOWN SYSTEM
+        AH = 0xA2
 
-        Return:
-        DX = Number of days
-        CF:AX = Number of seconds
+        Shuts down the system.
 
-        Returns the number of seconds since 00:00:00 and the number of days since 1970-01-01.
+    REBOOT SYSTEM
+        AH = 0xA3
 
-    CONVERT UNIX TIME TO ASCII TIMESTAMP
-        AH = 0xD2
-        DX:BX = UNIX timestamp
-        DI = 8-byte output buffer
-
-        Stores the current time in HH:MM:SS form in the buffer pointed to by DI.
-
-    CONVERT UNIX TIME TO ASCII DATESTAMP
-        AH = 0xD3
-        DX:BX = UNIX timestamp
-        DI = 10-byte output buffer
-
-        Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
-
-    GENERATE RANDOM NUMBER
-        AH = 0xA0
-
-        Return:
-        DX = Random number
-
-        Generates and returns a very poorly-generated random number.
-
-    GENERATE RANDOM NUMBER SEED
-        AH = 0xA1
-
-        Generates a new random seed. (Is ineffective if used multiple times a second.)
-
-    SLEEP MILLISECONDS
-        AH = 0xC0
-        CX = Number of milliseconds
-
-        Halts execution for the specified number of milliseconds.
-
-    SLEEP FRAMES
-        AH = 0xC1
-        BX = Framerate/Frequency
-        CX = Number of frames
-
-        Halts instruction for the specified number of frames if a frame is 1/Frequency seconds
-        long.
-
-    PC SPEAKER TONE
-        AH = 0xC2
-        DX = Frequency
-
-        Plays tone of specified frequency on the PC speaker.
-
-    MUTE PC SPEAKER
-        AH = 0xC3
-
-        Stops the PC speaker until a new tone is played.
+        Reboots the system.
 
 
 III. Logic Functions
@@ -189,6 +137,30 @@ III. Logic Functions
         Converts the ASCII decimal number in the three-byte input buffer to a byte-size binary
         value.
 
+    CONVERT UNIX TIME TO SECONDS/DAYS
+        AH = 0xD1
+        DX:BX = UNIX timestamp
+
+        Return:
+        DX = Number of days
+        CF:AX = Number of seconds
+
+        Returns the number of seconds since 00:00:00 and the number of days since 1970-01-01.
+
+    CONVERT UNIX TIME TO ASCII TIMESTAMP
+        AH = 0xD2
+        DX:BX = UNIX timestamp
+        DI = 8-byte output buffer
+
+        Stores the current time in HH:MM:SS form in the buffer pointed to by DI.
+
+    CONVERT UNIX TIME TO ASCII DATESTAMP
+        AH = 0xD3
+        DX:BX = UNIX timestamp
+        DI = 10-byte output buffer
+
+        Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
+
 
 IV. Interface Functions
 
@@ -246,6 +218,17 @@ IV. Interface Functions
         DL = Col number
 
         Moves the cursor to the specified position.
+
+    PAUSE FOR KEYPRESS
+        AH = 0x09
+
+        Pauses execution until a key is pressed.
+
+    SET ENTIRE SCREEN ATTRIBUTE
+        AH = 0x0A
+        BL = Attribute (Bits 0-3 = Foreground color, Bits 4-6 = Background color, Bit 7 = Blink)
+
+        Sets the foreground/background color of the entire screen.
 
     PRINT BYTES
         AH = 0x10
@@ -447,3 +430,43 @@ V. Disk Functions
         Writes the FAT and directory to the disk as they are in memory, thereby applying all
         renames and deletions.
 
+
+VI. Miscellaneous Functions
+
+    GENERATE RANDOM NUMBER
+        AH = 0xA0
+
+        Return:
+        DX = Random number
+
+        Generates and returns a very poorly-generated random number.
+
+    GENERATE RANDOM NUMBER SEED
+        AH = 0xA1
+
+        Generates a new random seed. (Is ineffective if used multiple times a second.)
+
+    SLEEP MILLISECONDS
+        AH = 0xC0
+        CX = Number of milliseconds
+
+        Halts execution for the specified number of milliseconds.
+
+    SLEEP FRAMES
+        AH = 0xC1
+        BX = Framerate/Frequency
+        CX = Number of frames
+
+        Halts instruction for the specified number of frames if a frame is 1/Frequency seconds
+        long.
+
+    PC SPEAKER TONE
+        AH = 0xC2
+        DX = Frequency
+
+        Plays tone of specified frequency on the PC speaker.
+
+    MUTE PC SPEAKER
+        AH = 0xC3
+
+        Stops the PC speaker until a new tone is played.
