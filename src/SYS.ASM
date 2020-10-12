@@ -57,6 +57,7 @@ start:                                          ; House-DOS code
     mov sp, 0x4000                              ; 16K ought to be enough for anyone
     push bx                                     ; Push this back
 
+.ivt:
     mov ax, 0x0000
     mov es, ax                                  ; The IVT is in this segment
 
@@ -80,11 +81,12 @@ start:                                          ; House-DOS code
     mov bl, 0x01                                ; Blink
     int 0x10                                    ; BIOS VGA interrupt
 
+.autoexec:
     mov si, iface_welcome
     call println                                ; Print welcome message
 
     mov si, iface_info
-    call println                                ; Print info
+    call println                                ; Print info                
 
     xor bx, bx                                  ; Make sure that the zero-flag is set
 
@@ -106,11 +108,13 @@ main:                                           ; Main code for House-DOS kernel
     jmp syscall_handler                         ; OTHERWISE, a system function was called
 
 .handback:
-    popf                                        ; Get this out of the stack
-    add sp, 0x0006                              ; Get rid of all the stuff in the stack from INT 0x7E
+    mov sp, 0x4000                              ; Reset stack pointer
 
     clc                                         ; Show cursor
     call display_cursor                         ; Make sure cursor is visible
+
+    mov bl, 0x07                                ; Light grey on black
+    call screen_attribute                       ; Set screen attribute
 
     call speaker_off                            ; Turn off speaker
 
@@ -194,7 +198,7 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 handback_manual:                                ; Routine to manually perform handback
-    mov ah, 0xFF                                ; Handback
+    mov ah, 0x00                                ; Handback
     int 0x7E
 
 
@@ -336,6 +340,12 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x0A
     je iface_routines.screen                    ; Set attribute of entire screen
 
+    cmp ah, 0x0B
+    je iface_routines.printf                    ; Print with formatting
+
+    cmp ah, 0x0C
+    je iface_routines.printlnf                  ; Print line with formatting
+
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
 
@@ -344,6 +354,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x12
     je iface_routines.key_nonblocking           ; Get key (nonblocking)
+
+    cmp ah, 0x13
+    je iface_routines.indent                    ; Indent cursor
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -358,11 +371,26 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x63
     je disk_routines.get_bytes_indexes          ; Get bytes between two indexes
 
+    cmp ah, 0x64
+    je disk_routines.get_line                   ; Get line contents
+
     cmp ah, 0x68
     je disk_routines.write_bytes_qty            ; Write quantity of bytes to file
 
     cmp ah, 0x69
     je disk_routines.write_bytes_indexes        ; Write bytes between two indexes to file
+
+    cmp ah, 0x6A
+    je disk_routines.write_line                 ; Write line
+
+    cmp ah, 0x6B
+    je disk_routines.insert_bytes_qty           ; Insert quantity of bytes
+
+    cmp ah, 0x6C
+    je disk_routines.insert_bytes_indexes       ; Insert bytes between two indexes
+
+    cmp ah, 0x6D
+    je disk_routines.insert_line                ; Insert line
 
     cmp ah, 0x6E
     je disk_routines.clear_buffer               ; Clear entire file buffer
@@ -372,6 +400,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x70
     je disk_routines.get_file_size              ; Verify and get size of file
+
+    cmp ah, 0x77
+    je disk_routines.list                       ; Get file list
 
     cmp ah, 0x78
     je disk_routines.rename                     ; Rename file
@@ -384,6 +415,13 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x7F
     je disk_routines.apply                      ; Apply filesystem changes
+
+.data_funcs:                                    ; Data functions
+    cmp ax, 0x8100
+    je data_routines.list_get_item              ; Get a list item
+
+    cmp ax, 0x8101
+    je data_routines.list_total                 ; Get total list items
 
 .general_funcs:                                 ; General functions
     cmp ah, 0xA0
@@ -447,6 +485,8 @@ syscall_handler:                                ; System call handler
     cmp ah, 0xF7
     je logical_routines.conv_dec_byte           ; Convert decimal notation to binary byte
 
+.default:
+    stc                                         ; Carry flag for error
     jmp int_ret                                 ; If invalid function number, we're done!
 
 
@@ -516,6 +556,21 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret                                 ; We're done!
 
+.printf:
+    call data_binseg                            ; We want to access data from the command
+
+    call printf                                 ; Print with formatting
+
+    jmp int_ret                                 ; We're done!
+
+.printlnf:
+    call data_binseg                            ; We want to access data from the command
+
+    call printf                                 ; Print with formatting
+    call line_break                             ; Line break
+
+    jmp int_ret                                 ; We're done!
+
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
 
@@ -532,6 +587,29 @@ iface_routines:                                 ; Interface functions
     call get_key_nonblocking                    ; Get key
 
     jmp int_ret.preserve_flags                  ; We're done!
+
+.indent:
+    call indent                                 ; Indent cursor
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+
+data_routines:                                  ; Data functions
+
+.list_get_item:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    call get_item_list                          ; Get list item
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.list_total:
+    call data_binseg                            ; We want to access data from the command
+
+    call get_total_list                         ; Get total number of list items
+
+    jmp int_ret                                 ; We're done!
 
 
 general_routines:                               ; General functions
@@ -567,8 +645,11 @@ general_routines:                               ; General functions
     jmp int_ret                                 ; We're done!
 
 .speaker:
+    push dx                                     ; Preserve this value
+    call conv_hz_freq                           ; Convert to frequency number
     call speaker_tone                           ; Play tone on PC speaker
 
+    pop dx                                      ; Restore this value
     jmp int_ret                                 ; We're done!
 
 .speaker_off:
@@ -616,7 +697,6 @@ general_routines:                               ; General functions
     call conv_rtctime_stamp                     ; Convert to timestamp
 
     popa                                        ; Restore register states
-
     jmp int_ret                                 ; We're done!
 
 .datestamp:
@@ -631,7 +711,6 @@ general_routines:                               ; General functions
     call conv_rtcdate_stamp                     ; Convert to datestamp
 
     popa                                        ; Restore register states
-
     jmp int_ret                                 ; We're done!
 
 
@@ -657,45 +736,128 @@ disk_routines:                                  ; Disk functions
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
-    push cx                                     ; Save our counter
-    rep movsb                                   ; Copy the correct number of bytes
-    pop cx                                      ; Restore our counter
+    pusha                                       ; Save register states to stack
 
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Copy the correct number of bytes
+
+    popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .get_bytes_indexes:
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
-    push cx                                     ; Save our counter
+    pusha                                       ; Save register states to stack
 
     sub cx, si                                  ; Convert index to number of bytes
+    cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    pop cx                                      ; Restore our counter
-
+    popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
+
+.get_line:
+    call extra_binseg                           ; We want to give data to the command
+
+    pusha                                       ; Save register states to stack
+    call get_line_addr                          ; Get the address of the line
+
+    call data_fileseg                           ; We want to access data from the file buffer
+    call get_line_length                        ; Get the number of bytes to copy
+
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Copy the correct number of bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!    
 
 .write_bytes_qty:
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
-    push cx                                     ; Save our counter
-    rep movsb                                   ; Copy the correct number of bytes
-    pop cx                                      ; Restore our counter
+    pusha                                       ; Save register states to stack
 
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Copy the correct number of bytes
+
+    popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .write_bytes_indexes:
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
-    push cx                                     ; Save our counter
+    pusha                                       ; Save register states to stack
     
     sub cx, si                                  ; Convert index to number of bytes
+    cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    pop cx                                      ; Restore our counter
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.write_line:
+    call data_binseg                            ; We want to access data from the command
+
+    call write_line                             ; Write line
+
+    jmp int_ret                                 ; We're done!
+
+.insert_bytes_qty:
+    xchg si, di                                 ; The destination is the source for shifting
+    call shift                                  ; Shift everything in the file buffer over
+    xchg si, di                                 ; Restore destination and source
+
+    call data_binseg                            ; We want to access data from the command
+
+    pusha                                       ; Save register states to stack
+
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Copy the correct number of bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.insert_bytes_indexes:
+    pusha                                       ; Save register states to stack
+
+    sub cx, si                                  ; Convert index to number of bytes
+    xchg si, di                                 ; The destination is the source for shifting
+    call shift                                  ; Shift everything in the file buffer over to make room
+    xchg si, di                                 ; Restore destination and source
+
+    call data_binseg                            ; We want to access data from the command
+
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Copy the correct number of bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.insert_line:
+    pusha                                       ; Save register states to stack
+
+    xchg si, di                                 ; Preserve our input buffer location
+    call get_line_addr                          ; Get the address of the line as it is
+    xchg si, di                                 ; Restore buffer location, the address is our destination
+
+    call data_binseg                            ; Access data from the command
+    call get_line_length                        ; Get the number of bytes to insert
+    push cx                                     ; Preserve this (this will be our return value)
+
+    xchg si, di                                 ; The destination is the source for shifting
+    call shift                                  ; Shift everything in the file buffer over to make room
+    xchg si, di                                 ; Restore destination and source
+
+    call data_binseg                            ; Access data from the command
+
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Copy the correct number of bytes
+
+    pop word [register_bckp_a]                  ; Preserve our output
+    popa                                        ; Restore register states
+    mov cx, word [register_bckp_a]              ; Restore our output
 
     jmp int_ret                                 ; We're done!
 
@@ -725,6 +887,12 @@ disk_routines:                                  ; Disk functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
+.list:
+    call extra_binseg                           ; We want to give data to the command
+    call list_files                             ; Get file list
+
+    jmp int_ret                                 ; We're done!
+
 .rename:
     call data_binseg                            ; We want to access data from the command
 
@@ -749,6 +917,7 @@ disk_routines:                                  ; Disk functions
     call prompt_apply                           ; Apply filesystem changes
 
     jmp int_ret.preserve_flags                  ; We're done!
+
 
 logical_routines:                               ; Logical functions
 
@@ -872,7 +1041,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1 NATE, Build 19; Compiled 2020-10-03", 0x00
+iface_welcome       db "House-DOS v0.0.1 NATE, Build 20; Compiled 2020-10-05", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
@@ -884,4 +1053,9 @@ iface_ays           db "Are you sure?", 0x00
 iface_error_idk     db "FATAL: Something went wrong.", 0x00
 
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00
+
+misc_paragraph      dq 0x0000000000000000
+                    dq 0x0000000000000000
+
+misc_buffer:
 

@@ -969,7 +969,37 @@ conv_rtcdate_fat:                               ; Convert an RTC date to FAT dat
     popa                                        ; Restore register states
     mov ax, word [register_bckp_a]              ; Restore output into the correct register
 
-    ret                                         ; Return to caller    
+    ret                                         ; Return to caller
+
+
+; CONVERT HERTZ FREQUENCY TO NUMBER: Converts a frequency in Hertz to a frequency number for the PC speaker
+; IN: DX = Frequency to convert
+; OUT: DX = Resulting value
+
+conv_hz_freq:                                   ; Convert frequency in Hertz to a frequency number
+    pusha                                       ; Save register states to stack
+
+    cmp dx, 0x0012                              ; Are we greater than 18 Hz?
+    ja .inverse                                 ; If so, continue
+
+    mov ax, 0xFFFF                              ; Otherwise, just return the lowest possible frequency
+    jmp .done                                   ; We're done!
+
+.inverse:
+    mov bx, dx                                  ; This is an inverse function, so we will divide by our input
+
+    mov ax, 0x3654
+    mov dx, 0x0012                              ; The magical coefficient is 1092.5 squared (desmos.com/calculator/9flwsac8x5)
+
+    div bx                                      ; Divide
+
+.done:
+    mov word [register_bckp_a], ax              ; Preserve output
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore output into correct register
+
+    ret                                         ; Return to caller
 
 
 ; CONVERT RTC VALUE: Converts an RTC value to a proper value

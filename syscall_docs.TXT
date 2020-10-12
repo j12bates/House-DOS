@@ -27,12 +27,14 @@ implemented, but are planned.
 
 II. Basic Functions
 
-    RE-INITIALIZE
+    NEVER USE - RE-INITIALIZE
         AH = 0x00
 
         Completely re-initializes House-DOS, including re-loading constants from the bootsector,
         resetting the stack, re-configuring the interrupt vector should anything have happened
-        to it, clearing the screen, and displaying the welcome message.
+        to it, clearing the screen, and displaying the welcome message. Filesystem changes should
+        remain intact. However, for whatever reason, everything seems to fail. PLEASE NEVER USE.
+        This will be fixed soon.
 
     HANDBACK
         AH = 0xFF
@@ -59,7 +61,57 @@ II. Basic Functions
         Reboots the system.
 
 
-III. Logic Functions
+III. Object/Data Functions
+
+    AH = 0x80: STRING OPERATIONS
+
+*       COMPARE STRINGS
+            AL = 0x00
+            SI = String A Location
+            DI = String B Location
+
+            Return:
+            ZF = Set if equal
+
+            Compares two strings.
+
+*       CONVERT TO UPPERCASE
+            AL = 0x10
+            SI = String Location
+
+            Converts all characters in a string to uppercase.
+
+*       CONVERT TO LOWERCASE
+            AL = 0x11
+            SI = String Location
+
+            Converts all characters in a string to lowercase.
+
+
+    AH = 0x81: LIST OPERATIONS
+
+        GET ITEM
+            AL = 0x00
+            CX = Index of item
+            SI = List Location
+            DI = Output buffer
+
+            Return:
+            CF = Set on error
+
+            Retrieves a specific item from a comma-separated list.
+
+        GET TOTAL ITEMS
+            AL = 0x01
+            SI = List Location
+
+            Return:
+            CX = Number of items
+
+            Gets the number of items in a comma-separated list.
+
+
+IV. Logic Functions
 
     CONVERT WORD TO HEX
         AH = 0xF0
@@ -162,7 +214,7 @@ III. Logic Functions
         Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
 
 
-IV. Interface Functions
+V. Interface Functions
 
     PRINT-STRING
         AH = 0x01
@@ -230,6 +282,18 @@ IV. Interface Functions
 
         Sets the foreground/background color of the entire screen.
 
+    PRINT STRING FORMATTED
+        AH = 0x0B
+        BL = Attribute
+
+        Prints a string in a specific color.
+
+    PRINT LINE FORMATTED
+        AH = 0x0C
+        BL = Attribute
+
+        Prints a string in a specific color, and then moves the cursor to the next line.
+
     PRINT BYTES
         AH = 0x10
         SI = Source
@@ -257,8 +321,14 @@ IV. Interface Functions
 
         Returns the scan code and ASCII code of the key being pressed on the keyboard.
 
+    INDENT CURSOR
+        AH = 0x13
+        DL = Col number
 
-V. Disk Functions
+        Moves the cursor to the specified col while keeping it in the same row.
+
+
+VI. Disk Functions
 
     VERIFY FILE EXISTS
         AH = 0x60
@@ -271,6 +341,9 @@ V. Disk Functions
 
     LOAD FILE
         AH = 0x61
+
+        Return:
+        CF = Set on error
 
         Clears the file buffer and loads the file that was just verified into it.
 
@@ -302,14 +375,12 @@ V. Disk Functions
         Gets bytes from file buffer between the two indexes, and stores that in the destination
         buffer.
 
-*   GET LINES
+    GET LINE
         AH = 0x64
-        BX = Line number
-        CX = Number of lines
+        CX = Line number
         DI = Destination buffer
 
-        Gets a certain quantity of lines from the file buffer, and stores that in the destination
-        buffer.
+        Gets a certain line from the file buffer, and stores that in the destination buffer.
 
     WRITE BYTES (INDEX-QUANTITY)
         AH = 0x68
@@ -337,16 +408,18 @@ V. Disk Functions
         WRITES bytes from the buffer between the two indexes into the file buffer at the given
         index.
 
-*   WRITE LINES
+    WRITE LINE
         AH = 0x6A
         SI = Source buffer
-        BX = Line number
-        CX = Number of lines
+        CX = Line number
+
+        Return:
+        CX = Bytes offset
 
         WRITES a certain quantity of lines from the source buffer into the file buffer at the
         given line number.
 
-*   INSERT BYTES (INDEX-QUANTITY)
+    INSERT BYTES (INDEX-QUANTITY)
         AH = 0x6B
         SI = Source buffer
         CX = Number of bytes
@@ -355,7 +428,7 @@ V. Disk Functions
         INSERTS a certain quantity of bytes from the source buffer into the file buffer at the
         given index.
 
-*   INSERT BYTES (INDEX-INDEX)
+    INSERT BYTES (INDEX-INDEX)
         AH = 0x6C
         SI = Source buffer
         CX = End of source buffer
@@ -364,11 +437,13 @@ V. Disk Functions
         INSERTS bytes from the buffer between the two indexes into the file buffer at the given
         index.
 
-*   INSERT LINES
+    INSERT LINES
         AH = 0x6D
         SI = Source buffer
-        BX = Line number
-        CX = Number of lines
+        CX = Line number
+
+        Return:
+        CX = Bytes offset
 
         INSERTS a certain quantity of lines from the source buffer into the file buffer at the
         given line number.
@@ -394,6 +469,12 @@ V. Disk Functions
         DX:AX = File size in bytes
 
         Returns the size of the file with the filename given.
+
+    GET LIST OF FILES
+        AH = 0x77
+        DI = Output buffer
+
+        Returns a comma-separated list of files from the root directory.
 
     RENAME FILE
         AH = 0x78
@@ -431,7 +512,7 @@ V. Disk Functions
         renames and deletions.
 
 
-VI. Miscellaneous Functions
+VII. Miscellaneous Functions
 
     GENERATE RANDOM NUMBER
         AH = 0xA0
@@ -439,7 +520,7 @@ VI. Miscellaneous Functions
         Return:
         DX = Random number
 
-        Generates and returns a very poorly-generated random number.
+        Generates and returns a very poorly-generated pseudo-random number.
 
     GENERATE RANDOM NUMBER SEED
         AH = 0xA1
@@ -462,7 +543,7 @@ VI. Miscellaneous Functions
 
     PC SPEAKER TONE
         AH = 0xC2
-        DX = Frequency
+        DX = Frequency (Hz)
 
         Plays tone of specified frequency on the PC speaker.
 
