@@ -1,11 +1,11 @@
-#House-DOS
+# House-DOS
 A real-mode x86 Disk Operating System that is, and forever will be, mostly useless. I endorse use of this operating system, but before installing it on bare metal, I would recommend backing all your files up, unplugging your hard drives, and plugging in a new one.
 
-##Instructions for Use:
+## Instructions for Use:
 1. Create a disk image by running `build.sh` as root.
 2. Virtualize as an HDD in QEMU, or write to a storage medium greater than 32M and boot to it.
 
-##Creating Programs & Commands:
+## Creating Programs & Commands:
   House-DOS commands are written in real-mode x86 assembly. There are many different system calls available for many specific tasks; here are a few examples:
 - Printing characters to the console
 - Getting input from the console
@@ -18,7 +18,7 @@ A real-mode x86 Disk Operating System that is, and forever will be, mostly usele
 
 A reference can be found in `syscall_docs.TXT`. System calls are always being added.
 
-##Features Coming Soon:
+## Features Coming Soon:
 Here are some features planned for the next release (v0.0.1):
 - Deleting, renaming, and copying files
 - Time functions and conversions
