@@ -437,7 +437,7 @@ VI. Disk Functions
         INSERTS bytes from the buffer between the two indexes into the file buffer at the given
         index.
 
-    INSERT LINES
+    INSERT LINE
         AH = 0x6D
         SI = Source buffer
         CX = Line number
@@ -445,8 +445,7 @@ VI. Disk Functions
         Return:
         CX = Bytes offset
 
-        INSERTS a certain quantity of lines from the source buffer into the file buffer at the
-        given line number.
+        INSERTS a line from the source buffer into the file buffer at the given line number.
 
     CLEAR ENTIRE BUFFER
         AH = 0x6E

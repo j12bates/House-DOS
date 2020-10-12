@@ -1041,7 +1041,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1 NATE, Build 20; Compiled 2020-10-05", 0x00
+iface_welcome       db "House-DOS v0.0.1 NATE, Build 20; Compiled 2020-10-12", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
