@@ -55,6 +55,9 @@ main:
     mov si, msgR                        ; Message R
     int 0x7E
 
+    mov si, msgS                        ; Message S
+    int 0x7E
+
     mov ah, 0xFF                        ; We're done
     int 0x7E
 
@@ -66,12 +69,13 @@ msgB        db "INFO:       Display OS information", 0x00
 msgC        db "HELP:       Display House-DOS help", 0x00
 msgD        db "EXIT:       System Reboot", 0x00
 msgE        db "QUIT:       System Shutdown", 0x00
-msgF        db "CAT:        Display file contents", 0x00
-msgG        db "WRITE:      Write a text file", 0x00
-msgH        db "RENAME:     Rename a file", 0x00
-msgK        db "DELETE:     Delete a file", 0x00
-msgL        db "APPLY:      Apply changes to disk", 0x00
-msgM        db "ROLLBACK:   Rollback filesystem", 0x00
-msgN        db "COPY:       Copy a file", 0x00
-msgP        db "CALC:       Perform arithmetic", 0x00
-msgR        db "DATE:       Display time and date", 0x00
+msgF        db "DIR:        List all files", 0x00
+msgG        db "CAT:        Display file contents", 0x00
+msgH        db "WRITE:      Write a text file", 0x00
+msgK        db "RENAME:     Rename a file", 0x00
+msgL        db "DELETE:     Delete a file", 0x00
+msgM        db "APPLY:      Apply changes to disk", 0x00
+msgN        db "ROLLBACK:   Rollback filesystem", 0x00
+msgP        db "COPY:       Copy a file", 0x00
+msgR        db "CALC:       Perform arithmetic", 0x00
+msgS        db "DATE:       Display time and date", 0x00

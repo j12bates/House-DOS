@@ -23,5 +23,5 @@ main:
 
 data:
 
-msgA        db "House-DOS v0.0.1 NATE, Build 19; Compiled 2020-10-03", 0x00
+msgA        db "House-DOS v0.0.1 NATE, Build 20; Compiled 2020-10-12", 0x00
 msgB        db "By Jacob, Jet, and Ben", 0x00

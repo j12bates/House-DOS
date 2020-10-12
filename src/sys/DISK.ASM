@@ -622,6 +622,60 @@ rollback:                                       ; Rollback filesystem
     jmp .end                                    ; We're done   
 
 
+; GET FILE LIST: Gets a list of filenames separated by commas
+; IN: ES:DI = Output buffer (big enough)
+; OUT: None
+
+list_files:                                     ; Retrieve a list of all filenames
+    pusha                                       ; Save register states to stack
+
+    mov si, 0x0000                              ; Start reading directory at offset zero
+    mov cx, 0x0200                              ; 512 entries in the root directory
+
+.entry:
+    mov ax, 0x3800
+    mov ds, ax                                  ; Segment our root directory is loaded in
+
+    cmp byte [si], 0x00                         ; Is this a null character?
+    je .done                                    ; If so, there are no more files
+
+    cmp byte [si], 0xE5                         ; Is this the deleted character?
+    je .next_entry                              ; If so, skip this one
+
+    push si                                     ; Preserve our pointer
+    push es
+    push di                                     ; Save our output buffer
+    push cx                                     ; Preserve our counter
+
+    call extra_kernseg                          ; For now, we want to write to a kernel variable
+    mov di, filename                            ; Our space in memory for 8.3 filenames
+    mov cx, 0x000B                              ; 11 chars in an 8.3 filename
+
+    rep movsb                                   ; Copy our filename here
+
+    pop cx                                      ; Restore our counter
+    pop di
+    pop es                                      ; Restore our output buffer
+    pop si                                      ; Restore our pointer
+
+    call conv_83_x3                             ; Convert to an X.3 filename and write to the output buffer
+
+    mov al, 0x2C                                ; Comma
+    stosb                                       ; Write to output buffer
+
+.next_entry:
+    add si, 0x0020                              ; Advance to the next directory entry
+    loop .entry                                 ; Repeat
+
+.done:
+    dec di                                      ; Write over that last comma
+    mov al, 0x00                                ; Null character
+    stosb                                       ; Write to output buffer
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; RENAME FILE: Renames a specific file
 ; IN: [filename] = Filename to rename to; [root_entry] = Root entry of file to rename (run get_file_info to set this up)
 ; OUT: CF = Set on error
@@ -865,7 +919,7 @@ reset_disk:                                     ; Reset the disk
 
 ; CONVERT X.3 FILENAME TO 8.3: Converts a standard X.3 filename to the 8.3 format
 ; IN: DS:SI = Source Buffer (X.3 filename)
-; OUT: [filename] = 8.3 filename, ready for use
+; OUT: [filename] = 8.3 filename ready for use, CF = Set on error
 
 conv_x3_83:                                     ; Convert X.3 filename in DS:SI to an 8.3 for searching
     pusha                                       ; Push register states to stack
@@ -926,6 +980,46 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     jmp .end                                    ; We're done
 
 
+; CONVERT 8.3 FILENAME TO X.3: Converts an 8.3 filename to the X.3 format
+; IN: [filename] = Filename to convert, ES:DI = Output buffer (between 5 and 12 bytes for X.3 filename)
+; OUT: DI = Initial value + number of bytes copied
+
+conv_83_x3:                                     ; Convert the 8.3 filename to the X.3 standard format
+    pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; We want to access kernel variables
+    mov si, filename                            ; Read from our 8.3 filename
+
+    mov cx, 0x0008                              ; 8 bytes in the file NAME
+    cld                                         ; Ensure correct direction
+
+.name_char:
+    lodsb                                       ; Load byte
+
+    cmp al, 0x20                                ; Is this a space?
+    loope .name_char                            ; If so, do not write this character
+    je .ext                                     ; If we've done our 8 characters, make sure to continue
+    inc cx                                      ; Keep our counter as it was
+
+    stosb                                       ; Write to output buffer
+    loop .name_char                             ; Repeat
+
+.ext:
+    mov al, 0x2E                                ; Dot character
+    stosb                                       ; Write to output buffer
+
+    mov cx, 0x0003                              ; 3 bytes in the extension
+    rep movsb                                   ; Write to the output buffer
+
+.done:
+    mov word [register_bckp_a], di              ; Preserve our output
+
+    popa                                        ; Restore register states
+    mov di, word [register_bckp_a]              ; Restore our output
+
+    ret                                         ; Return to caller
+
+
 ; GET FILE STARTING CLUSTER: Gets the starting cluster for the specified file
 ; IN: [filename] = 8.3 filename (run conv_x3_83 to set this up)
 ; OUT: [cluster] = Starting cluster of file, ready for use
@@ -942,7 +1036,6 @@ get_file_cluster:                               ; Get the starting cluster for a
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
-
 
 
 ; ========================================================================

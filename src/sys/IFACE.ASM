@@ -226,13 +226,13 @@ teletype_output:                                ; Write character in teletype mo
     call line_break                             ; Do a line break
 
     jmp .done                                   ; We're done!
-    
+
 
 ; PRINT STRING: Prints out a string in teletype mode
 ; IN: DS:SI = Location of string to print
 ; OUT: None
 
-print_str:                                      ; Prints String in DS:SI
+print_str:                                      ; Prints string in DS:SI
     pusha                                       ; Save register states to stack
 
     cld                                         ; Ensure correct direction
@@ -241,14 +241,41 @@ print_str:                                      ; Prints String in DS:SI
     lodsb                                       ; Load in next character
 
     cmp al, 0x00                                ; Is this a null character?
-    je .ret                                     ; If so, we're done
+    je .done                                    ; If so, we're done!
 
     call teletype_output                        ; Otherwise, write char
     jmp .char                                   ; And repeat
 
-.ret:
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+; PRINT STRING WITH FORMATTING: Prints out a string in a specific color
+; IN: DS:SI = Location of string to print, BL = Attribute
+; OUT: None
+
+printf:                                         ; Prints string in DS:SI with color attribute in BL
+    pusha                                       ; Save register states to stack
+
+    mov bh, 0x00                                ; Page 0
+    cld                                         ; Ensure correct direction
+
+.char:
+    lodsb                                       ; Load in next character
+
+    cmp al, 0x00                                ; Is this a null character?
+    je .done                                    ; If so, we're done!
+
+    mov ah, 0x09                                ; Otherwise, write character and attribute
+    mov cx, 0x0001                              ; Write once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    call teletype_output                        ; Write char
+    jmp .char                                   ; Repeat
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller    
 
 
 ; LINE BREAK: Moves the cursor down one line (scrolls everything else up if no lines available)
@@ -325,13 +352,15 @@ print_bytes:                                    ; Prints number of bytes (CX) st
     call teletype_output                        ; Write character
     loop .char                                  ; Repeat
 
-.done:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
+    jmp .done                                   ; If we've done all the characters, we're done!
 
 .newline:
     call line_break                             ; Do a line break
     loop .char                                  ; Next char
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
 
 
 display_cursor:                                 ; Display cursor if CF flag is cleared; otherwise, hide it
@@ -367,6 +396,27 @@ move_cursor:                                    ; Move cursor to DH, DL
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller    
+
+
+indent:                                         ; Move cursor to the col in DL
+    pusha                                       ; Save register states to stack
+
+    mov dh, 0xFF                                ; Completely set row number (wildcard)
+    push dx                                     ; Set position to stack
+
+    mov ah, 0x03                                ; Get cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+    pop bx                                      ; Restore wildcarded position
+    mov dl, 0xFF                                ; Completely set col number (wildcard)
+    and dx, bx                                  ; Perform logical AND to preserve row and set column
+
+    call move_cursor                            ; Move the cursor to this new position
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
 
 
 println:                                        ; Prints String in DS:SI, then does a line break
