@@ -1,6 +1,6 @@
-# House-DOS build.sh
+# House-DOS build.SH
 
-if test "`whoami`" != "root" ; then
+if test "$(whoami)" != "root" ; then
 	echo "Must be root to mount images."
 	echo "Try running again using SUDO."
 	exit
@@ -9,7 +9,7 @@ fi
 rm -rf bin
 mkdir bin
 mkdir bin/usr
-cd src
+cd src || return
 
 echo "Assembling bootloader..."
 nasm BOOT.ASM -o ../bin/BOOT.BIN
@@ -19,11 +19,11 @@ nasm SYS.ASM -o ../bin/SYS.BIN
 
 echo "Assembling commands & programs..."
 
-cd usr
+cd usr || return
 
 for i in *.ASM
 do
-	nasm $i -o ../../bin/usr/`basename $i .ASM`.BIN
+	nasm "$i" -o "../../bin/usr/$(basename "$i" .ASM).BIN"
 done
 
 cd ../..
@@ -42,6 +42,7 @@ mount House-DOS.IMG tmp
 
 echo "Copying kernel..."
 cp bin/SYS.BIN tmp/
+fatattr +s tmp/SYS.BIN
 
 echo "Copying commands & programs..."
 cp bin/usr/*.BIN tmp/

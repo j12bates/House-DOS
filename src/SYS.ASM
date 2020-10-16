@@ -122,11 +122,11 @@ main:                                           ; Main code for House-DOS kernel
 command:                                        ; Main loop: Retrieve command from user
     popf                                        ; Get this out of the stack
 
+    call setup_segments                         ; We're going to be using and writing to kernel variables
+
     call line_break                             ; Line break
     call prompt                                 ; Setup prompt
 
-    mov ax, 0x2000
-    mov es, ax                                  ; The segment we're loaded at
     mov di, input_buffer                        ; Our input buffer
     mov cx, 0x0008                              ; Commands are just filenames, which are up to 8 bytes
 
@@ -173,8 +173,10 @@ command:                                        ; Main loop: Retrieve command fr
     rep movsb                                   ; Move into our file extension
 
 .load_file:
-    call get_file_cluster                       ; Get the starting cluster for our file
+    call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
+
+    call get_file_cluster                       ; Get the starting cluster for our file
 
     call clear_file_buffer                      ; Clear the file buffer
     call load_file                              ; Load file into our file buffer
@@ -399,7 +401,25 @@ syscall_handler:                                ; System call handler
     je disk_routines.write                      ; Write file to disk
 
     cmp ah, 0x70
-    je disk_routines.get_file_size              ; Verify and get size of file
+    je disk_routines.size                       ; Get size of file
+
+    cmp ah, 0x71
+    je disk_routines.creation                   ; Get creation timestamp
+
+    cmp ah, 0x72
+    je disk_routines.access                     ; Get access timestamp
+
+    cmp ah, 0x73
+    je disk_routines.write_date                 ; Get last write timestamp
+
+    cmp ah, 0x74
+    je disk_routines.read_only                  ; Check if file is read-only
+
+    cmp ah, 0x75
+    je disk_routines.hidden                     ; Check if file is hidden
+
+    cmp ah, 0x76
+    je disk_routines.system                     ; Check if file is a system file
 
     cmp ah, 0x77
     je disk_routines.list                       ; Get file list
@@ -722,11 +742,12 @@ disk_routines:                                  ; Disk functions
     call conv_x3_83                             ; Convert filename to proper format
     jc int_ret.preserve_flags                   ; If error, we're done
 
-    call get_file_cluster                       ; Search the directory and find the starting cluster
+    call verify                                 ; Search the directory and verify the file's entry
 
     jmp int_ret.preserve_flags                  ; We're done!
 
 .load:
+    call get_file_cluster                       ; Get the starting cluster of the verified file
     call clear_file_buffer                      ; Clear the file buffer
     call load_file                              ; Load the file into the file buffer
 
@@ -736,32 +757,33 @@ disk_routines:                                  ; Disk functions
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
-    pusha                                       ; Save register states to stack
+    push cx                                     ; Save register states to stack
 
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
+    pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .get_bytes_indexes:
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
-    pusha                                       ; Save register states to stack
+    push cx                                     ; Save register states to stack
 
     sub cx, si                                  ; Convert index to number of bytes
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
+    pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .get_line:
     call extra_binseg                           ; We want to give data to the command
 
-    pusha                                       ; Save register states to stack
+    push cx                                     ; Save register states to stack
     call get_line_addr                          ; Get the address of the line
+    jc int_ret.preserve_flags                   ; If error, we're done
 
     call data_fileseg                           ; We want to access data from the file buffer
     call get_line_length                        ; Get the number of bytes to copy
@@ -769,32 +791,32 @@ disk_routines:                                  ; Disk functions
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!    
+    pop cx                                      ; Restore register states
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .write_bytes_qty:
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
-    pusha                                       ; Save register states to stack
+    push cx                                     ; Save register states to stack
 
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
+    pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .write_bytes_indexes:
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
-    pusha                                       ; Save register states to stack
+    push cx                                     ; Save register states to stack
     
     sub cx, si                                  ; Convert index to number of bytes
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
+    pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .write_line:
@@ -840,6 +862,7 @@ disk_routines:                                  ; Disk functions
 
     xchg si, di                                 ; Preserve our input buffer location
     call get_line_addr                          ; Get the address of the line as it is
+    jc int_ret.preserve_flags                   ; If error, we're done
     xchg si, di                                 ; Restore buffer location, the address is our destination
 
     call data_binseg                            ; Access data from the command
@@ -859,7 +882,7 @@ disk_routines:                                  ; Disk functions
     popa                                        ; Restore register states
     mov cx, word [register_bckp_a]              ; Restore our output
 
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .clear_buffer:
     call clear_file_buffer                      ; Clear the file buffer
@@ -876,14 +899,97 @@ disk_routines:                                  ; Disk functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
-.get_file_size:
-    call data_binseg                            ; We want to access data from the command
-
-    call conv_x3_83                             ; Convert filename to proper format
-    jc int_ret.preserve_flags                   ; If error, we're done
-
+.size:
     mov al, 0x1C                                ; File size
     call get_file_info                          ; Get item from root directory
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.creation:
+    push ax
+    push cx                                     ; Preserve these values
+
+    mov al, 0x10                                ; Creation date
+    call get_file_info                          ; Get item from directory
+
+    call conv_fat_rtcdate                       ; Convert to an RTC date
+    call conv_rtcdate_days                      ; Convert to days
+    push dx                                     ; Preserve number of days
+
+    mov al, 0x0E                                ; Creation time
+    call get_file_info                          ; Get item from directory
+
+    call conv_fat_rtctime                       ; Convert to an RTC time
+    call conv_rtctime_seconds                   ; Convert to seconds
+
+    pop dx                                      ; Restore number of days
+    call unix_timestamp                         ; Create UNIX timestamp
+
+    mov bx, ax                                  ; This should be stored in BX
+
+    pop cx
+    pop ax                                      ; Restore these values
+    jmp int_ret                                 ; We're done!
+
+.access:
+    push ax
+    push cx                                     ; Preserve these values
+
+    mov al, 0x12                                ; Access date
+    call get_file_info                          ; Get item from directory
+
+    call conv_fat_rtcdate                       ; Convert to an RTC date
+    call conv_rtcdate_days                      ; Convert to days
+
+    mov ax, 0x0000                              ; We don't have a time
+    clc                                         ; Clear the leftmost bit
+
+    call unix_timestamp                         ; Create UNIX timestamp
+
+    mov bx, ax                                  ; This should be stored in BX
+
+    pop cx
+    pop ax                                      ; Restore these values
+    jmp int_ret                                 ; We're done!
+
+.write_date:
+    push ax
+    push cx                                     ; Preserve these values
+
+    mov al, 0x18                                ; Last write date
+    call get_file_info                          ; Get item from directory
+
+    call conv_fat_rtcdate                       ; Convert to an RTC date
+    call conv_rtcdate_days                      ; Convert to days
+    push dx                                     ; Preserve number of days
+
+    mov al, 0x16                                ; Last write time
+    call get_file_info                          ; Get item from directory
+
+    call conv_fat_rtctime                       ; Convert to an RTC time
+    call conv_rtctime_seconds                   ; Convert to seconds
+
+    pop dx                                      ; Restore number of days
+    call unix_timestamp                         ; Create UNIX timestamp
+
+    mov bx, ax                                  ; This should be stored in BX
+
+    pop cx
+    pop ax                                      ; Restore these values
+    jmp int_ret                                 ; We're done!
+
+.read_only:
+    call is_read_only                           ; Check if file is read-only
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.hidden:
+    call is_hidden                              ; Check if file is hidden
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.system:
+    call is_system                              ; Check if file is a system file
 
     jmp int_ret.preserve_flags                  ; We're done!
 
@@ -1041,7 +1147,7 @@ register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1 NATE, Build 20; Compiled 2020-10-12", 0x00
+iface_welcome       db "House-DOS v0.0.1 NATE, Build 21; Compiled 2020-10-15", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
@@ -1049,13 +1155,5 @@ iface_reboot        db "Rebooting...", 0x00
 iface_cancelled     db "Cancelled.", 0x00
 
 iface_ays           db "Are you sure?", 0x00
-
 iface_error_idk     db "FATAL: Something went wrong.", 0x00
-
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00
-
-misc_paragraph      dq 0x0000000000000000
-                    dq 0x0000000000000000
-
-misc_buffer:
-

@@ -2,7 +2,7 @@
 A real-mode x86 Disk Operating System that is, and forever will be, mostly useless. I endorse use of this operating system, but before installing it on bare metal, I would recommend backing all your files up, unplugging your hard drives, and plugging in a new one.
 
 ## Instructions for Use:
-1. Create a disk image by running `build.sh` as root.
+1. Create a disk image by running `build.SH` as root.
 2. Virtualize as an HDD in QEMU, or write to a storage medium greater than 32M and boot to it.
 
 ## Creating Programs & Commands:
@@ -16,10 +16,10 @@ A real-mode x86 Disk Operating System that is, and forever will be, mostly usele
 - Generating pseudo-random numbers
 - Playing tones on the PC speaker
 
-A reference can be found in `syscall_docs.TXT`. System calls are always being added.
+A full and complete reference can be found in `syscall_docs.TXT`. System calls are always being added.
 
 ## Features Coming Soon:
-Here are some features planned for the next release (v0.0.1):
+Here are some features planned for the next release (v0.0.1), which is in the works:
 - Deleting, renaming, and copying files
 - Time functions and conversions
 - Writing lines to a file
