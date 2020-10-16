@@ -556,8 +556,7 @@ pause_keypress:                                 ; Pause until the user presses a
 done:                                           ; Prints the DONE message, then does a line break
     pusha                                       ; Save register states to stack
 
-    mov ax, 0x2000
-    mov ds, ax                                  ; Segment in which we're loaded
+    call data_kernseg                           ; Segment in which we're loaded
 
     mov si, iface_done                          ; Message to print
     call println                                ; Print line

@@ -13,19 +13,14 @@
 clear_file_buffer:                              ; Clear the file buffer (0x10000-0x1FFFF)
     pusha                                       ; Save register states to stack
 
-    mov si, iface_mem_clear
-    call print_str                              ; Print message
-
-    mov ax, 0x1000
-    mov es, ax                                  ; File buffer segment
+    call extra_fileseg                          ; Write to the file buffer
     mov di, 0x0000                              ; Start at offset 0
 
+    mov al, 0x00                                ; All zeroes
     mov cx, 0xFFFF                              ; Clear every byte
     cld                                         ; Ensure correct direction
 
     rep stosb                                   ; Move zeroes in (AL is already 0)
-
-    call done                                   ; We've finished
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -34,23 +29,15 @@ clear_file_buffer:                              ; Clear the file buffer (0x10000
 move_file_bin:                                  ; Load the file buffer as a binary
     pusha                                       ; Save register states to stack
 
-    mov si, iface_mem_bin
-    call print_str                              ; Print message
+    call data_fileseg                           ; Read from the file segment
+    call extra_binseg                           ; Load into the binary segment
 
-    mov ax, 0x1000
-    mov ds, ax                                  ; File buffer segment
-    mov si, 0x0000                              ; Start at offset 0
-
-    mov ax, 0x4000
-    mov es, ax                                  ; Binary execution segment
+    mov si, 0x0000
     mov di, 0x0000                              ; Start at offset 0
-
-    mov cx, 0xFFFF                              ; Move every byte
+    mov cx, 0xFFFF                              ; Repeat for each of the 64K bytes
     cld                                         ; Ensure correct direction
 
-    rep movsb                                   ; Move all of the bytes into the binary buffer
-
-    call done                                   ; We've finished
+    rep movsb                                   ; Copy all bytes over
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -241,7 +228,7 @@ write_line:                                     ; Write line to file buffer
 .current_line:
     pop cx                                      ; Restore our line number
     call get_line_addr                          ; Get the address of our line
-    jc .error_line                              ; If no such line, error
+    jc .done                                    ; If error, we're done
     push si                                     ; Save this address
 
     call data_fileseg                           ; We're doing to be reading from the file buffer
@@ -271,13 +258,6 @@ write_line:                                     ; Write line to file buffer
     mov cx, word [register_bckp_a]              ; Restore output
 
     ret                                         ; Return to caller
-
-.error_line:
-    mov si, iface_error_line
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
-    jmp .done                                   ; We're done
 
 
 ; SHIFT FILE BUFFER: Shift everything past one point in the file buffer by a certain number of bytes
@@ -330,6 +310,16 @@ shift:                                          ; Shift everything from one poin
     ret                                         ; Return to caller
 
 
+data_fileseg:                                   ; Sets the data segment to the file buffer segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x1000
+    mov ds, ax                                  ; Segment the file buffer is at
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
 data_binseg:                                    ; Sets the data segment to the binary segment
     push ax                                     ; Save register state to stack
 
@@ -345,16 +335,6 @@ data_kernseg:                                   ; Sets the data segment to the k
 
     mov ax, 0x2000
     mov ds, ax                                  ; Segment we are loaded in
-
-    pop ax                                      ; Restore register state
-    ret                                         ; Return to caller
-
-
-data_fileseg:                                   ; Sets the data segment to the file buffer segment
-    push ax                                     ; Save register state to stack
-
-    mov ax, 0x1000
-    mov ds, ax                                  ; Segment the file buffer is at
 
     pop ax                                      ; Restore register state
     ret                                         ; Return to caller

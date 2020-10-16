@@ -10,88 +10,105 @@
 ; DISK SUBROUTINES
 ; ========================================================================
 
-; GET FILE INFO: Retrieves value from the directory entry of a certain file
-; IN: AL = Offset from start of entry
-; OUT: AL/AX/DX:AX = Return value (size is automatically detected from offset); [root_entry] = Number of the root entry; CF = Set on error
+; VERIFY FILE: Verifies that a file with a given filename exists
+; IN: [filename] = 8.3 filename
+; OUT: CF = Set if no such file, [root_entry] = Number of the file's root entry
 
-get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
+verify:                                         ; Verify that a file exists
     pusha                                       ; Save register states to stack
-    push ax                                     ; Save our offset
 
-    call data_kernseg                           ; Segment we are loaded at
+    call data_kernseg                           ; We're going to use kernel variables
 
 .search_init:
     mov si, iface_disk_search
     call print_str                              ; Print message
 
     mov ax, 0x3800
-    mov es, ax                                  ; Segment the root directory is at
-    mov di, 0x0000                              ; Start at offset 0
+    mov es, ax                                  ; Segment the root directory is loaded in
+    mov di, 0x0000                              ; Start looking at offset 0
 
     mov cx, word [root_entries]                 ; Number of entries to look through
 
 .check_entry:
-    push cx                                     ; Save the number of remaining entries
+    cmp byte [es:di], 0x00                      ; Is this a null character?
+    je .not_found                               ; If so, there are no more entries
 
-    mov cx, 0x000B                              ; Compare the first 11 bytes
+    push cx                                     ; Otherwise, save the number of remaining entries
+
+    mov cx, 0x000B                              ; Otherwise, compare the first 11 bytes
     mov si, filename                            ; Compare against the filename requested
-    push di                                     ; Save our location
+    push di                                     ; Preserve our location
     cld                                         ; Ensure correct direction
 
-    repe cmpsb                                  ; Compare!
+    repe cmpsb                                  ; Compare data
 
     pop di                                      ; Restore our location
     pop cx                                      ; Restore the remaining entries
 
-    je .found                                   ; If equal, we found the entry
+    je .found_entry                             ; If equal, we found the entry
 
-    add di, 0x0020                              ; Otherwise, move pointer to next entry
+    add di, 0x0020                              ; Otherwise, advance to the next entry
     loop .check_entry                           ; And repeat
 
-    jmp .error_nf                               ; If gone through everything, error
+    jmp .not_found                              ; If we've gone through everything, there is no file
 
-.found:
-    push di                                     ; Save index to stack
-
+.found_entry:
     shr di, 0x5                                 ; Divide by 32 to get the root entry number
-    mov word [root_entry], di                   ; Save this number
-
-    pop di                                      ; Restore index
-    push es                                     ; Preserve segment
-
-    call get_date                               ; Get RTC date
-    call conv_rtcdate_fat                       ; Convert to FAT format
-
-    pop es                                      ; Restore segment
-    mov word [es:di+0x12], ax                   ; Move the access date into the correct field
+    mov word [root_entry], di                   ; Save this in our spot in memory
 
     mov si, iface_disk_found
     call println                                ; Print message
 
-    pop ax                                      ; Restore our offset
-    mov ah, 0x00                                ; Clear upper byte
     clc                                         ; No error
 
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.not_found:
+    mov si, iface_disk_nf
+    call println                                ; Display message
+
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
+
+; GET FILE INFO: Retrieves value from the directory entry of a certain file
+; IN: AL = Offset from start of entry
+; OUT: AL/AX/DX:AX = Return value (size is automatically detected from offset)
+
+get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
+    pusha                                       ; Save register states to stack
+
+    mov si, word [root_entry]                   ; Read from the root entry of the file we've verified
+    shl si, 0x5                                 ; There are 32 bytes per entry
+    mov bx, 0x3800
+    mov ds, bx                                  ; The segment to root directory is loaded in
+
+    mov ah, 0x00                                ; Clear upper byte of offset
+
+.size:
     cmp al, 0x0E                                ; Items below this offset are byte-sized
     jb .byte
 
     cmp al, 0x1C                                ; Items between here and there are word-sized
     jb .word
 
-    mov ax, word [es:di+0x1C]
-    mov dx, word [es:di+0x1E]                   ; Otherwise, return the file size in DX:AX
+    mov ax, word [si+0x1C]
+    mov dx, word [si+0x1E]                      ; Otherwise, return the file size in DX:AX
     jmp .done                                   ; We're finished
 
 .byte:
-    add di, ax                                  ; Add our offset
-    mov al, byte [es:di]                        ; Return the byte in AL
+    add si, ax                                  ; Add our offset
+    mov al, byte [si]                           ; Return the byte in AL
     jmp .done                                   ; We're finished
 
 .word:
-    add di, ax                                  ; Add our offset
-    mov ax, word [es:di]                        ; Return the word in AX
+    add si, ax                                  ; Add our offset
+    mov ax, word [si]                           ; Return the word in AX
 
 .done:
+    call data_kernseg                           ; We're about to use kernel variables
     mov word [register_bckp_a], ax              ; Preserve our return value
     mov word [register_bckp_b], dx              ; And the upper half if applicable
 
@@ -101,14 +118,6 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     mov dx, word [register_bckp_b]              ; Restore our return value
 
     ret                                         ; Return to caller
-
-.error_nf:
-    mov si, iface_disk_nf
-    call println                                ; Print message
-
-    pop ax                                      ; Restore for balance
-    stc                                         ; Carry flag for error
-    jmp .done                                   ; We're done
 
 
 ; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
@@ -154,15 +163,11 @@ load_file:                                      ; Load file starting at cluster 
     mov si, word [cluster]                      ; Our cluster number
     shl si, 0x1                                 ; There are two bytes per entry in FAT16
 
-    push ds                                     ; Save our segment
-
     mov ax, 0x3000
-    mov ds, ax                                  ; Segment where the FAT is loaded
+    mov es, ax                                  ; Segment where the FAT is loaded
 
-    mov ax, word [si]                           ; DS:SI is pointing to the FAT entry
-
-    pop ds                                      ; Restore segment
-    mov word [cluster], ax                      ; That entry contained our next cluster
+    mov ax, word [es:si]                        ; This is pointing to the FAT entry
+    mov word [cluster], ax                      ; That entry contains our next cluster
 
     cmp ax, 0xFFF8                              ; Is this the end of the file?
     jae .done                                   ; If so, we're finished
@@ -177,9 +182,9 @@ load_file:                                      ; Load file starting at cluster 
     jmp .load_cluster                           ; Load next cluster
 
 .done:
-    mov si, iface_done
-    call println                                ; Print message
+    call update_access_date                     ; Update access date
 
+    call done                                   ; We've finished!
     clc                                         ; No error
 
 .end:
@@ -221,8 +226,11 @@ write_file:                                     ; Write file buffer to disk as f
     jc .abort                                   ; If not authorized, abort
 
 .check_existence:
-    call get_file_cluster                       ; Check if file exists, get starting cluster if it does
-    jnc .file_exists                            ; If it exists, we need to ask for confirmation
+    call verify                                 ; Check if file with this name exists
+    jc .create_new                              ; If it doesn't, create a new entry
+
+    call get_file_cluster                       ; Otherwise, get starting cluster if it does
+    jmp .file_exists                            ; We need to ask for confirmation
 
 .create_new:
     call next_available_cluster                 ; Get the next available cluster
@@ -244,7 +252,7 @@ write_file:                                     ; Write file buffer to disk as f
     add di, 0x0020                              ; Otherwise, move to the next 32-byte entry
     loop .check_root_entry_unused               ; And repeat
 
-    mov di, 0x0000                              ; Start looking at offset 0
+    mov di, 0x0000                              ; If we didn't find anything, start looking at offset 0
     mov cx, word [root_entries]                 ; Look through all the possible root entries
 
 .check_root_entry_empty:
@@ -297,6 +305,9 @@ write_file:                                     ; Write file buffer to disk as f
 
     call confirm                                ; Ask for confirmation
     jc .abort                                   ; If not given, we're done
+
+    call check_attributes                       ; Check if we can write to this file
+    jc .abort                                   ; If we can't, we're done
 
 .change_file_size:
     mov ax, 0x3800
@@ -437,6 +448,13 @@ write_file:                                     ; Write file buffer to disk as f
 
 .error_write:
     mov si, iface_disk_ewrite
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_attribute:
+    mov si, iface_disk_eronly
     call println                                ; Print message
 
     stc                                         ; Carry flag for error
@@ -642,6 +660,9 @@ list_files:                                     ; Retrieve a list of all filenam
     cmp byte [si], 0xE5                         ; Is this the deleted character?
     je .next_entry                              ; If so, skip this one
 
+    test byte [si+0x0B], 0x02                   ; Test the visibility flag in the attribute byte
+    jnz .next_entry                             ; If hidden, skip this one
+
     push si                                     ; Preserve our pointer
     push es
     push di                                     ; Save our output buffer
@@ -686,9 +707,11 @@ rename:                                         ; Rename a file
     call data_kernseg                           ; Get data from the segment we're loaded in
     push word [root_entry]                      ; Save our root entry
 
+    call check_attributes                       ; Check if we can write to the file
+    jc .abort                                   ; If we can't, abort
+
 .check_dest_exists:
-    mov ah, 0x0B                                ; Attribute byte
-    call get_file_info                          ; Check if this file already exists
+    call verify                                 ; Check if a file with this name already exists
     jnc .error_exists                           ; If so, error
 
 .modify_name:
@@ -698,8 +721,9 @@ rename:                                         ; Rename a file
     mov es, ax                                  ; The segment our root directory is loaded in
 
     pop di                                      ; Restore the root entry
-    shl di, 0x5                                 ; 32 bytes per entry
+    mov word [root_entry], di                   ; Make sure the verified file doesn't change
 
+    shl di, 0x5                                 ; 32 bytes per entry
     mov cx, 0x000B                              ; Write 11 bytes
     cld                                         ; Ensure correct direction
     
@@ -719,6 +743,15 @@ rename:                                         ; Rename a file
     mov si, iface_disk_eexists
     call println                                ; Print message
 
+    pop ax                                      ; Restore for balance
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.abort:
+    mov si, iface_aborting
+    call println                                ; Print message
+
+    pop ax                                      ; Restore for balance
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
@@ -730,7 +763,9 @@ rename:                                         ; Rename a file
 delete:                                         ; Delete a file
     pusha                                       ; Push register states to stack
 
-.delete:
+    call check_attributes                       ; Check if we can write to this file
+    jc .abort                                   ; If we can't, abort
+
     mov ax, 0x3800
     mov es, ax                                  ; The segment our root directory is loaded in
 
@@ -749,6 +784,13 @@ delete:                                         ; Delete a file
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+.abort:
+    mov si, iface_aborting
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
 
 
 ; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
@@ -917,6 +959,41 @@ reset_disk:                                     ; Reset the disk
     ret                                         ; Return to caller
 
 
+; CHECK ATTRIBUTES: Checks attributes of the file, asks for confirmation if system file, produces error if unable to write
+; IN: [root_entry] = Root entry number of the file
+; OUT: CF = Set on error
+
+check_attributes:
+    pusha                                       ; Save register states to stack
+
+    call is_read_only                           ; Check if read-only
+    jc .error_readonly                          ; If it is, error
+
+    call is_system                              ; Check if system file
+    jnc .done                                   ; If not, we're done
+
+    mov si, iface_disk_system
+    call print_str                              ; Otherwise, display message
+
+    call confirm                                ; Ask for confirmation
+    jc .end                                     ; If not given, we're done
+
+.done:
+    clc                                         ; Otherwise, no error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_readonly:
+    mov si, iface_disk_eronly
+    call println                                ; Print message
+
+.error:
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
 ; CONVERT X.3 FILENAME TO 8.3: Converts a standard X.3 filename to the 8.3 format
 ; IN: DS:SI = Source Buffer (X.3 filename)
 ; OUT: [filename] = 8.3 filename ready for use, CF = Set on error
@@ -1021,7 +1098,7 @@ conv_83_x3:                                     ; Convert the 8.3 filename to th
 
 
 ; GET FILE STARTING CLUSTER: Gets the starting cluster for the specified file
-; IN: [filename] = 8.3 filename (run conv_x3_83 to set this up)
+; IN: [root_entry] = Root entry number of the file
 ; OUT: [cluster] = Starting cluster of file, ready for use
 
 get_file_cluster:                               ; Get the starting cluster for a file
@@ -1029,11 +1106,99 @@ get_file_cluster:                               ; Get the starting cluster for a
 
     mov al, 0x1A                                ; Read the starting cluster
     call get_file_info                          ; Get from the root directory
-    jc .done                                    ; If error, stop
 
     mov word [cluster], ax                      ; Store as cluster number
 
 .done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CHECK READ-ONLY FILE: Check if the file is read-only
+; IN: [root_entry] = Root entry number of the file
+; OUT: CF = Set if read-only
+
+is_read_only:                                   ; Check if a file is read-only
+    pusha                                       ; Save register states to stack
+
+    mov al, 0x0B                                ; Read the attribute byte
+    call get_file_info                          ; Get from the root entry
+
+    clc                                         ; Unset for now
+
+    test al, 0x01                               ; Bit 0 contains the read-only attribute
+    jz .done                                    ; If unset, we're done
+
+    stc                                         ; Otherwise, set the carry flag
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CHECK HIDDEN FILE: Check if the file is hidden
+; IN: [root_entry] = Root entry number of the file
+; OUT: CF = Set if hidden
+
+is_hidden:                                      ; Check if a file is hidden
+    pusha                                       ; Save register states to stack
+
+    mov al, 0x0B                                ; Read the attribute byte
+    call get_file_info                          ; Get from the root entry
+
+    clc                                         ; Unset for now
+
+    test al, 0x02                               ; Bit 1 contains the visibility attribute
+    jz .done                                    ; If unset, we're done
+
+    stc                                         ; Otherwise, set the carry flag
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CHECK SYSTEM FILE: Check if the file is hidden, ask the user to continue if it is
+; IN: [root_entry] = Root entry number of the file
+; OUT: CF = Set if system and write confirmation not granted
+
+is_system:                                      ; Check if a file is a system file
+    pusha                                       ; Save register states to stack
+
+    mov al, 0x0B                                ; Read the attribute byte
+    call get_file_info                          ; Get from the root entry
+
+    clc                                         ; Unset for now
+
+    test al, 0x04                               ; Bit 2 contains the system attribute
+    jz .done                                    ; If unset, we're done
+
+    stc                                         ; Otherwise, set the carry flag
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; UPDATE FILE ACCESS DATE: Sets the access date attribute of a file to the current date
+; IN: [root_entry] = Root entry number of the file
+; OUT: None
+
+update_access_date:                             ; Update a file's access date field
+    pusha                                       ; Save register states to stack
+
+    push 0x3800                                 ; The segment the root directory is loaded in
+    call data_kernseg                           ; We will be accessing kernel veriables
+
+    mov di, word [root_entry]                   ; Write to the root entry of the file
+    shl di, 0x5                                 ; There are 32 bytes per entry
+
+    call get_date                               ; Get RTC date
+    call conv_rtcdate_fat                       ; Convert to FAT format
+
+    pop es                                      ; Write into the root directory
+    mov word [es:di+0x12], ax                   ; Write the current date into the entry
+
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -1086,6 +1251,7 @@ iface_disk_search   db "Searching root directory...", 0x00
 iface_disk_found    db "Found file!", 0x00
 iface_disk_empty    db "Found empty entry!", 0x00
 iface_disk_exists   db "File already exists.", 0x00
+iface_disk_system   db "This is a system file.", 0x00
 iface_disk_applyw   db "Filesystem changes must be applied.", 0x00
 iface_disk_cluster  db "Loading cluster...", 0x00
 iface_disk_write    db "Writing to cluster...", 0x00
@@ -1097,7 +1263,7 @@ iface_disk_renamed  db "File renamed. Changes to be applied.", 0x00
 iface_disk_deleted  db "File deleted. Changes to be applied.", 0x00
 iface_disk_nochange db "No changes to apply.", 0x00
 
-iface_disk_nf       db "FATAL: Specified file not found.", 0x00
+iface_disk_nf       db "File not found.", 0x00
 iface_disk_eexists  db "FATAL: File already exists.", 0x00
 iface_disk_esize    db "FATAL: File too large to load.", 0x00
 iface_disk_efull    db "FATAL: No clusters available.", 0x00
@@ -1105,4 +1271,4 @@ iface_disk_eroot    db "FATAL: No root entries available.", 0x00
 iface_disk_eread    db "FATAL: Error while reading disk.", 0x00
 iface_disk_ewrite   db "FATAL: Error while writing to disk.", 0x00
 iface_disk_efname   db "FATAL: Not a valid filename.", 0x00
-
+iface_disk_eronly   db "FATAL: File is read-only.", 0x00

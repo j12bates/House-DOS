@@ -972,6 +972,108 @@ conv_rtcdate_fat:                               ; Convert an RTC date to FAT dat
     ret                                         ; Return to caller
 
 
+; CONVERT FAT TIME TO RTC TIME: Converts a FAT time to an RTC time
+; IN: AX = FAT date
+; OUT: RTC TIME (CX = HH:MM; DH = Seconds)
+
+conv_fat_rtctime:                               ; Convert a FAT time to the RTC format
+    pusha                                       ; Save register states to stack
+
+.seconds:
+    push ax                                     ; Preserve our time
+
+    and al, 0x1F                                ; The seconds take up 5 bits
+    shl al, 0x1                                 ; Multiply by two to get seconds
+
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov dh, al                                  ; Seconds should be in DH
+
+    pop ax                                      ; Restore our time
+
+.minutes:
+    shr ax, 0x5                                 ; Shift the minutes into the rightmost bits
+    push ax                                     ; Preserve our time
+
+    and al, 0x3F                                ; The minutes take up 6 bits
+
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov cl, al                                  ; Minutes should be in CL
+
+    pop ax                                      ; Restore our time
+
+.hours:
+    shr ax, 0x6                                 ; Shift the hours into the rightmost bits
+
+    call conv_byte_rtcval                       ; Convert to RTC value
+    mov ch, al                                  ; Hours should be in CH
+
+.done:
+    mov word [register_bckp_a], cx
+    mov word [register_bckp_b], dx              ; Preserve our output
+
+    popa                                        ; Restore register states
+    mov cx, word [register_bckp_a]
+    mov dx, word [register_bckp_b]              ; Restore our output
+
+    ret                                         ; Return to caller
+
+
+; CONVERT FAT DATE TO RTC DATE: Convert a FAT date to an RTC date
+; IN: AX = FAT date
+; OUT: RTC DATE (CX = YYYY, DX = MM:DD)
+
+conv_fat_rtcdate:                               ; Convert a FAT date to the RTC format
+    pusha                                       ; Save register states to stack
+
+.day:
+    push ax                                     ; Preserve our date
+
+    and al, 0x1F                                ; The day should take up four bits
+
+    call conv_byte_rtcval                       ; Convert to an RTC value
+    mov dl, al                                  ; Day should go in DL
+
+    pop ax                                      ; Restore our date
+
+.month:
+    shr ax, 0x5                                 ; Shift the month into the rightmost bits
+    push ax                                     ; Preserve our date
+
+    and al, 0x0F                                ; The month should take up four bits
+
+    call conv_byte_rtcval                       ; Convert to an RTC value
+    mov dh, al                                  ; Month should go in DH
+
+    pop ax                                      ; Restore our date
+    push dx                                     ; Preserve our Day/Month
+
+.year:
+    shr ax, 0x4                                 ; Shift the year into the rightmost bits
+
+    add ax, 0x07BC                              ; Years start at 1980
+
+    call setup_segments                         ; We're about to use kernel variables
+
+    mov di, dec_src                             ; Destination buffer
+    call conv_word_dec_unsigned                 ; Convert to decimal (RTC values are weird)
+
+    mov si, dec_src                             ; Source buffer
+    call conv_hex_word                          ; Read as hexadecimal (To reiterate, RTC values are weird)
+    mov cx, dx                                  ; Year should be in CX
+
+    pop dx                                      ; Restore our Day/Month
+
+.done:
+    mov word [register_bckp_a], cx
+    mov word [register_bckp_b], dx              ; Preserve our output
+
+    popa                                        ; Restore register states
+    mov cx, word [register_bckp_a]
+    mov dx, word [register_bckp_b]              ; Restore our output
+
+    ret                                         ; Return to caller
+
+
 ; CONVERT HERTZ FREQUENCY TO NUMBER: Converts a frequency in Hertz to a frequency number for the PC speaker
 ; IN: DX = Frequency to convert
 ; OUT: DX = Resulting value

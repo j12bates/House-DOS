@@ -46,7 +46,7 @@ II. Basic Functions
         AH = 0xD0
 
         Return:
-        DX:BX = UNIX time
+        DX:BX = UNIX timestamp
 
         Returns the current UNIX timestamp.
 
@@ -380,6 +380,10 @@ VI. Disk Functions
         CX = Line number
         DI = Destination buffer
 
+        Return:
+        DI = Initial value + Number of bytes copied
+        CF = Set on error
+
         Gets a certain line from the file buffer, and stores that in the destination buffer.
 
     WRITE BYTES (INDEX-QUANTITY)
@@ -415,6 +419,7 @@ VI. Disk Functions
 
         Return:
         CX = Bytes offset
+        CF = Set on error
 
         WRITES a certain quantity of lines from the source buffer into the file buffer at the
         given line number.
@@ -444,6 +449,7 @@ VI. Disk Functions
 
         Return:
         CX = Bytes offset
+        CF = Set on error
 
         INSERTS a line from the source buffer into the file buffer at the given line number.
 
@@ -457,17 +463,66 @@ VI. Disk Functions
         SI = X.3 filename
         CX = File size
 
+        Return:
+        CF = Set on error
+
         Write file with given filename to disk.
 
     GET FILE SIZE
         AH = 0x70
-        SI = X.3 filename
 
         Return:
-        CF = Set if file does not exist, cleared if it does.
         DX:AX = File size in bytes
 
-        Returns the size of the file with the filename given.
+        Returns the size of the file last verified.
+
+    GET FILE CREATION DATE
+        AH = 0x71
+
+        Return:
+        DX:BX = UNIX timestamp of creation date
+
+        Returns the creation date/time of the file last verified in the form of a UNIX timestamp.
+
+    GET FILE ACCESS DATE
+        AH = 0x72
+
+        Return:
+        DX:BX = UNIX timestamp of access date
+
+        Returns the access date of the file last verified in the form of a UNIX timestamp.
+
+    GET FILE WRITE DATE
+        AH = 0x73
+
+        Return:
+        DX:BX = UNIX timestamp of write date
+
+        Returns the write date/time of the file last verified in the form of a UNIX timestamp.
+
+    CHECK FILE READ-ONLY
+        AH = 0x74
+
+        Return:
+        CF = Set if read-only
+
+        Sets the carry flag if the file last verified is read-only.
+
+    CHECK FILE HIDDEN
+        AH = 0x75
+
+        Return:
+        CF = Set if hidden
+
+        Sets the carry flag if the file last verified is hidden.
+
+    CHECK FILE SYSTEM
+        AH = 0x76
+
+        Return:
+        CF = Set if system file
+
+        Sets the carry flag if the file last verified is an important system file.
 
     GET LIST OF FILES
         AH = 0x77
