@@ -12,7 +12,7 @@
 
 main:
     mov ah, 0x01                        ; Print line
-    mov si, request_operator            ; Our prompt
+    mov si, prompt_op                   ; Our prompt
     int 0x7E
 
     mov ah, 0x04                        ; Get input (operator)
@@ -124,7 +124,7 @@ get_8:                                  ; Routine to get an 8-bit integer from u
     pusha                               ; Save register states to stack
 
     mov ah, 0x01                        ; Print line
-    mov si, request8                    ; Our prompt
+    mov si, prompt8                     ; Our prompt
     int 0x7E
 
     mov ah, 0x04                        ; Get input
