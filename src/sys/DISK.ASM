@@ -288,6 +288,7 @@ write_file:                                     ; Write file buffer to disk as f
 
     pop es                                      ; Restore our segment
     mov word [es:di+0x0E], ax                   ; Move the creation time into the correct field
+    mov word [es:di+0x16], ax                   ; Move this also into the write time field
 
     push es                                     ; Preserve segment
 
@@ -296,6 +297,8 @@ write_file:                                     ; Write file buffer to disk as f
 
     pop es                                      ; Restore segment
     mov word [es:di+0x10], ax                   ; Move the creation date into the correct field
+    mov word [es:di+0x12], ax                   ; Move this also into the access date field
+    mov word [es:di+0x18], ax                   ; As well as the write date field
 
     jmp .write_cluster                          ; Start writing data
 

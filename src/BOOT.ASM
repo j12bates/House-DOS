@@ -9,7 +9,7 @@
 ; BIOS Parameter Block
 ; This was made to match up with the BPB of a blank 32M image formatted as FAT16.
 
-OEM                 db "HDOSALPH"       ; OEM ID
+OEM                 db "HDOSNATE"       ; OEM ID
 bytes_sector        dw 0x0200           ; Number of bytes per sector (DO NOT CHANGE)
 sectors_cluster     db 0x04             ; Number of sectors per cluster
 reserved            dw 0x0001           ; Number of sectors reserved for bootsector
@@ -33,11 +33,11 @@ filesystem          db "FAT16   "       ; Volume filesystem type
 ; Main bootloader code
 
 main:
-    mov ax, 0x07C0                      ; Segment we're loaded at
-    mov ds, ax
-    add ax, 0x0020                      ; 32-paragraph bootloader
-    mov ss, ax
-    mov sp, 0x1000                      ; 4K stack
+    mov ax, 0x07C0
+    mov ds, ax                          ; Segment we're loaded at
+    mov ax, 0x0800
+    mov ss, ax                          ; Where we want the stack to be
+    mov sp, 0x8000                      ; Make the stack stretch up to the I/O buffer
 
     mov byte [drive_num], dl            ; Save boot drive number
 

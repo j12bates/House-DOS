@@ -1,0 +1,598 @@
+****************************** House-DOS System Call Documentation ******************************
+=================================================================================================
+
+This document contains information about all the system calls available in House-DOS/Assembly
+programming, as well as some general information about using these system calls.
+
+I. Writing Commands/Implementation
+
+House-DOS commands are written in real mode x86 assembly language. There is no need to worry
+about segmentation or preserving register states, as the kernel takes care of this.
+
+There are various system calls available to commands, and these are called by setting parameters
+in various registers, and calling on interrupt 0x7E. Here is an example of a system call to print
+out a string:
+
+    mov ah, 0x02
+    mov si, string_mem_location
+    int 0x7E
+
+In this example, the string (terminated with NULL char) pointed to by SI will be printed out, and
+the cursor will be moved one line down. The following sections contain details on all the system
+calls available.
+
+Out of the system calls listed, the ones marked with an asterisk (*) have not yet been
+implemented, but are planned.
+
+
+II. Basic Functions
+
+    HANDBACK
+        AH = 0xFF
+
+        Signals the end of the command. When this is used, command execution will stop and
+        House-DOS will prompt the user for a new command.
+
+    GET UNIX TIME
+        AH = 0xD0
+
+        Return:
+        DX:BX = UNIX timestamp
+
+        Returns the current UNIX timestamp.
+
+    SHUT DOWN SYSTEM
+        AH = 0xA2
+
+        Shuts down the system.
+
+    REBOOT SYSTEM
+        AH = 0xA3
+
+        Reboots the system.
+
+
+III. Object/Data Functions
+
+    AH = 0x80: STRING OPERATIONS
+
+*       COMPARE STRINGS
+            AL = 0x00
+            SI = String A Location
+            DI = String B Location
+
+            Return:
+            ZF = Set if equal
+
+            Compares two strings.
+
+*       CONVERT TO UPPERCASE
+            AL = 0x10
+            SI = String Location
+
+            Converts all characters in a string to uppercase.
+
+*       CONVERT TO LOWERCASE
+            AL = 0x11
+            SI = String Location
+
+            Converts all characters in a string to lowercase.
+
+
+    AH = 0x81: LIST OPERATIONS
+
+        GET ITEM
+            AL = 0x00
+            CX = Index of item
+            SI = List Location
+            DI = Output buffer
+
+            Return:
+            CF = Set on error
+
+            Retrieves a specific item from a comma-separated list.
+
+        GET TOTAL ITEMS
+            AL = 0x01
+            SI = List Location
+
+            Return:
+            CX = Number of items
+
+            Gets the number of items in a comma-separated list.
+
+
+IV. Logic Functions
+
+    CONVERT WORD TO HEX
+        AH = 0xF0
+        DX = Value to convert
+        DI = 4-byte output buffer
+
+        Converts the value in DX into ASCII hexadecimal notation, which is stored in the four-
+        byte output buffer.
+
+    CONVERT WORD TO UNSIGNED ASCII DECIMAL
+        AH = 0xF1
+        DX = Value to convert
+        DI = 5-byte output buffer
+
+        Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
+        five-byte output buffer.
+
+    CONVERT HEX TO WORD
+        AH = 0xF2
+        SI = 4-byte input buffer
+
+        Return:
+        DX = Binary value
+        CF = Set on error
+
+        Converts the ASCII hexadecimal number in the four-byte input buffer to a word-size binary
+        value in DX.
+
+    CONVERT ASCII DECIMAL TO WORD
+        AH = 0xF3
+        SI = 5-byte input buffer
+
+        Return:
+        DX = Binary value
+        CF = Set on error
+
+        Converts the ASCII decimal number in the five-byte input buffer to a word-size binary
+        value in DX.
+
+    CONVERT BYTE TO HEX
+        AH = 0xF4
+        DL = Value to convert
+        DI = 2-byte output buffer
+
+        Converts the value in DL into ASCII hexadecimal notation, which is stored in the two-
+        byte output buffer.
+
+    CONVERT BYTE TO UNSIGNED ASCII DECIMAL
+        AH = 0xF5
+        DL = Value to convert
+        DI = 3-byte output buffer
+
+        Converts the value in DL into ASCII decimal notation (unsigned), which is stored in the
+        three-byte output buffer.
+
+    CONVERT HEX TO BYTE
+        AH = 0xF6
+        SI = 2-byte input buffer
+
+        Return:
+        DL = Binary value
+        CF = Set on error
+
+        Converts the ASCII hexadecimal number in the two-byte input buffer to a byte-size binary
+        value in DX.
+
+    CONVERT ASCII DECIMAL TO BYTE
+        AH = 0xF7
+        SI = 3-byte input buffer
+
+        Return:
+        DL = Binary value
+        CF = Set on error
+
+        Converts the ASCII decimal number in the three-byte input buffer to a byte-size binary
+        value.
+
+    CONVERT UNIX TIME TO SECONDS/DAYS
+        AH = 0xD1
+        DX:BX = UNIX timestamp
+
+        Return:
+        DX = Number of days
+        CF:AX = Number of seconds
+
+        Returns the number of seconds since 00:00:00 and the number of days since 1970-01-01.
+
+    CONVERT UNIX TIME TO ASCII TIMESTAMP
+        AH = 0xD2
+        DX:BX = UNIX timestamp
+        DI = 8-byte output buffer
+
+        Stores the current time in HH:MM:SS form in the buffer pointed to by DI.
+
+    CONVERT UNIX TIME TO ASCII DATESTAMP
+        AH = 0xD3
+        DX:BX = UNIX timestamp
+        DI = 10-byte output buffer
+
+        Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
+
+
+V. Interface Functions
+
+    PRINT-STRING
+        AH = 0x01
+        SI = String location
+
+        Prints out the string in SI in teletype mode.
+
+    PRINT-STRING AND LINE-BREAK
+        AH = 0x02
+        SI = String location
+
+        Prints out the string in SI in teletype mode, and then moves the cursor to the next line.
+
+    REQUEST CONFIRMATION
+        AH = 0x03
+
+        Return:
+        CF = Set if confirmation denied, cleared if confirmation given.
+
+        Prompts the user to give confirmation before proceeding. The carry-flag will be set if
+        confirmation was not given.
+
+    GET KEYBOARD INPUT
+        AH = 0x04
+        DI = Buffer location
+        CX = Size of buffer
+
+        Return:
+        DI = Initial value + Number of chars input
+
+        Retrieves user input through the keyboard. Any input will be printed out in teletype
+        mode, and the input will be stored in the buffer pointed to by DI.
+
+    LINE-BREAK
+        AH = 0x05
+
+        Moves the cursor to the far left of the next line down.
+
+    CLEAR SCREEN
+        AH = 0x06
+
+        Clears the screen.
+
+    SHOW/HIDE CURSOR
+        AH = 0x07
+        CF = Cleared for show, set for hide
+
+        Shows or hides the cursor.
+
+    SET CURSOR POSITION
+        AH = 0x08
+        DH = Row number
+        DL = Col number
+
+        Moves the cursor to the specified position.
+
+    PAUSE FOR KEYPRESS
+        AH = 0x09
+
+        Pauses execution until a key is pressed.
+
+    SET ENTIRE SCREEN ATTRIBUTE
+        AH = 0x0A
+        BL = Attribute (Bits 0-3 = Foreground color, Bits 4-6 = Background color, Bit 7 = Blink)
+
+        Sets the foreground/background color of the entire screen.
+
+    PRINT STRING FORMATTED
+        AH = 0x0B
+        BL = Attribute
+
+        Prints a string in a specific color.
+
+    PRINT LINE FORMATTED
+        AH = 0x0C
+        BL = Attribute
+
+        Prints a string in a specific color, and then moves the cursor to the next line.
+
+    PRINT BYTES
+        AH = 0x10
+        SI = Source
+        CX = Number of characters
+
+        Prints out specified number of characters from source.
+
+    DRAW BLOCK
+        AH = 0x11
+        AL = Char ASCII code
+        BL = Color (Bit 0 = Blue, Bit 1 = Green, Bit 2 = Red, Bit 3 = Intensity)
+        CX = Block length
+        DH = Row number
+        DL = Col number
+
+        Draws a block of a specific length, color, and character starting at the specified spot.
+
+    GET CURRENT KEYBOARD CHARACTER
+        AH = 0x12
+
+        Return:
+        AH = Key scan code
+        AL = ASCII code
+        CF = Set if no key pressed, cleared if key is being pressed
+
+        Returns the scan code and ASCII code of the key being pressed on the keyboard.
+
+    INDENT CURSOR
+        AH = 0x13
+        DL = Col number
+
+        Moves the cursor to the specified col while keeping it in the same row.
+
+
+VI. Disk Functions
+
+    VERIFY FILE EXISTS
+        AH = 0x60
+        SI = X.3 filename
+
+        Return:
+        CF = Set if file does not exist, cleared if it does.
+
+        Verifies that a file with the given filename exists, and sets up for loading that file.
+
+    LOAD FILE
+        AH = 0x61
+
+        Return:
+        CF = Set on error
+
+        Clears the file buffer and loads the file that was just verified into it.
+
+    GET BYTES (INDEX-QUANTITY)
+        AH = 0x62
+        SI = Byte to start at
+        CX = Number of bytes
+        DI = Destination buffer
+
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
+        CF = Set on error.
+
+        Gets a certain quantity of bytes from the file buffer starting at the given index, and
+        stores that in the destination buffer.
+
+    GET BYTES (INDEX-INDEX)
+        AH = 0x63
+        SI = Byte to start at
+        CX = Byte to stop at (non-inclusive)
+        DI = Destination buffer
+
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
+        CF = Set on error.
+
+        Gets bytes from file buffer between the two indexes, and stores that in the destination
+        buffer.
+
+    GET LINE
+        AH = 0x64
+        CX = Line number
+        DI = Destination buffer
+
+        Return:
+        DI = Initial value + Number of bytes copied
+        CF = Set on error
+
+        Gets a certain line from the file buffer, and stores that in the destination buffer.
+
+    WRITE BYTES (INDEX-QUANTITY)
+        AH = 0x68
+        SI = Source buffer
+        CX = Number of bytes
+        DI = Byte to start writing at
+
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
+
+        WRITES a certain quantity of bytes from the source buffer into the file buffer at the
+        given index.
+
+    WRITE BYTES (INDEX-INDEX)
+        AH = 0x69
+        SI = Source buffer
+        CX = End of source buffer
+        DI = Byte to start writing at
+
+        Return:
+        SI = Initial value + Number of bytes copied
+        DI = Initial value + Number of bytes copied
+
+        WRITES bytes from the buffer between the two indexes into the file buffer at the given
+        index.
+
+    WRITE LINE
+        AH = 0x6A
+        SI = Source buffer
+        CX = Line number
+
+        Return:
+        CX = Bytes offset
+        CF = Set on error
+
+        WRITES a certain quantity of lines from the source buffer into the file buffer at the
+        given line number.
+
+    INSERT BYTES (INDEX-QUANTITY)
+        AH = 0x6B
+        SI = Source buffer
+        CX = Number of bytes
+        DI = Byte to start writing at
+
+        INSERTS a certain quantity of bytes from the source buffer into the file buffer at the
+        given index.
+
+    INSERT BYTES (INDEX-INDEX)
+        AH = 0x6C
+        SI = Source buffer
+        CX = End of source buffer
+        DI = Byte to start writing at
+
+        INSERTS bytes from the buffer between the two indexes into the file buffer at the given
+        index.
+
+    INSERT LINE
+        AH = 0x6D
+        SI = Source buffer
+        CX = Line number
+
+        Return:
+        CX = Bytes offset
+        CF = Set on error
+
+        INSERTS a line from the source buffer into the file buffer at the given line number.
+
+    CLEAR ENTIRE BUFFER
+        AH = 0x6E
+
+        Overwrites everything in the file buffer with zeroes.
+
+    WRITE TO DISK
+        AH = 0x6F
+        SI = X.3 filename
+        CX = File size
+
+        Return:
+        CF = Set on error
+
+        Write file with given filename to disk.
+
+    GET FILE SIZE
+        AH = 0x70
+
+        Return:
+        DX:AX = File size in bytes
+
+        Returns the size of the file last verified.
+
+    GET FILE CREATION DATE
+        AH = 0x71
+
+        Return:
+        DX:BX = UNIX timestamp of creation date
+
+        Returns the creation date/time of the file last verified in the form of a UNIX timestamp.
+
+    GET FILE ACCESS DATE
+        AH = 0x72
+
+        Return:
+        DX:BX = UNIX timestamp of access date
+
+        Returns the access date of the file last verified in the form of a UNIX timestamp.
+
+    GET FILE WRITE DATE
+        AH = 0x73
+
+        Return:
+        DX:BX = UNIX timestamp of write date
+
+        Returns the write date/time of the file last verified in the form of a UNIX timestamp.
+
+    CHECK FILE READ-ONLY
+        AH = 0x74
+
+        Return:
+        CF = Set if read-only
+
+        Sets the carry flag if the file last verified is read-only.
+
+    CHECK FILE HIDDEN
+        AH = 0x75
+
+        Return:
+        CF = Set if hidden
+
+        Sets the carry flag if the file last verified is hidden.
+
+    CHECK FILE SYSTEM
+        AH = 0x76
+
+        Return:
+        CF = Set if system file
+
+        Sets the carry flag if the file last verified is an important system file.
+
+    GET LIST OF FILES
+        AH = 0x77
+        DI = Output buffer
+
+        Returns a comma-separated list of files from the root directory.
+
+    RENAME FILE
+        AH = 0x78
+        SI = X.3 filename to rename to
+
+        Return:
+        CF = Set on error
+
+        Renames the verified file.
+
+    DELETE FILE
+        AH = 0x79
+
+        Return:
+        CF = Set on error
+
+        Deletes the verified file.
+
+    ROLLBACK FILESYSTEM
+        AH = 0x7E
+
+        Return:
+        CF = Set on error
+
+        Re-loads the FAT and directory from the disk into memory, thereby getting rid of all
+        filesystem changes since last apply.
+
+    APPLY FILESYSTEM CHANGES
+        AH = 0x7F
+
+        Return:
+        CF = Set on error
+
+        Writes the FAT and directory to the disk as they are in memory, thereby applying all
+        renames and deletions.
+
+
+VII. Miscellaneous Functions
+
+    GENERATE RANDOM NUMBER
+        AH = 0xA0
+
+        Return:
+        DX = Random number
+
+        Generates and returns a very poorly-generated pseudo-random number.
+
+    GENERATE RANDOM NUMBER SEED
+        AH = 0xA1
+
+        Generates a new random seed. (Is ineffective if used multiple times a second.)
+
+    SLEEP MILLISECONDS
+        AH = 0xC0
+        CX = Number of milliseconds
+
+        Halts execution for the specified number of milliseconds.
+
+    SLEEP FRAMES
+        AH = 0xC1
+        BX = Framerate/Frequency
+        CX = Number of frames
+
+        Halts instruction for the specified number of frames if a frame is 1/Frequency seconds
+        long.
+
+    PC SPEAKER TONE
+        AH = 0xC2
+        DX = Frequency (Hz)
+
+        Plays tone of specified frequency on the PC speaker.
+
+    MUTE PC SPEAKER
+        AH = 0xC3
+
+        Stops the PC speaker until a new tone is played.

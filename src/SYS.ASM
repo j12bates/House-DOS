@@ -17,7 +17,7 @@ start:                                          ; House-DOS code
     mov bx, 0x2000
     mov ds, bx                                  ; The segment in which we are
 
-    cmp ah, 0x00                                ; Have we just now been loaded?
+    cmp byte [init], 0x00                       ; Have we just now been loaded?
     jne main                                    ; If not, don't initialize again
 
 .init:                                          ; Startup code for House-DOS kernel
@@ -54,7 +54,7 @@ start:                                          ; House-DOS code
     mov byte [drive_num], al                    ; Save our boot drive number
 
     pop bx                                      ; Take this out of the stack for now
-    mov sp, 0x4000                              ; 16K ought to be enough for anyone
+    mov sp, 0x4000                              ; Make the stack stretch up to the file buffer (32K)
     push bx                                     ; Push this back
 
 .ivt:
@@ -86,17 +86,15 @@ start:                                          ; House-DOS code
     call println                                ; Print welcome message
 
     mov si, iface_info
-    call println                                ; Print info                
+    call println                                ; Print info
 
+    mov word [init], 0x01                       ; We've initialized
     xor bx, bx                                  ; Make sure that the zero-flag is set
 
 
 main:                                           ; Main code for House-DOS kernel
     mov bx, 0x2000
     mov es, bx                                  ; The segment in which we are loaded
-
-    mov bx, 0x1000
-    mov fs, bx                                  ; The segment in which files are loaded
 
     pop bx                                      ; Restore register state
 
@@ -105,10 +103,10 @@ main:                                           ; Main code for House-DOS kernel
     cmp ah, 0xFF                                ; Did the last command just finish?
     je .handback                                ; If so, prepare to get a command
 
-    jmp syscall_handler                         ; OTHERWISE, a system function was called
+    jmp syscall_handler                         ; Otherwise, a system function was called
 
 .handback:
-    mov sp, 0x4000                              ; Reset stack pointer
+    mov sp, 0x3FFE                              ; Reset stack pointer (we're going to pop something in a bit)
 
     clc                                         ; Show cursor
     call display_cursor                         ; Make sure cursor is visible
@@ -120,8 +118,7 @@ main:                                           ; Main code for House-DOS kernel
 
 
 command:                                        ; Main loop: Retrieve command from user
-    popf                                        ; Get this out of the stack
-
+    popf                                        ; Get this out of the stack...
     call setup_segments                         ; We're going to be using and writing to kernel variables
 
     call line_break                             ; Line break
@@ -200,7 +197,7 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 handback_manual:                                ; Routine to manually perform handback
-    mov ah, 0x00                                ; Handback
+    mov ah, 0xFF                                ; Handback
     int 0x7E
 
 
@@ -507,7 +504,7 @@ syscall_handler:                                ; System call handler
 
 .default:
     stc                                         ; Carry flag for error
-    jmp int_ret                                 ; If invalid function number, we're done!
+    jmp int_ret.preserve_flags                  ; If invalid function number, we're done!
 
 
 ; ========================================================================
@@ -518,9 +515,7 @@ iface_routines:                                 ; Interface functions
 
 .print:
     call data_binseg                            ; We want to access data from the command
-
     call print_str                              ; Print String
-
     jmp int_ret                                 ; We're done!
 
 .println:
@@ -533,7 +528,6 @@ iface_routines:                                 ; Interface functions
 
 .confirm:
     call confirm                                ; Ask for confirmation
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .input:
@@ -546,41 +540,32 @@ iface_routines:                                 ; Interface functions
 
 .line:
     call line_break                             ; Line break
-
     jmp int_ret                                 ; We're done!
 
 .clear:
     call clear                                  ; Clear screen
-
     jmp int_ret                                 ; We're done!
 
 .cursor:
     popf                                        ; We'll need the flags
-
     call display_cursor                         ; Show/hide cursor
-
     jmp int_ret.flags_used                      ; We're done!
 
 .cursor_position:
     call move_cursor                            ; Set cursor position
-
     jmp int_ret                                 ; We're done!
 
 .pause_keypress:
     call pause_keypress                         ; Pause for keypress
-
     jmp int_ret                                 ; We're done!
 
 .screen:
     call screen_attribute                       ; Set attribute for entire screen
-
     jmp int_ret                                 ; We're done!
 
 .printf:
     call data_binseg                            ; We want to access data from the command
-
     call printf                                 ; Print with formatting
-
     jmp int_ret                                 ; We're done!
 
 .printlnf:
@@ -593,24 +578,19 @@ iface_routines:                                 ; Interface functions
 
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
-
     call print_bytes                            ; Print bytes
-
     jmp int_ret                                 ; We're done!
 
 .block:
     call block                                  ; Draw block
-
     jmp int_ret                                 ; We're done!
 
 .key_nonblocking:
     call get_key_nonblocking                    ; Get key
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .indent:
     call indent                                 ; Indent cursor
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -626,9 +606,7 @@ data_routines:                                  ; Data functions
 
 .list_total:
     call data_binseg                            ; We want to access data from the command
-
     call get_total_list                         ; Get total number of list items
-
     jmp int_ret                                 ; We're done!
 
 
@@ -636,32 +614,26 @@ general_routines:                               ; General functions
 
 .random:
     call random                                 ; Generate random number
-
     jmp int_ret                                 ; We're done!
 
 .random_seed:
     call random_seed                            ; Generate random number seed
-
     jmp int_ret                                 ; We're done!
 
 .shutdown:
     call shutdown                               ; BIOS shutdown
-
     jmp int_ret                                 ; We're done!
 
 .reboot:
     call reboot                                 ; Reboot
-
     jmp int_ret                                 ; We're done!
 
 .sleep_milli:
     call sleep                                  ; Sleep
-
     jmp int_ret                                 ; We're done!
 
 .sleep_hertz:
     call sleep_freq                             ; Sleep a certain number of frames at a certain frequency
-
     jmp int_ret                                 ; We're done!
 
 .speaker:
@@ -674,7 +646,6 @@ general_routines:                               ; General functions
 
 .speaker_off:
     call speaker_off                            ; Turn off PC speaker
-
     jmp int_ret                                 ; We're done!
 
 .unix:
@@ -980,23 +951,19 @@ disk_routines:                                  ; Disk functions
 
 .read_only:
     call is_read_only                           ; Check if file is read-only
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .hidden:
     call is_hidden                              ; Check if file is hidden
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .system:
     call is_system                              ; Check if file is a system file
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .list:
     call extra_binseg                           ; We want to give data to the command
     call list_files                             ; Get file list
-
     jmp int_ret                                 ; We're done!
 
 .rename:
@@ -1011,17 +978,14 @@ disk_routines:                                  ; Disk functions
 
 .delete:
     call delete                                 ; Delete
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .rollback:
     call prompt_rollback                        ; Rollback filesystem
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .apply:
     call prompt_apply                           ; Apply filesystem changes
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1146,8 +1110,10 @@ input_buffer        dq 0x0000000000000000
 register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
+init                db 0x00
+
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1 NATE, Build 21; Compiled 2020-10-15", 0x00
+iface_welcome       db "House-DOS v0.0.1 NATE, Build 22; Compiled 2020-10-19", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

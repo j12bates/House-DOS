@@ -10,6 +10,10 @@
 ; MEMORY SUBROUTINES
 ; ========================================================================
 
+; CLEAR FILE BUFFER: Overwrites everything in the file buffer with zeroes
+; IN: None
+; OUT: None (segments)
+
 clear_file_buffer:                              ; Clear the file buffer (0x10000-0x1FFFF)
     pusha                                       ; Save register states to stack
 
@@ -25,6 +29,10 @@ clear_file_buffer:                              ; Clear the file buffer (0x10000
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; LOAD AS BINARY: Moves everything in the file segment to the binary segment for execution
+; IN: None
+; OUT: None (segments)
 
 move_file_bin:                                  ; Load the file buffer as a binary
     pusha                                       ; Save register states to stack
@@ -309,6 +317,10 @@ shift:                                          ; Shift everything from one poin
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; ========================================================================
+; SEGMENTATION SUBROUTINES
+; ========================================================================
 
 data_fileseg:                                   ; Sets the data segment to the file buffer segment
     push ax                                     ; Save register state to stack
