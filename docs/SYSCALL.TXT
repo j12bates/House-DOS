@@ -27,15 +27,6 @@ implemented, but are planned.
 
 II. Basic Functions
 
-    NEVER USE - RE-INITIALIZE
-        AH = 0x00
-
-        Completely re-initializes House-DOS, including re-loading constants from the bootsector,
-        resetting the stack, re-configuring the interrupt vector should anything have happened
-        to it, clearing the screen, and displaying the welcome message. Filesystem changes should
-        remain intact. However, for whatever reason, everything seems to fail. PLEASE NEVER USE.
-        This will be fixed soon.
-
     HANDBACK
         AH = 0xFF
 

@@ -11,80 +11,84 @@
 ; ========================================================================
 
 main:
-    mov AH, 0x01             ;declaring print line
-    mov SI, request_operator ;setting the output
-    int 0x7e
+    mov ah, 0x01                        ; Print line
+    mov si, prompt_op                   ; Our prompt
+    int 0x7E
 
-    mov AH, 0x04            ;declaring get input
-    mov DI, input_buffer3   ;locaiton of the input buffer
-    mov CX, 1               ;limit 5 bytes
-    int 0x7e
+    mov ah, 0x04                        ; Get input (operator)
+    mov di, operator                    ; Output buffer
+    mov cx, 0x0001                      ; 1-byte operator
+    int 0x7E
 
-    mov AL, byte [input_buffer3] ;putting the operator into a register
+    mov al, byte [operator]             ; Store operator here for now
 
-    cmp AL, 0x2b                ; checking if +
-    je .add                     ;goto add
-    cmp AL, 0x2d                ; checking if -
-    je .sub                     ; goto sub
-    cmp AL, 0x2a                ; checking if -
-    je .mult                    ; goto sub
-    cmp AL, 0x2f                ; checking if -
-    je .div                     ; goto sub
+    cmp al, 0x2B                        ; Is it a plus?
+    je .add                             ; If so, add
 
-    mov AH, 0x02                ;declaring print line
-    mov SI, error               ;setting the output
-    int 0x7e
-    jmp main
+    cmp al, 0x2D                        ; Is it a hyphen?
+    je .sub                             ; If so, subtract
 
+    cmp al, 0x2A                        ; Is it an asterisk?
+    je .mul                             ; If so, multiply
+
+    cmp al, 0x2F                        ; Is it a forward-slash?
+    je .div                             ; If so, divide
+
+    mov ah, 0x02                        ; If none of the above, print line
+    mov si, error                       ; Our error message
+    int 0x7E
+
+    jmp main                            ; And try again
 
 .add:
-    call request16bit
-    mov CX, DX
-    call request16bit
+    call get_16                         ; Get a 16-bit integer
+    mov cx, dx
+    call get_16                         ; Get another
 
-    add DX, CX              ;adding the numbers
-    jmp .print              ;jump to print
+    add dx, cx                          ; Add them together
+    jmp .print                          ; We have our result
 
 .sub:
-    call request16bit
-    mov CX, DX
-    call request16bit
+    call get_16                         ; Get a 16-bit integer
+    mov cx, dx
+    call get_16                         ; Get another
 
-    sub CX, DX              ;subtracting the numbers
-    mov DX, CX  
-    jmp .print              ;jump to print
+    sub cx, dx                          ; Subtract the latter from the former
+    mov dx, cx                          ; Store in the correct register
 
-.mult:
-    call request8bit
-    mov CL, DL
-    call request8bit
+    jmp .print                          ; We have our result
 
-    mov AL, DL          ; moving one of the factors into AX
-    mul CL              ;subtracting the numbers
-    mov DX, AX          ;moving the product into DX
-    jmp .print              ;jump to print
+.mul:
+    call get_8                          ; Get an 8-bit integer
+    mov al, dl                          ; AL should contain the multiplicand
+    call get_8                          ; Get another
+
+    mul dl                              ; Multiply
+    mov dx, ax                          ; Store in the correct register
+
+    jmp .print                          ; We have our result
 
 .div:
-    call request16bit
-    mov AX, DX
-    call request16bit
-    mov BX, DX
+    call get_16                         ; Get a 16-bit integer
+    mov ax, dx                          ; AX should contain the dividend
+    call get_16                         ; Get another
+    mov bx, dx                          ; Store divisor here
 
-    mov DX, 0x0000
-    div BX              ;subtracting the numbers
-    mov DX, AX          ;moving the product into DX
+    mov dx, 0x0000                      ; Upper word of dividend is zero
+    div bx                              ; Divide
+    mov dx, ax                          ; Store in correct register; we have our result
 
 .print:
-    mov AH, 0xF1            ;declaring binary to unsigned decimal
-    mov DI, input_buffer1   ;output to input_buffer1
-    int 0x7e        
+    mov ah, 0xF1                        ; Convert binary to unsigned decimal
+    mov di, dec_buffer                  ; Our output buffer
+    int 0x7E
 
-    mov AH, 0x10            ;declaring print bytes
-    mov SI, input_buffer1   ;setting the output
-    mov CX, 5               ;setting number of bytes
-    int 0x7e
+    mov ah, 0x10                        ; Print bytes
+    mov si, dec_buffer                  ; Our input buffer
+    mov cx, 0x0005                      ; Up to 5 digits in a 16-bit integer
+    int 0x7E
 
-    mov ah, 0x05            ; Line break
+    mov ah, 0x05                        ; Line break
     int 0x7E
 
 .done:
@@ -92,58 +96,65 @@ main:
     int 0x7E
 
 
+get_16:                                 ; Routine to get a 16-bit integer from user input
+    pusha                               ; Save register states to stack
 
-request16bit:
-    pusha                   ; Save register states to stack
+    mov ah, 0x01                        ; Print line
+    mov si, prompt16                    ; Our prompt
+    int 0x7E
 
-    mov AH, 0x01             ;declaring print line
-    mov SI, request16 ;setting the output
-    int 0x7e
+    mov ah, 0x04                        ; Get input
+    mov di, dec_buffer                  ; Our output buffer
+    mov cx, 0x0005                      ; Up to 5 digits in a 16-bit integer
+    int 0x7E
 
-    mov AH, 0x04            ;declaring get input
-    mov DI, input_buffer1
-    mov CX, 5               ;limit 5 bytes
-    int 0x7e
+    mov ah, 0xF3                        ; Convert ASCII decimal to word
+    mov si, dec_buffer                  ; Our input buffer
+    int 0x7E
 
-    mov AH, 0xf3            ;declaring convert ascii number binary
-    mov SI, input_buffer1    ;declaring the ascii number
-    int 0x7e
+    mov word [output_bckp], dx          ; Preserve our output
 
-    mov word [output_bckp], dx
-    popa
-    mov dx, word [output_bckp]
-    ret
+    popa                                ; Restore register states
+    mov dx, word [output_bckp]          ; Restore our output
+
+    ret                                 ; Return to caller
 
 
-request8bit:
-    pusha
+get_8:                                  ; Routine to get an 8-bit integer from user input
+    pusha                               ; Save register states to stack
 
-    mov AH, 0x01             ;declaring print line
-    mov SI, request8 ;setting the output
-    int 0x7e
+    mov ah, 0x01                        ; Print line
+    mov si, prompt8                     ; Our prompt
+    int 0x7E
 
-    mov AH, 0x04            ;declaring get input
-    mov DI, input_buffer1
-    mov CX, 3               ;limit 5 bytes
-    int 0x7e
+    mov ah, 0x04                        ; Get input
+    mov di, dec_buffer                  ; Our output buffer
+    mov cx, 0x0003                      ; Up to 3-digits in an 8-bit integer
+    int 0x7E
 
-    mov AH, 0xf7            ;declaring convert ascii number binary
-    mov SI, input_buffer1    ;declaring the ascii number
-    int 0x7e
+    mov ah, 0xF7                        ; Convert ASCII decimal to word
+    mov si, dec_buffer                  ; Our input buffer
+    int 0x7E
 
-    mov byte [output_bckp], dl
-    popa
-    mov dl, byte [output_bckp]
+    mov byte [output_bckp], dl          ; Preserve our output
 
-    ret
+    popa                                ; Restore register states
+    mov dl, byte [output_bckp]          ; Restore our output
+
+    ret                                 ; Return to caller
 
 
 data:
-request16        db "Input Number < 65,536: ", 0x00
-request8         db "Input Number < 256: ", 0x00
-error            db "Error", 0x00
-request_operator db "Input Operator (+, -, *, /): ", 0x00
-input_buffer1    dd 0x00000000 
-                 db 0x00
-input_buffer3    db 0x00
-output_bckp      dw 0x0000
+
+prompt_op       db "Input Operator (+, -, *, /): ", 0x00
+
+prompt16        db "Input Number < 65,536: ", 0x00
+prompt8         db "Input Number < 256: ", 0x00
+
+error           db "Error", 0x00
+
+dec_buffer      dd 0x00000000
+                db 0x00
+operator        db 0x00
+
+output_bckp     dw 0x0000

@@ -10,7 +10,11 @@
 ; INPUT SUBROUTINES
 ; ========================================================================
 
-input:                                          ; Get input from user, store in paragraph ES:DI
+; GET KEYBOARD INPUT: Get user input from the keyboard, and store in the buffer provided
+; IN: CX = Buffer size, ES:DI = Location of buffer
+; OUT: DI = Initial value + number of characters input
+
+input:                                          ; Get input from user, store in ES:DI
     pusha                                       ; Push register states to stack
 
     call data_kernseg                           ; We will be using kernel variables
@@ -101,13 +105,11 @@ input:                                          ; Get input from user, store in 
     cmp byte [es:di], 0x00                      ; Is this char a null char?
     je .key                                     ; If so, there's nowhere to move
 
-    mov ah, 0x03                                ; Otherwise, get cursor position
+    mov ah, 0x08                                ; Get character at cursor position
+    mov bh, 0x00                                ; Page 0
     int 0x10                                    ; BIOS VGA interrupt
 
-    inc dl                                      ; Advance by one col
-    mov ah, 0x02                                ; Set cursor position
-    int 0x10                                    ; BIOS VGA interrupt
-
+    call teletype_output                        ; Print the character and advance cursor
     inc di                                      ; Advance the pointer
 
     jmp .key                                    ; Get more input
@@ -132,9 +134,12 @@ input:                                          ; Get input from user, store in 
     ret                                         ; Return to caller
 
 
+; ASK FOR CONFIRMATION: Ask the user to press the Y key to confirm and returns the result
+; IN: None
+; OUT: CF = Set if confirmation not given
+
 confirm:                                        ; Ask the user to confirm
     pusha                                       ; Push register states to stack
-    clc                                         ; No error yet
 
     mov si, iface_confirm
     call print_str                              ; Print message
@@ -146,17 +151,16 @@ confirm:                                        ; Ask the user to confirm
     mov bh, 0x00
     int 0x10                                    ; Display the char we typed
 
+    call line_break                             ; Line break
+
     and al, 0b11011111                          ; Capitalize
     cmp al, 0x59                                ; Was Y pressed?
-    je .end                                     ; If so, return to caller without error
+    stc                                         ; By default, confirmation wasn't given
+    jne .end                                    ; If it wasn't, return to caller
 
-    stc                                         ; Otherwise, error
+    clc                                         ; Otherwise, confirmation given
 
 .end:
-    pushf                                       ; Push flags to stack
-    call line_break                             ; Line break
-    popf                                        ; Restore flags
-
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -194,6 +198,9 @@ teletype_output:                                ; Write character in teletype mo
     cmp al, 0x08                                ; Is this a backspace?
     je .backspace                               ; If so, do a backspace
 
+    cmp al, 0x0A                                ; Is this a newline character?
+    je .newline                                 ; If so, do a newline
+
     cmp dx, 0x184F                              ; Are we in the bottom-right corner?
     je .scroll                                  ; If so, scroll everything up
 
@@ -216,6 +223,10 @@ teletype_output:                                ; Write character in teletype mo
     mov dl, 0x4F                                ; Rightmost col
     call move_cursor                            ; Move the cursor
 
+    jmp .done                                   ; We're done!
+
+.newline:
+    call line_break                             ; Do a line break
     jmp .done                                   ; We're done!
 
 .scroll:
@@ -249,6 +260,7 @@ print_str:                                      ; Prints string in DS:SI
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
 
 ; PRINT STRING WITH FORMATTING: Prints out a string in a specific color
 ; IN: DS:SI = Location of string to print, BL = Attribute
@@ -338,6 +350,10 @@ prompt:                                         ; Set up a prompt for the user
     ret                                         ; Return to caller
 
 
+; PRINT BYTES: Prints the specified number of bytes in teletype mode
+; IN: CX = Number of bytes to print, DS:SI = Input buffer
+; OUT: None
+
 print_bytes:                                    ; Prints number of bytes (CX) starting at DS:SI
     pusha                                       ; Push register states to stack
 
@@ -346,22 +362,19 @@ print_bytes:                                    ; Prints number of bytes (CX) st
 .char:
     lodsb                                       ; Load char and increment pointer
 
-    cmp al, 0x0A                                ; Is it a UNIX newline char?
-    je .newline
-
     call teletype_output                        ; Write character
     loop .char                                  ; Repeat
 
     jmp .done                                   ; If we've done all the characters, we're done!
 
-.newline:
-    call line_break                             ; Do a line break
-    loop .char                                  ; Next char
-
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; CHANGE CURSOR VISIBILITY: Sets the cursor to either visible or invisible
+; IN: CF = Set to hide, cleared to show
+; OUT: None
 
 display_cursor:                                 ; Display cursor if CF flag is cleared; otherwise, hide it
     pusha                                       ; Save register states to stack
@@ -380,6 +393,10 @@ display_cursor:                                 ; Display cursor if CF flag is c
     ret                                         ; Return to caller
 
 
+; MOVE CURSOR: Moves the cursor to the specified position
+; IN: DH = Row number (0-24), DL = Col number (0-79)
+; OUT: None
+
 move_cursor:                                    ; Move cursor to DH, DL
     pusha                                       ; Save register states to stack
 
@@ -397,6 +414,10 @@ move_cursor:                                    ; Move cursor to DH, DL
     popa                                        ; Restore register states
     ret                                         ; Return to caller    
 
+
+; INDENT CURSOR: Moves the cursor to the specified col
+; IN: DL = Col number (0-79)
+; OUT: None
 
 indent:                                         ; Move cursor to the col in DL
     pusha                                       ; Save register states to stack
@@ -419,6 +440,10 @@ indent:                                         ; Move cursor to the col in DL
     ret                                         ; Return to caller
 
 
+; PRINT LINE: Print string in teletype mode, then line break
+; IN: DS:SI = Input buffer
+; OUT: None
+
 println:                                        ; Prints String in DS:SI, then does a line break
     pusha                                       ; Save register states to stack
 
@@ -428,6 +453,9 @@ println:                                        ; Prints String in DS:SI, then d
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; DRAW CHARACTER BLOCK: Draws a block of specific length, character, and color at the specified position
+; IN: CX = Length, AL = Character, BL = Color, DH = Row number (0-24), DL = Col number (0-79)
 
 block:                                          ; Draws a block of char AL size CX color BL bits 3-0 at DH, DL
     pusha                                       ; Save register states to stack
@@ -512,6 +540,10 @@ screen_attribute:                               ; Set the attribute of all chara
     ret                                         ; Return to caller
 
 
+; GET KEY BEING PRESSED: Returns the scan code and ASCII code of whatever key is being pressed
+; IN: None
+; OUT: AH = Scan code, AL = ASCII code, CF = Set if no key
+
 get_key_nonblocking:                            ; Returns scan code/ASCII of key pressed in AX, CF set if no key
     pusha                                       ; Save register states to stack
 
@@ -538,6 +570,10 @@ get_key_nonblocking:                            ; Returns scan code/ASCII of key
     ret                                         ; Return to caller
 
 
+; PAUSE UNTIL KEY PRESSED: Pauses everything and prompts the user to press a key
+; IN: None
+; OUT: None
+
 pause_keypress:                                 ; Pause until the user presses a key
     pusha                                       ; Save register states to stack
 
@@ -552,6 +588,10 @@ pause_keypress:                                 ; Pause until the user presses a
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; DONE MESSAGE: Prints the DONE message, then does a line break
+; IN: None
+; OUT: None (segments)
 
 done:                                           ; Prints the DONE message, then does a line break
     pusha                                       ; Save register states to stack

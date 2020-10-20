@@ -1,0 +1,83 @@
+******************************** House-DOS Kernel Documentation *********************************
+=================================================================================================
+
+This document contains information about the House-DOS kernel and how it functions.
+
+I. Basic Info
+
+The House-DOS kernel contains a bunch of routines for doing a variety of different tasks, and
+also acts as a handler for system calls made by programs. It is responsible for loading programs,
+getting input from the user, and working with devices. It is loaded as the file SYS.BIN, and is
+assembled from the file src/SYS.ASM and all the subsystems located in src/sys/.
+
+MEMORY MAP
+
+0x08000 - 0x0BFFF:  STACK
+0x10000 - 0x1FFFF:  FILE BUFFER
+                    The file buffer is where all files are loaded from the disk and edited.
+0x20000 - 0x2FFFF:  KERNEL
+                    This is the area in memory where the kernel is stored and is the spot where
+                    system calls will redirect to.
+0x30000 - 0x3FFFF:  FILESYSTEM
+                    This is where portions of the filesystem (FAT, directories) are loaded and
+                    referenced. This gets written to the disk whenever filesystem changes are
+                    applied.
+0x40000 - 0x4FFFF:  EXECUTION
+                    This is where binaries are loaded to be executed.
+
+
+II. Initialization
+
+Here is a list of steps the House-DOS kernel performs after it has been loaded by the bootloader:
+
+    1.  Set up segmentation
+    2.  Copy info from the BPB to the kernel
+    3.  Reset the stack
+    4.  Set up the system call interrupt
+    5.  Set up other hardware interrupt vectors
+    6.  Configure video mode and print message
+
+
+III. Main Loop
+
+After initialization, House-DOS effectively loops through getting a command and loading the
+binary for that command. Here is this loop in more detail:
+
+    1.  Line break and print out prompt
+    2.  Get keyboard input
+    3.  Format filename correctly
+    4.  Load binary into file segment
+    5.  Copy into execution segment
+    6.  Jump to execution segment
+
+
+IV. System Calls
+
+Whenever interrupt 0x7E is called, House-DOS runs the specified system call and returns output,
+if appropriate. This is what happens:
+
+    1.  Flags are preserved
+    2.  If AH is 0xFF, perform a handback (reset stack and jump to main loop)
+    3.  Otherwise, enter system call handler
+    4.  Jump to correct system call routine
+    5.  Other kernel routines are called on
+    6.  Jump to interrupt return routine (if flags were used for the system call, the POPF is
+        skipped; if flags should be returned, a different routine is used)
+    7.  Segmentation is set up and interrupt return
+
+
+V. The File Buffer
+
+The file is the region in memory where files are loaded and the source buffer for whenever a file
+is written. It takes up all the memory accessible through segment 0x1000, meaning it is 64K in
+size. In this future, this will be used as a general purpose I/O buffer for commands.
+
+
+VI. The Filesystem Segment
+
+The bootloader loads the entire FAT of the 32M disk into the space in memory between
+0x3000:0x0000 and 0x3800:0x0000. It also loads the root directory into the space in memory
+immediately following that (0x3800:0x0000 - 0x3C00:0x0000). In the future, the area used for the
+FAT will be shortened and the kernel will keep record of what area of the FAT is loaded, in order
+to support disks of other sizes. In addition, the additional space will be used for loading /USR,
+/HOME, and /DEV directories, as well as for allowing for CD'ing between subdirectories.
