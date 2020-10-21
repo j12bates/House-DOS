@@ -88,7 +88,7 @@ start:                                          ; House-DOS code
     mov si, iface_info
     call println                                ; Print info
 
-    mov word [init], 0x01                       ; We've initialized
+    mov byte [init], 0x01                       ; We've initialized
     xor bx, bx                                  ; Make sure that the zero-flag is set
 
 
@@ -125,7 +125,7 @@ command:                                        ; Main loop: Retrieve command fr
     call prompt                                 ; Setup prompt
 
     mov di, input_buffer                        ; Our input buffer
-    mov cx, 0x0008                              ; Commands are just filenames, which are up to 8 bytes
+    mov cx, 0x0020                              ; 32-byte limit
 
     call input                                  ; Get input from user
     call line_break                             ; Line break
@@ -139,11 +139,11 @@ command:                                        ; Main loop: Retrieve command fr
 .char_filename:
     lodsb                                       ; Load next char and advance
 
-    cmp al, 0x00                                ; Is this a NULL char?
+    cmp al, 0x00                                ; Is this the end of the input?
     je .spaces                                  ; If so, that's the end of the filename
 
     cmp al, 0x20                                ; Is this a SPACE?
-    je .params                                  ; If so, that's also the end of the filename
+    je .spaces                                  ; If so, that's also the end of the filename
 
     call capitalize_char                        ; Otherwise, capitalize this character
 
@@ -152,22 +152,53 @@ command:                                        ; Main loop: Retrieve command fr
 
     jmp .bad_command                            ; There should have been a null/space by now
 
-.params:
-    push cx                                     ; Save the loop counter
-    pop cx                                      ; Restore the loop counter
-
 .spaces:
-    mov byte [di], 0x20                         ; Move a space into the next position
-    inc di                                      ; Move pointer forward
-    loop .spaces                                ; Repeat
+    mov al, 0x20                                ; Write spaces
+    rep stosb                                   ; Pad remainder of 8-byte filename
 
 .extension:
+    push si                                     ; Preserve pointer
+
     mov si, bin_extension                       ; The extension for a Binary file
     mov di, filename_extension                  ; The extension of the filename
     mov cx, 0x0003                              ; Extension is 3 chars
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Move into our file extension
+
+    pop si                                      ; Restore pointer
+
+.params:
+    mov al, 0x00                                ; Write null characters
+    mov di, params                              ; Write into our parameter list
+    mov cx, 0x20                                ; Parameter list is 32 bytes
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Clear parameter list
+
+    mov di, params                              ; Now, write into our parameter list
+    mov cx, si                                  ; Counter is the pointer value
+    sub cx, input_buffer_end                    ; Relative to the end of the buffer
+    neg cx                                      ; Negate to get the number of bytes until the end
+
+.param_char:
+    lodsb                                       ; Load next byte from command
+
+    cmp al, 0x00                                ; Is this the end of the input?
+    je .load_file                               ; If so, no more parameters
+
+    cmp al, 0x20                                ; Is it a space?
+    je .next_param                              ; If so, that's one parameter
+
+    stosb                                       ; Otherwise, store byte in list
+    loop .param_char                            ; And repeat
+
+    jmp .load_file                              ; If we're done, proceed to load file
+
+.next_param:
+    mov al, 0x2C                                ; Comma (items are separated by commas)
+    stosb                                       ; Write byte
+    loop .param_char                            ; And repeat
 
 .load_file:
     call verify                                 ; Verify the file exists
@@ -356,6 +387,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x13
     je iface_routines.indent                    ; Indent cursor
+
+    cmp ah, 0x20
+    je iface_routines.parameter                 ; Get parameter
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -591,6 +625,25 @@ iface_routines:                                 ; Interface functions
 
 .indent:
     call indent                                 ; Indent cursor
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.parameter:
+    push si                                     ; Preserve this value
+
+    call extra_binseg                           ; Give data to the command
+    mov si, params                              ; Our list of parameters
+    call get_item_list                          ; Get parameter from list
+
+    pop si                                      ; Restore this value
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.total_params:
+    push si                                     ; Preserve this value
+
+    mov si, params                              ; Our list of parameters
+    call get_total_list                         ; Get total number of parameters from list
+
+    pop si                                      ; Restore this value
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1105,6 +1158,15 @@ data:
 
 ; Storage data region
 input_buffer        dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+input_buffer_end    db 0x00
+
+params              dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
                     db 0x00
 
 register_bckp_a     dw 0x0000
@@ -1113,7 +1175,7 @@ register_bckp_b     dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.1 NATE, Build 22; Compiled 2020-10-19", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 23; Compiled 2020-10-19", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

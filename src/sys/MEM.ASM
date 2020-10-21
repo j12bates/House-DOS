@@ -58,6 +58,9 @@ move_file_bin:                                  ; Load the file buffer as a bina
 get_item_list:                                  ; Get a specific item from a comma-separated list
     pusha                                       ; Save register states to stack
 
+    cmp byte [ds:si], 0x00                      ; Does the list end at the very beginning?
+    je .error_index                             ; If so, there are no list items
+
     jcxz .retrieve                              ; If we've made it to the correct index, load the item
     cld                                         ; Ensure correct direction
 
@@ -112,7 +115,11 @@ get_item_list:                                  ; Get a specific item from a com
 get_total_list:                                 ; Get the total number of list items
     pusha                                       ; Save register states to stack
 
-    mov cx, 0x0001                              ; Start our counter at one
+    mov cx, 0x0000                              ; Start our counter at zero
+    cmp byte [ds:si], 0x00                      ; Does the list end right as it begins?
+    je .done                                    ; If so, end here
+
+    inc cx                                      ; Otherwise, there's at lease one item
     cld                                         ; Ensure correct direction
 
 .find_comma:
