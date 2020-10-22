@@ -11,6 +11,13 @@
 ; ========================================================================
 
 main:
+    mov ah, 0x20                        ; Get parameter
+    mov cx, 0x0000                      ; Parameter 0
+    mov di, fname                       ; The name of our filename to delete
+    int 0x7E
+
+    jnc .verify                         ; If no error, proceed
+
     mov ah, 0x01                        ; Print String
     mov si, prompt                      ; Our prompt
     int 0x7E
@@ -20,6 +27,7 @@ main:
     mov cx, 0x000C                      ; Up to 12 chars
     int 0x7E
 
+.verify:
     mov ah, 0x60                        ; Verify file
     mov si, fname                       ; Filename
     int 0x7E

@@ -2,7 +2,6 @@
 A real-mode x86 Disk Operating System that is, and forever will be, mostly useless. I endorse use of this operating system, but before installing it on bare metal, I would recommend backing all your files up, unplugging your hard drives, and plugging in a new one.
 
 ## Instructions for Use:
-You will need the Netwide Assembler (NASM).
 1. Create a disk image by running `BUILD.SH` as root.
 2. Virtualize as an HDD in QEMU, or write to a storage medium greater than 32M and boot to it.
 
