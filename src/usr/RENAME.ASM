@@ -11,6 +11,13 @@
 ; ========================================================================
 
 main:
+    mov ah, 0x20                        ; Get parameter
+    mov cx, 0x0000                      ; Parameter 0
+    mov di, fname                       ; The name of our file to copy
+    int 0x7E
+
+    jnc .verify                         ; If we got the parameter, proceed
+
     mov ah, 0x01                        ; Print String
     mov si, source                      ; Our prompt
     int 0x7E
@@ -20,11 +27,20 @@ main:
     mov cx, 0x000C                      ; Up to 12 chars
     int 0x7E
 
+.verify:
     mov ah, 0x60                        ; Verify file
     mov si, fname                       ; Filename
     int 0x7E
 
     jc .done                            ; If failed, we're done
+
+.destination:
+    mov ah, 0x20                        ; Get parameter
+    mov cx, 0x0001                      ; Parameter 1
+    mov di, fname                       ; Our destination filename
+    int 0x7E
+
+    jnc .rename                         ; If we got the parameter, proceed
 
     mov ah, 0x01                        ; Print String
     mov si, prompt                      ; Our prompt
@@ -35,6 +51,7 @@ main:
     mov cx, 0x000C                      ; Up to 12 chars
     int 0x7E
 
+.rename:
     mov ah, 0x78                        ; Rename file
     mov si, fname                       ; Filename
     int 0x7E

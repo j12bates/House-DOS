@@ -67,6 +67,14 @@ main:
 
     jc .done                            ; If not given, we're done
 
+.name:
+    mov ah, 0x20                        ; Get parameter
+    mov cx, 0x0000                      ; Parameter 0
+    mov di, fname                       ; This parameter should be our filename
+    int 0x7E
+
+    jnc .write                          ; If no error, proceed
+
     mov ah, 0x01                        ; Print string
     mov si, prompt                      ; Our message
     int 0x7E
@@ -76,6 +84,7 @@ main:
     mov cx, 0x000C                      ; 12 bytes max in an X.3 filename with dot
     int 0x7E
 
+.write:
     mov ah, 0x6F                        ; Write file to disk
     mov si, fname                       ; Our filename
     mov cx, word [buffer_pointer]       ; The number of bytes we've written to the file buffer

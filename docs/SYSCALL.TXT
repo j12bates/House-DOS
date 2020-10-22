@@ -318,6 +318,24 @@ V. Interface Functions
 
         Moves the cursor to the specified col while keeping it in the same row.
 
+    GET PARAMETER
+        AH = 0x20
+        CX = Item index (0 = first item)
+        DI = Output buffer
+
+        Return:
+        CF = Set on error
+
+        Retrieves a certain parameter from the command input by the user.
+
+    GET TOTAL PARAMETERS
+        AH = 0x21
+
+        Return:
+        CX = Number of parameters
+
+        Gets the number of parameters given to the command.
+
 
 VI. Disk Functions
 
