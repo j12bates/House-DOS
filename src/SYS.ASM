@@ -396,6 +396,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x0C
     je iface_routines.printlnf                  ; Print line with formatting
 
+    cmp ah, 0x0D
+    je iface_routines.get_cursor                ; Get cursor position
+
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
 
@@ -637,6 +640,10 @@ iface_routines:                                 ; Interface functions
     call printf                                 ; Print with formatting
     call line_break                             ; Line break
 
+    jmp int_ret                                 ; We're done!
+
+.get_cursor:
+    call get_cursor_pos                         ; Get cursor position
     jmp int_ret                                 ; We're done!
 
 .print_bytes:
