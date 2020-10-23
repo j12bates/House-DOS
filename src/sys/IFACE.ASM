@@ -415,6 +415,25 @@ move_cursor:                                    ; Move cursor to DH, DL
     ret                                         ; Return to caller    
 
 
+; GET CURSOR POSITION: Gets the current position of the cursor
+; IN: None
+; OUT: DH = Row number, DL = Col number
+
+get_cursor_pos:                                 ; Get the cursor's position
+    pusha                                       ; Save register states to stack
+
+    mov ah, 0x03                                ; Get cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+    mov word [register_bckp_a], dx              ; Preserve output
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore output
+
+    ret                                         ; Return to caller
+
+
 ; INDENT CURSOR: Moves the cursor to the specified col
 ; IN: DL = Col number (0-79)
 ; OUT: None

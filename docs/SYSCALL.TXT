@@ -285,6 +285,15 @@ V. Interface Functions
 
         Prints a string in a specific color, and then moves the cursor to the next line.
 
+    GET CURSOR POSITION
+        AH = 0x0D
+
+        Return:
+        DH = Row number
+        DL = Col number
+
+        Returns the cursor's current position.
+
     PRINT BYTES
         AH = 0x10
         SI = Source
@@ -335,6 +344,26 @@ V. Interface Functions
         CX = Number of parameters
 
         Gets the number of parameters given to the command.
+
+    GET PARAMETER AS 16-BIT INTEGER
+        AH = 0x22
+        CX = Item index (0 = first item)
+
+        Return:
+        DX = Value
+        CF = Set on error
+
+        Retrieves a certain parameter as a 16-bit integer (converted from decimal).
+
+    GET PARAMETER AS 8-BIT INTEGER
+        AH = 0x23
+        CX = Item index (0 = first item)
+
+        Return:
+        DL = Value
+        CF = Set on error
+
+        Retrieves a certain parameter as an 8-bit integer (converted from decimal).
 
 
 VI. Disk Functions

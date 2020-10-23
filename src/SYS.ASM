@@ -262,6 +262,26 @@ setup_segments:                                 ; Setup DS and ES to the kernel 
     ret                                         ; Return to caller
 
 
+; CLEAR BUFFER: Clears the area in memory for storing and manipulating miscellaneous data
+; IN: None
+; OUT: None
+
+clear_buffer:                                   ; Clear the miscellaneous buffer
+    pusha                                       ; Save register states to stack
+
+    call setup_segments                         ; We're going to use kernel space
+
+    mov al, 0x00                                ; Overwrite with null characters
+    mov cx, 0x0020                              ; The miscellaneous buffer is 32 bytes long
+    mov di, misc_buffer                         ; Our buffer
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Overwrite with zeroes
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; SHUT DOWN: Asks to apply any filesystem changes, performs a BIOS shutdown
 ; IN: None
 ; OUT: None
@@ -376,6 +396,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x0C
     je iface_routines.printlnf                  ; Print line with formatting
 
+    cmp ah, 0x0D
+    je iface_routines.get_cursor                ; Get cursor position
+
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
 
@@ -390,6 +413,15 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x20
     je iface_routines.parameter                 ; Get parameter
+
+    cmp ah, 0x21
+    je iface_routines.total_params              ; Get total parameters
+
+    cmp ah, 0x22
+    je iface_routines.param_int16               ; Get parameter as 16-bit integer
+
+    cmp ah, 0x23
+    je iface_routines.param_int8                ; Get parameter as 8-bit integer
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -610,6 +642,10 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret                                 ; We're done!
 
+.get_cursor:
+    call get_cursor_pos                         ; Get cursor position
+    jmp int_ret                                 ; We're done!
+
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
     call print_bytes                            ; Print bytes
@@ -644,6 +680,46 @@ iface_routines:                                 ; Interface functions
     call get_total_list                         ; Get total number of parameters from list
 
     pop si                                      ; Restore this value
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.param_int16:
+    push si
+    push di                                     ; Preserve these values
+
+    call clear_buffer                           ; Clear the miscellaneous buffer
+
+    mov si, params                              ; Our list of parameters
+    mov di, misc_buffer                         ; Our buffer
+    call get_item_list                          ; Get parameter from list
+
+    jc int_ret.preserve_flags                   ; If failed, we're done
+
+    mov si, misc_buffer                         ; Our buffer
+    call conv_dec_unsigned_word                 ; Convert to binary number
+
+    pop di
+    pop si                                      ; Restore these values
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.param_int8:
+    push si
+    push di                                     ; Preserve these values
+
+    call clear_buffer                           ; Clear the miscellaneous buffer
+
+    mov si, params                              ; Our list of parameters
+    mov di, misc_buffer                         ; Our buffer
+    call get_item_list                          ; Get parameter from list
+
+    jc int_ret.preserve_flags                   ; If failed, we're done
+
+    mov si, misc_buffer                         ; Our buffer
+    call conv_dec_unsigned_byte                 ; Convert to binary number
+
+    pop di
+    pop si                                      ; Restore these values
+
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1169,13 +1245,19 @@ params              dq 0x0000000000000000
                     dq 0x0000000000000000
                     db 0x00
 
+misc_buffer         dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    db 0x00
+
 register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 23; Compiled 2020-10-21", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 24; Compiled 2020-10-23", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
