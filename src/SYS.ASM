@@ -177,6 +177,8 @@ command:                                        ; Main loop: Retrieve command fr
     rep stosb                                   ; Clear parameter list
 
     mov di, params                              ; Now, write into our parameter list
+    mov bl, 0x00                                ; We are not escaping spaces
+
     mov cx, si                                  ; Counter is the pointer value
     sub cx, input_buffer_end                    ; Relative to the end of the buffer
     neg cx                                      ; Negate to get the number of bytes until the end
@@ -184,16 +186,27 @@ command:                                        ; Main loop: Retrieve command fr
 .param_char:
     lodsb                                       ; Load next byte from command
 
+    cmp al, 0x22                                ; Is this a quotation?
+    je .quotation                               ; If so, toggle space-escape
+
     cmp al, 0x00                                ; Is this the end of the input?
     je .load_file                               ; If so, no more parameters
+
+    cmp bl, 0xFF                                ; Are spaces being escaped?
+    je .write                                   ; If so, skip spaces
 
     cmp al, 0x20                                ; Is it a space?
     je .next_param                              ; If so, that's one parameter
 
+.write:
     stosb                                       ; Otherwise, store byte in list
     loop .param_char                            ; And repeat
 
     jmp .load_file                              ; If we're done, proceed to load file
+
+.quotation:
+    xor bl, 0xFF                                ; Toggle space-escape
+    jmp .write                                  ; And write the quotation
 
 .next_param:
     mov al, 0x2C                                ; Comma (items are separated by commas)
@@ -246,6 +259,31 @@ handback_manual:                                ; Routine to manually perform ha
 ; ========================================================================
 ; SUBROUTINES
 ; ========================================================================
+
+; GET PARAMETER: Gets specified parameter from the parameter list
+; IN: CX = Parameter number, ES:DI = Output buffer
+; OUT: CF = Set on error
+
+get_parameter:                                  ; Get parameter from list
+    pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; We need to access a kernel variable
+    mov si, params                              ; Our list of parameters
+    call get_item_list                          ; Get parameter from list
+
+    jc .error_param                             ; If failed, error
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_param:
+    mov si, iface_error_param
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
 
 ; SET UP SEGMENTS: Sets both segment registers to the kernel segment
 ; IN: None
@@ -422,6 +460,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x23
     je iface_routines.param_int8                ; Get parameter as 8-bit integer
+
+    cmp ah, 0x24
+    je iface_routines.param_byte                ; Get parameter as byte
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -664,13 +705,8 @@ iface_routines:                                 ; Interface functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .parameter:
-    push si                                     ; Preserve this value
-
-    call extra_binseg                           ; Give data to the command
-    mov si, params                              ; Our list of parameters
-    call get_item_list                          ; Get parameter from list
-
-    pop si                                      ; Restore this value
+    call extra_binseg                           ; We want to give data to the command
+    call get_parameter                          ; Get parameter
     jmp int_ret.preserve_flags                  ; We're done!
 
 .total_params:
@@ -683,42 +719,60 @@ iface_routines:                                 ; Interface functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .param_int16:
-    push si
-    push di                                     ; Preserve these values
+    push di                                     ; Preserve this value
 
     call clear_buffer                           ; Clear the miscellaneous buffer
 
-    mov si, params                              ; Our list of parameters
     mov di, misc_buffer                         ; Our buffer
-    call get_item_list                          ; Get parameter from list
+    call get_parameter                          ; Get parameter
+
+    pop di                                      ; Restore this value
 
     jc int_ret.preserve_flags                   ; If failed, we're done
+
+    push si                                     ; Preserve this value
 
     mov si, misc_buffer                         ; Our buffer
     call conv_dec_unsigned_word                 ; Convert to binary number
 
-    pop di
-    pop si                                      ; Restore these values
+    pop si                                      ; Restore this value
 
     jmp int_ret.preserve_flags                  ; We're done!
 
 .param_int8:
-    push si
-    push di                                     ; Preserve these values
+    push di                                     ; Preserve this value
 
     call clear_buffer                           ; Clear the miscellaneous buffer
 
-    mov si, params                              ; Our list of parameters
     mov di, misc_buffer                         ; Our buffer
-    call get_item_list                          ; Get parameter from list
+    call get_parameter                          ; Get parameter
+
+    pop di                                      ; Restore this value
 
     jc int_ret.preserve_flags                   ; If failed, we're done
+
+    push si                                     ; Preserve this value
 
     mov si, misc_buffer                         ; Our buffer
     call conv_dec_unsigned_byte                 ; Convert to binary number
 
-    pop di
-    pop si                                      ; Restore these values
+    pop si                                      ; Restore this value
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.param_byte:
+    push di                                     ; Preserve this value
+
+    call clear_buffer                           ; Clear the miscellaneous buffer
+
+    mov di, misc_buffer                         ; Our buffer
+    call get_parameter                          ; Get parameter from list
+
+    pop di                                      ; Restore this value
+
+    jc int_ret.preserve_flags                   ; If failed, we're done
+
+    mov al, byte [misc_buffer]                  ; Read the first byte
 
     jmp int_ret.preserve_flags                  ; We're done!
 
@@ -1257,7 +1311,7 @@ register_bckp_b     dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 24; Compiled 2020-10-23", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 24; Compiled 2020-10-24", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
@@ -1265,5 +1319,6 @@ iface_reboot        db "Rebooting...", 0x00
 iface_cancelled     db "Cancelled.", 0x00
 
 iface_ays           db "Are you sure?", 0x00
+iface_error_param   db "ERROR: Parameter not given.", 0x00
 iface_error_idk     db "FATAL: Something went wrong.", 0x00
 iface_fatal_reboot  db "A fatal error was encountered. Press any key to reboot...", 0x00

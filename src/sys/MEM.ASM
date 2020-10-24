@@ -61,34 +61,52 @@ get_item_list:                                  ; Get a specific item from a com
     cmp byte [ds:si], 0x00                      ; Does the list end at the very beginning?
     je .error_index                             ; If so, there are no list items
 
+    mov bx, 0x0000                              ; Commas should not be escaped (BL), we aren't writing (BH)
+
     jcxz .retrieve                              ; If we've made it to the correct index, load the item
     cld                                         ; Ensure correct direction
 
 .find_comma:
     lodsb                                       ; Load next byte
 
-    cmp al, 0x2C                                ; Is this a comma?
-    je .next_item                               ; If so, we've made it to a new item
+    cmp al, 0x22                                ; Is this a quotation?
+    je .quotation                               ; If so, toggle comma-escape
 
     cmp al, 0x00                                ; Is this a null character?
-    je .error_index                             ; If so, error
+    je .null                                    ; If so, the list is over
 
-    jmp .find_comma                             ; Otherwise, repeat
+    cmp bl, 0xFF                                ; Are commas being escaped?
+    je .write                                   ; If so, skip over commas
 
-.next_item:
-    loop .find_comma                            ; Decrement CX and repeat
+    cmp al, 0x2C                                ; Otherwise, is this a comma?
+    je .next_item                               ; If so, we've made it to a new item
 
-.retrieve:
-    lodsb                                       ; Load next byte
-
-    cmp al, 0x2C                                ; Is this the next comma?
-    je .done                                    ; If so, we're done!
-
-    cmp al, 0x00                                ; Is this the null character at the end?
-    je .done                                    ; If so, we're done!
+.write:
+    cmp bh, 0x00                                ; Are we writing?
+    je .find_comma                              ; If not, just repeat now
 
     stosb                                       ; Otherwise, write to output buffer
-    jmp .retrieve                               ; And repeat
+    jmp .find_comma                             ; And repeat
+
+.quotation:
+    xor bl, 0xFF                                ; Toggle comma-escape
+    jmp .find_comma                             ; Immediately read the next byte
+
+.null:
+    cmp bh, 0x00                                ; Are we writing?
+    jne .done                                   ; If so, we're done!
+
+    jmp .error_index                            ; Otherwise, errors
+
+.next_item:
+    cmp bh, 0x00                                ; Are we writing?
+    jne .done                                   ; If so, we've already finished
+
+    loop .find_comma                            ; Otherwise, decrement CX and repeat
+
+.retrieve:
+    mov bh, 0xFF                                ; If we have gone over all the others, we are now writing
+    jmp .find_comma                             ; And start reading bytes and copying them
 
 .done:
     mov al, 0x00                                ; Null character
@@ -119,19 +137,30 @@ get_total_list:                                 ; Get the total number of list i
     cmp byte [ds:si], 0x00                      ; Does the list end right as it begins?
     je .done                                    ; If so, end here
 
-    inc cx                                      ; Otherwise, there's at lease one item
+    inc cx                                      ; Otherwise, there's at least one item
+    mov bl, 0x00                                ; Commas should not be escaped
     cld                                         ; Ensure correct direction
 
 .find_comma:
     lodsb                                       ; Load next byte
 
-    cmp al, 0x2C                                ; Is this a comma?
-    je .next_item                               ; If so, we've made it to a new item
+    cmp al, 0x22                                ; Is this a quotation?
+    je .quotation                               ; If so, toggle comma-escape
 
     cmp al, 0x00                                ; Is this a null character?
     je .done                                    ; If so, we're done
 
+    cmp bl, 0xFF                                ; Are commas being escaped?
+    je .find_comma                              ; If so, repeat here
+
+    cmp al, 0x2C                                ; Otherwise, is this a comma?
+    je .next_item                               ; If so, we've made it to a new item
+
     jmp .find_comma                             ; Otherwise, repeat
+
+.quotation:
+    xor bl, 0xFF                                ; Toggle comma-escape
+    jmp .find_comma                             ; Immediately repeat
 
 .next_item:
     inc cx                                      ; Increment counter
@@ -394,7 +423,6 @@ extra_fileseg:                                  ; Sets the extra segment to the 
 ; ========================================================================
 
 mem_data:
-
 
 iface_mem_clear     db "Clearing file buffer...", 0x00
 iface_mem_bin       db "Loading file into binary buffer...", 0x00

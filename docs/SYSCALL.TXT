@@ -365,6 +365,15 @@ V. Interface Functions
 
         Retrieves a certain parameter as an 8-bit integer (converted from decimal).
 
+    GET PARAMETER AS BYTE
+        AH = 0x24
+        CX = List item (0 = first item)
+
+        Return:
+        AL = Value
+        CF = Set on error
+
+        Retrieves a certain parameter as a byte (ASCII code).
 
 VI. Disk Functions
 

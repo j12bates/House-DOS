@@ -23,4 +23,5 @@ A full and complete reference can be found in `docs/SYSCALL.TXT`. System calls a
 Here are some features planned for the next release (v0.0.2), which is in the works:
 - Command parameters and flags
 - Internal error handling
+- Loading files to specific areas of the file buffer
 - And much more...
