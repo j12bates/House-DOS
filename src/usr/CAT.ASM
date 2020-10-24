@@ -16,16 +16,7 @@ main:
     mov di, fname                       ; The parameter should be our filename
     int 0x7E
 
-    jnc .verify                         ; If no error, proceed
-
-    mov ah, 0x01                        ; Otherwise, print string
-    mov si, prompt                      ; Our prompt
-    int 0x7E
-
-    mov ah, 0x04                        ; Get input
-    mov di, fname                       ; The input should be our filename
-    mov cx, 0x000C                      ; Up to 12 chars
-    int 0x7E
+    jc .done                            ; If error, we're done
 
 .verify:
     mov ah, 0x60                        ; Verify file and prepare for loading
@@ -68,7 +59,6 @@ main:
 
 data:
 
-prompt          db "Input filename: ", 0x00
 fname           dq 0x0000000000000000
                 dd 0x00000000
 

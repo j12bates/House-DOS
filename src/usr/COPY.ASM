@@ -16,16 +16,7 @@ main:
     mov di, fname                       ; The name of our file to copy
     int 0x7E
 
-    jnc .verify                         ; If we got the parameter, proceed
-
-    mov ah, 0x01                        ; Print string
-    mov si, promptA                     ; Our prompt
-    int 0x7E
-
-    mov ah, 0x04                        ; Get input
-    mov di, fname                       ; The input should be our filename
-    mov cx, 0x000C                      ; Up to 12 chars
-    int 0x7E
+    jc .done                            ; If error, we're done
 
 .verify:
     mov ah, 0x60                        ; Verify file and prepare for loading
@@ -43,18 +34,14 @@ main:
     mov di, fname                       ; Our destination filename
     int 0x7E
 
-    jnc .save                           ; If we got the parameter, proceed
-
-    mov ah, 0x01                        ; Print string
-    mov si, promptA                     ; Our prompt
-    int 0x7E
-
-    mov ah, 0x04                        ; Get input
-    mov di, fname                       ; The input should be our filename
-    mov cx, 0x000C                      ; Up to 12 chars
-    int 0x7E
+    jc .done                            ; If error, we're done
 
 .save:
+    mov ah, 0x70                        ; Get file size
+    int 0x7E
+
+    mov cx, ax                          ; Store in CX
+
     mov ah, 0x6F                        ; Save file
     mov si, fname                       ; Filename
     int 0x7E
@@ -65,9 +52,6 @@ main:
 
 
 data:
-
-promptA         db "Input filename: ", 0x00
-promptB         db "Input destination filename: ", 0x00
 
 buffer_pointer  dw 0x0000
 fsize           dw 0x0000
