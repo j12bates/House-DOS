@@ -171,7 +171,7 @@ command:                                        ; Main loop: Retrieve command fr
 .params:
     mov al, 0x00                                ; Write null characters
     mov di, params                              ; Write into our parameter list
-    mov cx, 0x20                                ; Parameter list is 32 bytes
+    mov cx, 0x0020                              ; Parameter list is 32 bytes
     cld                                         ; Ensure correct direction
 
     rep stosb                                   ; Clear parameter list
@@ -179,15 +179,14 @@ command:                                        ; Main loop: Retrieve command fr
     mov di, params                              ; Now, write into our parameter list
     mov bl, 0x00                                ; We are not escaping spaces
 
-    mov cx, si                                  ; Counter is the pointer value
-    sub cx, input_buffer_end                    ; Relative to the end of the buffer
-    neg cx                                      ; Negate to get the number of bytes until the end
-
 .param_char:
     lodsb                                       ; Load next byte from command
 
     cmp al, 0x22                                ; Is this a quotation?
     je .quotation                               ; If so, toggle space-escape
+
+    cmp al, 0x24                                ; Is this a dollar-sign?
+    je .flags                                   ; If so, these are flags
 
     cmp al, 0x00                                ; Is this the end of the input?
     je .load_file                               ; If so, no more parameters
@@ -200,7 +199,7 @@ command:                                        ; Main loop: Retrieve command fr
 
 .write:
     stosb                                       ; Otherwise, store byte in list
-    loop .param_char                            ; And repeat
+    jmp .param_char                             ; And repeat
 
     jmp .load_file                              ; If we're done, proceed to load file
 
@@ -208,10 +207,51 @@ command:                                        ; Main loop: Retrieve command fr
     xor bl, 0xFF                                ; Toggle space-escape
     jmp .write                                  ; And write the quotation
 
+.flags:
+    push di                                     ; Preserve pointer
+    mov di, param_flags                         ; Write into our flag list (regex?)
+
+.flag_char:
+    lodsb                                       ; Load next character
+    call capitalize_char                        ; Capitalize
+
+    cmp al, 0x00                                ; Is this a null character?
+    je .overwrite_comma                         ; If so, no more parameters
+
+    cmp al, 0x20                                ; Is this a space?
+    je .end_flags                               ; If so, prepare for next parameter
+
+    cmp al, 0x30                                ; Are we below the digit 0?
+    jb .flag_char                               ; If so, don't write this
+
+    cmp al, 0x39                                ; Are we below the digit 9?
+    jb .write_flag                              ; If so, write this
+
+    cmp al, 0x41                                ; Are we below the letter A?
+    jb .flag_char                               ; If so, don't write this
+
+    cmp al, 0x5A                                ; Are we above the letter Z?
+    ja .flag_char                               ; If so, don't write this
+
+.write_flag:
+    stosb                                       ; Otherwise, write to our flags
+    jmp .flag_char                              ; Read the next character
+
+.end_flags:
+    pop di                                      ; Restore pointer
+    jmp .param_char                             ; Start reading next parameter
+
 .next_param:
     mov al, 0x2C                                ; Comma (items are separated by commas)
     stosb                                       ; Write byte
-    loop .param_char                            ; And repeat
+    jmp .param_char                             ; And repeat
+
+.overwrite_comma:
+    pop di                                      ; Restore pointer
+    cmp di, params                              ; Have we written any parameters?
+    je .load_file                               ; If not, proceed
+
+    mov byte [di-0x01], 0x00                    ; Otherwise, overwrite last comma
 
 .load_file:
     call verify                                 ; Verify the file exists
@@ -935,17 +975,23 @@ disk_routines:                                  ; Disk functions
 .get_line:
     call extra_binseg                           ; We want to give data to the command
 
-    push cx                                     ; Save register states to stack
     call get_line_addr                          ; Get the address of the line
     jc int_ret.preserve_flags                   ; If error, we're done
 
+    push cx                                     ; Save register state to stack
     call data_fileseg                           ; We want to access data from the file buffer
     call get_line_length                        ; Get the number of bytes to copy
+
+    inc sp
+    inc sp                                      ; Temporarily balance stack
+
+    jc int_ret.preserve_flags                   ; If error, we're done
+    sub sp, 0x0002                              ; Otherwise, put stack the way it was
 
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    pop cx                                      ; Restore register states
+    pop cx                                      ; Restore register state
     jmp int_ret.preserve_flags                  ; We're done!
 
 .write_bytes_qty:
@@ -975,12 +1021,13 @@ disk_routines:                                  ; Disk functions
 
 .write_line:
     call data_binseg                            ; We want to access data from the command
-
     call write_line                             ; Write line
-
     jmp int_ret                                 ; We're done!
 
 .insert_bytes_qty:
+    cmp cx, 0x0000                              ; Is our counter zero?
+    je int_ret                                  ; If so, do nothing
+
     xchg si, di                                 ; The destination is the source for shifting
     call shift                                  ; Shift everything in the file buffer over
     xchg si, di                                 ; Restore destination and source
@@ -999,6 +1046,9 @@ disk_routines:                                  ; Disk functions
     pusha                                       ; Save register states to stack
 
     sub cx, si                                  ; Convert index to number of bytes
+    cmp cx, 0x0000                              ; Is our counter zero?
+    je int_ret                                  ; If so, do nothing
+
     xchg si, di                                 ; The destination is the source for shifting
     call shift                                  ; Shift everything in the file buffer over to make room
     xchg si, di                                 ; Restore destination and source
@@ -1305,13 +1355,19 @@ misc_buffer         dq 0x0000000000000000
                     dq 0x0000000000000000
                     db 0x00
 
+param_flags         dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dd 0x00000000
+
 register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 24; Compiled 2020-10-24", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 25; Compiled 2020-10-26", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

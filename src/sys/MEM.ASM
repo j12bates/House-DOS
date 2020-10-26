@@ -222,7 +222,7 @@ get_line_addr:                                  ; Get address of specific line f
 
 ; GET LENGTH OF LINE: Gets the number of characters up to an including the next newline character
 ; IN: DS:SI = Start of line
-; OUT: CX = Number of characters
+; OUT: CX = Number of characters, CF = Set if zero
 
 get_line_length:                                ; Get the number of characters up to the next newline (inclusive)
     pusha                                       ; Save register states to stack
@@ -252,6 +252,7 @@ get_line_length:                                ; Get the number of characters u
 
 .zero:
     mov cx, 0x0000                              ; Put zero into our counter
+    stc                                         ; Carry flag
     jmp .done                                   ; We're done!
 
 
