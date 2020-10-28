@@ -18,6 +18,12 @@ main:
 
     jc .done                            ; If error, we're done
 
+    mov ah, 0x27                        ; Check if flag was specified
+    mov al, 0x58                        ; X flag
+    int 0x7E
+
+    je .done                            ; If specified, we're done
+
 .verify:
     mov ah, 0x60                        ; Verify file and prepare for loading
     mov si, fname                       ; Filename

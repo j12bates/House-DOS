@@ -375,6 +375,16 @@ V. Interface Functions
 
         Retrieves a certain parameter as a byte (ASCII code).
 
+    CHECK FOR FLAG
+        AH = 0x27
+        AL = Flag ASCII code
+
+        Return:
+        ZF = Set if flag set
+        CF = Set on error
+
+        Checks if a certain flag was specified by the user.
+
 VI. Disk Functions
 
     VERIFY FILE EXISTS
@@ -432,6 +442,15 @@ VI. Disk Functions
         CF = Set on error
 
         Gets a certain line from the file buffer, and stores that in the destination buffer.
+
+    GET LINE ADDRESS
+        AH = 0x65
+        CX = Line number
+
+        Return:
+        SI = Address of line
+
+        Gets the address of a certain line.
 
     WRITE BYTES (INDEX-QUANTITY)
         AH = 0x68
