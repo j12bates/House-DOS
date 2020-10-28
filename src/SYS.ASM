@@ -171,7 +171,8 @@ command:                                        ; Main loop: Retrieve command fr
 .params:
     mov al, 0x00                                ; Write null characters
     mov di, params                              ; Write into our parameter list
-    mov cx, 0x0020                              ; Parameter list is 32 bytes
+    mov cx, misc_buffer
+    sub cx, params                              ; Overwrite everything between these points
     cld                                         ; Ensure correct direction
 
     rep stosb                                   ; Clear parameter list
@@ -322,6 +323,47 @@ get_parameter:                                  ; Get parameter from list
     call println                                ; Print message
 
     stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
+
+
+; CHECK FLAG: Check if a certain flag was specified in the command
+; IN: AL = Flag to check
+; OUT: ZF = Set if flag is set, CF = Set on error
+
+check_flag:                                     ; Check if flag was set
+    pusha                                       ; Save register states to stack
+
+    call extra_kernseg                          ; We need access to a kernel variable
+    call capitalize_char                        ; Capitalize this character
+
+    cmp al, 0x30                                ; Are we below the digit 0?
+    jb .invalid                                 ; If so, not a valid flag
+
+    cmp al, 0x39                                ; Are we below the digit 9?
+    jb .check                                   ; If so, this is a valid flag
+
+    cmp al, 0x41                                ; Are we below the letter A?
+    jb .invalid                                 ; If so, not a valid flag
+
+    cmp al, 0x5A                                ; Are we above the letter Z?
+    ja .invalid                                 ; If so, not a valid flag
+
+.check:
+    mov cx, 0x24                                ; 36 bytes in the buffer
+    mov di, param_flags                         ; Our flag buffer
+    cld                                         ; Ensure correct direction
+
+    repne scasb                                 ; Check if one of the bytes match
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.invalid:
+    mov al, 0x00                                ; Set to zero
+    sub al, 0x01                                ; Subtract to unset zero-flag
+
+    stc                                         ; Carry-flag for error
     jmp .done                                   ; We're done
 
 
@@ -504,6 +546,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x24
     je iface_routines.param_byte                ; Get parameter as byte
 
+    cmp ah, 0x27
+    je iface_routines.check_flag                ; Check if flag was specified
+
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
     je disk_routines.verify                     ; Verify file
@@ -519,6 +564,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x64
     je disk_routines.get_line                   ; Get line contents
+
+    cmp ah, 0x65
+    je disk_routines.line_address               ; Get line address
 
     cmp ah, 0x68
     je disk_routines.write_bytes_qty            ; Write quantity of bytes to file
@@ -816,6 +864,10 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
+.check_flag:
+    call check_flag                             ; Check if flag was specified
+    jmp int_ret.preserve_flags                  ; We're done!
+
 
 data_routines:                                  ; Data functions
 
@@ -992,6 +1044,10 @@ disk_routines:                                  ; Disk functions
     rep movsb                                   ; Copy the correct number of bytes
 
     pop cx                                      ; Restore register state
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.line_address:
+    call get_line_addr                          ; Get line address
     jmp int_ret.preserve_flags                  ; We're done!
 
 .write_bytes_qty:
@@ -1303,17 +1359,18 @@ int_ret:                                        ; Return back to command
     iret                                        ; Interrupt return
 
 .preserve_flags:
+    pushf                                       ; Create a new FLAGS image
+    pop word [flags_image]                      ; Place into memory
+
     mov word [register_bckp_a], ax
     mov word [register_bckp_b], bx              ; Save register states to backup
 
-    inc sp
-    inc sp                                      ; Move stack pointer past the FLAGS image
+    add sp, 0x0002                              ; Move stack pointer past the FLAGS image from INT
 
     pop ax                                      ; Pop instruction pointer
     pop bx                                      ; Pop code segment
 
-    inc sp
-    inc sp                                      ; Move stack pointer past the FLAGS image from INT
+    add sp, 0x0002                              ; Move stack pointer past the FLAGS image from INT
 
     push bx                                     ; Push code segment
     push ax                                     ; Push instruction pointer
@@ -1321,11 +1378,15 @@ int_ret:                                        ; Return back to command
     mov ax, word [register_bckp_a]
     mov bx, word [register_bckp_b]              ; Restore register states
 
+    push word [flags_image]                     ; Push our FLAGS image
+
     push ax                                     ; Save register state to stack
     mov ax, 0x4000
     mov ds, ax                                  ; The segment our command is loaded in
     mov es, ax
     pop ax                                      ; Restore register state
+
+    popf                                        ; Pop image into the FLAGS register
 
     retf                                        ; Far return
 
@@ -1349,25 +1410,26 @@ params              dq 0x0000000000000000
                     dq 0x0000000000000000
                     db 0x00
 
-misc_buffer         dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    db 0x00
-
 param_flags         dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dd 0x00000000
 
+misc_buffer         dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    db 0x00
+
 register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
+flags_image         dw 0x0000
 
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 25; Compiled 2020-10-26", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 25; Compiled 2020-10-28", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
