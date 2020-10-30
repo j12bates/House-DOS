@@ -375,6 +375,14 @@ V. Interface Functions
 
         Retrieves a certain parameter as a byte (ASCII code).
 
+    CHECK IF FLAGS WERE USED
+        AH = 0x26
+
+        Return:
+        ZF = Set if no flags used, cleared if any flags used
+
+        Checks if any flags were input as part of the command.
+
     CHECK FOR FLAG
         AH = 0x27
         AL = Flag ASCII code

@@ -38,6 +38,16 @@ main:
     mov si, fname                       ; Filename
     int 0x7E
 
+.apply:
+    mov ah, 0x27                        ; Check for flag
+    mov al, 0x41                        ; Flag 'A'
+    int 0x7E
+
+    jne .done                           ; If not set, we're done
+
+    mov ah, 0x7F                        ; Otherwise, apply filesystem changes
+    int 0x7E
+
 .done:
     mov ah, 0xFF                        ; We're done!
     int 0x7E
