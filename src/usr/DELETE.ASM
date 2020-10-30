@@ -18,7 +18,6 @@ main:
 
     jc .done                            ; If error, we're done
 
-.verify:
     mov ah, 0x60                        ; Verify file
     mov si, fname                       ; Filename
     int 0x7E
@@ -26,6 +25,15 @@ main:
     jc .done                            ; If failed, error
 
     mov ah, 0x79                        ; Delete file
+    int 0x7E
+
+    mov ah, 0x27                        ; Check for flag
+    mov al, 0x41                        ; Flag 'A'
+    int 0x7E
+
+    jne .done                           ; If not set, we're done
+
+    mov ah, 0x7F                        ; Otherwise, apply filesystem changes
     int 0x7E
 
 .done:

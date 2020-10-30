@@ -125,7 +125,7 @@ command:                                        ; Main loop: Retrieve command fr
     call prompt                                 ; Setup prompt
 
     mov di, input_buffer                        ; Our input buffer
-    mov cx, 0x0020                              ; 32-byte limit
+    mov cx, 0x001F                              ; 31-byte limit
 
     call input                                  ; Get input from user
     call line_break                             ; Line break
@@ -171,7 +171,7 @@ command:                                        ; Main loop: Retrieve command fr
 .params:
     mov al, 0x00                                ; Write null characters
     mov di, params                              ; Write into our parameter list
-    mov cx, misc_buffer
+    mov cx, end_buffers
     sub cx, params                              ; Overwrite everything between these points
     cld                                         ; Ensure correct direction
 
@@ -210,7 +210,15 @@ command:                                        ; Main loop: Retrieve command fr
 
 .flags:
     push di                                     ; Preserve pointer
-    mov di, param_flags                         ; Write into our flag list (regex?)
+
+    mov al, 0x00                                ; Look for a null character
+    mov di, param_flags                         ; Write somewhere into our flag list (regex?)
+    mov cx, 0x0024                              ; 36 bytes in the buffer (36 valid characters)
+    cld                                         ; Ensure correct direction
+
+    repne scasb                                 ; Seek to the first null character - don't overwrite any existing flags
+
+    dec di                                      ; Avoid an O.B.O.E
 
 .flag_char:
     lodsb                                       ; Load next character
@@ -222,19 +230,10 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x20                                ; Is this a space?
     je .end_flags                               ; If so, prepare for next parameter
 
-    cmp al, 0x30                                ; Are we below the digit 0?
-    jb .flag_char                               ; If so, don't write this
+    call check_flag                             ; Has this flag already been set, or is it invalid?
+    je .flag_char                               ; If so, skip this one
+    jc .flag_char                               ; If it's invalid, skip
 
-    cmp al, 0x39                                ; Are we below the digit 9?
-    jb .write_flag                              ; If so, write this
-
-    cmp al, 0x41                                ; Are we below the letter A?
-    jb .flag_char                               ; If so, don't write this
-
-    cmp al, 0x5A                                ; Are we above the letter Z?
-    ja .flag_char                               ; If so, don't write this
-
-.write_flag:
     stosb                                       ; Otherwise, write to our flags
     jmp .flag_char                              ; Read the next character
 
@@ -349,7 +348,7 @@ check_flag:                                     ; Check if flag was set
     ja .invalid                                 ; If so, not a valid flag
 
 .check:
-    mov cx, 0x24                                ; 36 bytes in the buffer
+    mov cx, 0x24                                ; 36 bytes in the buffer (36 valid characters)
     mov di, param_flags                         ; Our flag buffer
     cld                                         ; Ensure correct direction
 
@@ -545,6 +544,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x24
     je iface_routines.param_byte                ; Get parameter as byte
+
+    cmp ah, 0x26
+    je iface_routines.flags_used                ; Check if any flags were used
 
     cmp ah, 0x27
     je iface_routines.check_flag                ; Check if flag was specified
@@ -862,6 +864,10 @@ iface_routines:                                 ; Interface functions
 
     mov al, byte [misc_buffer]                  ; Read the first byte
 
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.flags_used:
+    cmp byte [param_flags], 0x00                ; Is the first byte in our flag buffer a null character? (If so, no flags)
     jmp int_ret.preserve_flags                  ; We're done!
 
 .check_flag:
@@ -1391,37 +1397,38 @@ int_ret:                                        ; Return back to command
     retf                                        ; Far return
 
 
+times 0x1C00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+
 ; ========================================================================
 ; DATA SECTION
 ; ========================================================================
 
-data:
+buffers:
 
-; Storage data region
-input_buffer        dq 0x0000000000000000
+input_buffer        dq 0x0000000000000000       ; 0x00021C00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
-input_buffer_end    db 0x00
 
-params              dq 0x0000000000000000
+params              dq 0x0000000000000000       ; 0x00021C20
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
-                    db 0x00
 
-param_flags         dq 0x0000000000000000
+misc_buffer         dq 0x0000000000000000       ; 0x00021C40
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+
+param_flags         dq 0x0000000000000000       ; 0x00021C60
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dd 0x00000000
 
-misc_buffer         dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    db 0x00
+end_buffers:
 
+; Storage data region
 register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
 flags_image         dw 0x0000
@@ -1429,7 +1436,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 25; Compiled 2020-10-28", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 25; Compiled 2020-10-29", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
