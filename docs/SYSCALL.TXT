@@ -460,6 +460,15 @@ VI. Disk Functions
 
         Gets the address of a certain line.
 
+    LOAD FILE TO OFFSET
+        AH = 0x66
+        DI = Offset from file buffer to load file to
+
+        Return:
+        CF = Set on error
+
+        Loads the file that was just verified into the specified offset from the file buffer.
+
     WRITE BYTES (INDEX-QUANTITY)
         AH = 0x68
         SI = Source buffer
