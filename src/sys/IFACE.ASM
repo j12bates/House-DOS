@@ -25,6 +25,9 @@ input:                                          ; Get input from user, store in 
     add cx, di                                  ; Find the end of the buffer
     mov word [input_buffer_limit], cx           ; Save this
 
+    call get_cursor_pos                         ; Get the cursor position
+    mov word [input_cursor], dx                 ; Save to memory
+
     mov al, 0x00                                ; NULL char (zero)
     sub cx, di                                  ; The number of bytes in this buffer
     cld                                         ; Ensure correct direction
@@ -66,13 +69,6 @@ input:                                          ; Get input from user, store in 
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't do a backspace
 
-    cmp di, word [input_buffer_limit]           ; Are we at the rightmost limit?
-    je .backspace_verified                      ; If so, we may not have a NULL char
-
-    cmp byte [es:di], 0x00                      ; Are we at the end of the input?
-    jne .key                                    ; If not, we can't do a backspace
-
-.backspace_verified:
     mov al, 0x08                                ; Backwards
     call teletype_output                        ; Write character
 
@@ -83,9 +79,10 @@ input:                                          ; Get input from user, store in 
     int 0x10                                    ; BIOS VGA interrupt
 
     dec di                                      ; Decrement the pointer
-    mov byte [es:di], 0x00                      ; Erase that char
+    stc                                         ; Go backwards
+    call shift_input                            ; Shift input buffer
 
-    jmp .key                                    ; Get more input
+    jmp .reprint                                ; Reprint before getting more input
 
 .left:
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
@@ -113,6 +110,21 @@ input:                                          ; Get input from user, store in 
     inc di                                      ; Advance the pointer
 
     jmp .key                                    ; Get more input
+
+.reprint:
+    call get_cursor_pos                         ; Get the cursor position
+    push dx                                     ; Push to stack
+
+    mov dx, word [input_cursor]                 ; Get our initial cursor position
+    call move_cursor                            ; Move cursor there
+
+    mov si, word [input_buffer_addr]            ; Print from our input buffer
+    call print_str                              ; Print string
+
+    pop dx                                      ; Restore cursor position
+    call move_cursor                            ; Move cursor where it was
+
+    jmp .key                                    ; Get input
 
 .terminate:
     cmp byte [es:di], 0x00                      ; Are we at the end of our input?
@@ -163,6 +175,53 @@ confirm:                                        ; Ask the user to confirm
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+
+; SHIFT INPUT BUFFER: Shifts everything past the pointer over a byte to the left or right
+; IN: [input_buffer_addr] = Start of input buffer, [input_buffer_limit] = End of buffer (run input to set these up), DI = Pointer within buffer, CF = Set to shift left
+; OUT: CF = Set on error
+
+shift_input:                                    ; Shifts everything in the input buffer over a byte (left or right)
+    pusha                                       ; Save register states to stack
+
+    jc .left                                    ; If carry flag is set, prepare to shift left
+
+    mov cx, word [input_buffer_limit]           ; Set counter to the end of the buffer
+    sub cx, di                                  ; Relative to our pointer
+
+    cmp byte [input_buffer_limit-0x01], 0x00    ; Is the last byte of input NULL?
+    je .error                                   ; If so, we cannot shift right
+
+    mov si, word [input_buffer_limit]           ; Source should be the last byte of the buffer
+    dec si                                      ; Avoid an O.B.O.E
+
+    mov di, si                                  ; Destination should the same thing
+    dec si                                      ; Source should be one behind
+
+    std                                         ; Ensure correct direction
+    rep movsb                                   ; Move bytes
+
+    jmp .done                                   ; We're done!
+
+.left:
+    mov cx, word [input_buffer_limit]           ; Set counter to the end of the buffer
+    sub cx, di                                  ; Relative to our pointer
+
+    mov si, di                                  ; Source should be the same as destination
+    inc si                                      ; Source should be one ahead
+
+    cld                                         ; Ensure correct direction
+    rep movsb                                   ; Move bytes
+
+    mov byte [input_buffer_limit-0x01], 0x00    ; Move a NULL into the last byte of input
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error:
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
 
 
 ; ========================================================================
@@ -633,6 +692,7 @@ iface_data:
 input_buffer_addr   dw 0x0000
 input_end           dw 0x0000
 input_buffer_limit  dw 0x0000
+input_cursor        dw 0x0000
 
 iface_done          db "Done!", 0x00
 iface_aborting      db "Aborting.", 0x00
