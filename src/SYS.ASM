@@ -53,6 +53,11 @@ start:                                          ; House-DOS code
     mov al, byte [es:0x0024]
     mov byte [drive_num], al                    ; Save our boot drive number
 
+    mov al, byte [sectors_cluster]              ; Our sectors per cluster
+    mov ah, 0x00                                ; Upper byte of factor is zero
+    mul word [bytes_sector]                     ; Multiply by bytes per sector to get the bytes per cluster
+    mov word [bytes_cluster], ax                ; Save the number of bytes per sector
+
     pop bx                                      ; Take this out of the stack for now
     mov sp, 0x4000                              ; Make the stack stretch up to the file buffer (32K)
     push bx                                     ; Push this back
@@ -1306,16 +1311,12 @@ logical_routines:                               ; Logical functions
 
 .conv_hex_word:
     call data_binseg                            ; We want to access data from command
-
     call conv_hex_word                          ; Convert to binary value
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .conv_dec_word:
     call data_binseg                            ; We want to access data from command
-
     call conv_dec_unsigned_word                 ; Convert to binary value
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .conv_byte_hex:
@@ -1338,16 +1339,12 @@ logical_routines:                               ; Logical functions
 
 .conv_hex_byte:
     call data_binseg                            ; We want to access data from the command
-
     call conv_hex_byte                          ; Convert to binary value
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .conv_dec_byte:
     call data_binseg                            ; We want to access data from the command
-
     call conv_dec_unsigned_byte                 ; Convert to binary value
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1397,7 +1394,7 @@ int_ret:                                        ; Return back to command
     retf                                        ; Far return
 
 
-times 0x1C00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x1D00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1405,22 +1402,22 @@ times 0x1C00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00021C00
+input_buffer        dq 0x0000000000000000       ; 0x00021D00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00021C20
+params              dq 0x0000000000000000       ; 0x00021D20
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00021C40
+misc_buffer         dq 0x0000000000000000       ; 0x00021D40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00021C60
+param_flags         dq 0x0000000000000000       ; 0x00021D60
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000

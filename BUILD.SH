@@ -12,10 +12,10 @@ mkdir bin/usr
 cd src || return
 
 echo "Assembling bootloader..."
-nasm BOOT.ASM -o ../bin/BOOT.BIN
+nasm BOOT.ASM -o ../bin/BOOT.BIN || exit
 
 echo "Compiling kernel..."
-nasm SYS.ASM -o ../bin/SYS.BIN
+nasm SYS.ASM -o ../bin/SYS.BIN || exit
 
 echo "Assembling commands & programs..."
 
@@ -23,7 +23,7 @@ cd usr || return
 
 for i in *.ASM
 do
-	nasm "$i" -o "../../bin/usr/$(basename "$i" .ASM).BIN"
+	nasm "$i" -o "../../bin/usr/$(basename "$i" .ASM).BIN" || exit
 done
 
 cd ../..

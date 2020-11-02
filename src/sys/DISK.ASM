@@ -121,7 +121,7 @@ get_file_info:                                  ; Get an item (AL=offset) from a
 
 
 ; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
-; IN: [cluster] = Starting cluster number (run get_file_cluster to set this up)
+; IN: [cluster] = Starting cluster number, [bytes_to_load] = File size (run get_file_cluster to set these up)
 ; OUT: CF = Set on error
 
 load_file:                                      ; Load file starting at cluster into buffer
@@ -142,15 +142,15 @@ load_file:                                      ; Load file starting at cluster 
     add ax, 0x0020                              ; Root directory is 32 sectors
     call conv_ls_chs                            ; Convert to CHS
 
-    mov ax, 0x1000
+    mov ax, 0x3C00
     mov es, ax                                  ; Load file into this segment
-    mov bx, word [buffer_pointer]               ; At this offset
+    mov bx, 0x0000                              ; At this offset
 
     mov ah, 0x02                                ; Read disk sectors
     mov al, byte [sectors_cluster]              ; 1 cluster
 
     int 0x13                                    ; BIOS disk interrupt
-    jnc .next_cluster                           ; If no error, set up for next cluster
+    jnc .bytes                                  ; If no error, prepare to write into the disk buffer
 
     call reset_disk                             ; Otherwise, reset the disk
 
@@ -158,6 +158,33 @@ load_file:                                      ; Load file starting at cluster 
     mov al, byte [sectors_cluster]              ; 1 cluster
     int 0x13                                    ; BIOS disk interrupt
     jc .error_read                              ; Error
+
+.bytes:
+    mov cx, word [bytes_to_load]                ; The number of bytes left in the file to copy over
+    cmp cx, word [bytes_cluster]                ; Is this at least one full cluster?
+    jb .copy                                    ; If not, proceed
+
+    mov cx, word [bytes_cluster]                ; If it is, only copy the one cluster we just read from
+
+.copy:
+    call extra_fileseg                          ; Copy into the file buffer
+    mov di, word [buffer_pointer]               ; At our pointer
+
+    mov ax, 0x3C00
+    mov ds, ax                                  ; The segment where we just loaded the cluster
+    mov si, 0x0000                              ; At this offset
+
+    cld                                         ; Ensure correct direction
+    push cx                                     ; Preserve our counter
+
+    rep movsb                                   ; Copy into our place in the file buffer
+
+    pop cx                                      ; Restore our counter
+    call data_kernseg                           ; We need to access kernel variables
+
+    mov word [buffer_pointer], di               ; Update our buffer pointer
+    sub word [bytes_to_load], cx                ; Update the number of bytes to copy
+    jz .done                                    ; If no more bytes, we're done
 
 .next_cluster:
     mov si, word [cluster]                      ; Our cluster number
@@ -167,19 +194,23 @@ load_file:                                      ; Load file starting at cluster 
     mov es, ax                                  ; Segment where the FAT is loaded
 
     mov ax, word [es:si]                        ; This is pointing to the FAT entry
-    mov word [cluster], ax                      ; That entry contains our next cluster
 
     cmp ax, 0xFFF8                              ; Is this the end of the file?
-    jae .done                                   ; If so, we're finished
+    jae .error_fat                              ; If so, error
 
-    mov ax, word [bytes_sector]
-    mul word [sectors_cluster]
-    add word [buffer_pointer], ax               ; Advance pointer by one cluster
+    cmp ax, 0xFFF7                              ; Is there a bad sector?
+    je .error_bsec                              ; If so, error
 
-    cmp word [buffer_pointer], 0x0000           ; Have we used up our 64K?
-    je .error_size                              ; If so, error
+    cmp ax, 0x0002                              ; Is this an invalid cluster number?
+    je .error_fat                               ; If so, error
 
-    jmp .load_cluster                           ; Load next cluster
+    cmp ax, word [cluster]                      ; Is this the cluster we just loaded?
+    je .error_fat                               ; If so, error
+
+    mov word [cluster], ax                      ; If no error, that entry is our next cluster
+
+    jc .error_size                              ; If buffer overflow, error
+    jmp .load_cluster                           ; Otherwise, load next cluster
 
 .done:
     call update_access_date                     ; Update access date
@@ -200,6 +231,20 @@ load_file:                                      ; Load file starting at cluster 
 
 .error_size:
     mov si, iface_disk_esize
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_fat:
+    mov si, iface_disk_efat
+    call println                                ; Print message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+.error_bsec:
+    mov si, iface_disk_ebsec
     call println                                ; Print message
 
     stc                                         ; Carry flag for error
@@ -1102,7 +1147,7 @@ conv_83_x3:                                     ; Convert the 8.3 filename to th
 
 ; GET FILE STARTING CLUSTER: Gets the starting cluster for the specified file
 ; IN: [root_entry] = Root entry number of the file
-; OUT: [cluster] = Starting cluster of file, ready for use
+; OUT: [cluster] = Starting cluster of file, [bytes_to_load] = Number of bytes in the file
 
 get_file_cluster:                               ; Get the starting cluster for a file
     pusha                                       ; Save register states to stack
@@ -1111,6 +1156,11 @@ get_file_cluster:                               ; Get the starting cluster for a
     call get_file_info                          ; Get from the root directory
 
     mov word [cluster], ax                      ; Store as cluster number
+
+    mov al, 0x1C                                ; Read the file size
+    call get_file_info                          ; Get from the root directory
+
+    mov word [bytes_to_load], ax                ; Store as the number of bytes to copy
 
 .done:
     popa                                        ; Restore register states
@@ -1223,9 +1273,11 @@ cluster             dw 0x0000
 root_entry          dw 0x0000
 buffer_pointer      dw 0x0000
 buffer_segment      dw 0x0000
+bytes_to_load       dw 0x0000
 
 bytes_sector        dw 0x0000
 sectors_cluster     db 0x00
+bytes_cluster       dw 0x0000
 reserved            dw 0x0000
 fats                db 0x00
 root_entries        dw 0x0000
@@ -1275,3 +1327,5 @@ iface_disk_eread    db "FATAL: Error while reading disk.", 0x00
 iface_disk_ewrite   db "FATAL: Error while writing to disk.", 0x00
 iface_disk_efname   db "FATAL: Not a valid filename.", 0x00
 iface_disk_eronly   db "FATAL: File is read-only.", 0x00
+iface_disk_efat     db "FATAL: Inconsistent FAT.", 0x00
+iface_disk_ebsec    db "FATAL: Sector marked as bad.", 0x00
