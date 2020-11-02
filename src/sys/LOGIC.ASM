@@ -268,7 +268,7 @@ conv_dec_unsigned_word:                         ; Convert ASCII decimal at DS:SI
 
 ; CONVERT UNSIGNED DECIMAL TO BYTE: Converts ASCII decimal notation to byte-size value
 ; IN: DS:SI = Source buffer (3 bytes)
-; OUT: DL = Resulting value
+; OUT: DL = Resulting value, CF = Set on error
 
 conv_dec_unsigned_byte:                         ; Convert ASCII decimal at DS:SI to binary, store in DL
     push cx
@@ -276,18 +276,32 @@ conv_dec_unsigned_byte:                         ; Convert ASCII decimal at DS:SI
 
     mov cx, 0x0003                              ; 8-bit decimal values max at 255 (3-digit)
     call conv_dec_unsigned_bin                  ; Convert to a binary value
+    jc .done                                    ; If error, we're done
 
-    pop cx                                      ; Restore DX
-    mov dh, ch                                  ; Make sure DH was how we left it
+    cmp dh, 0x00                                ; Did it modify the upper byte at all?
+    jne .error_overflow                         ; If so, we had an overflow
 
 .done:
+    pop cx                                      ; Restore DX
+
+    pushf                                       ; Preserve flags
+    mov dh, ch                                  ; Make sure DH was how we left it
+    popf                                        ; Restore flags
+
     pop cx                                      ; Restore register state
     ret                                         ; Return to caller
+
+.error_overflow:
+    mov si, iface_error_oflow8
+    call println                                ; Display error message
+
+    stc                                         ; Carry flag for error
+    jmp .done                                   ; We're done
 
 
 ; CONVERT HEX TO BINARY: Converts ASCII hexadecimal notation to binary value
 ; IN: CX = Number of hexadecimal digits (bits 0-2, max 4); DS:SI = Source buffer
-; OUT: DX = Resulting value
+; OUT: DX = Resulting value, CF = Set on error
 
 conv_hex_bin:                                   ; Convert hexadecimal at DS:SI to binary in DX (CX = digits)
     pusha                                       ; Save register states to stack
@@ -342,7 +356,7 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
 
 ; CONVERT UNSIGNED DECIMAL TO BINARY: Converts ASCII decimal notation to binary value
 ; IN: CX = Number of decimal digits (bits 0-2, max 5); DS:SI = Source buffer
-; OUT: DX = Resulting value
+; OUT: DX = Resulting value, CF = Set on error
 
 conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI to binary, store in DX
     pusha                                       ; Push register states to stack
@@ -363,6 +377,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
 
     mov ah, 0x00                                ; Upper byte is 0
     add ax, dx                                  ; Add the binary value to our sum
+    jc .error_overflow                          ; If overflow, error
 
     cmp byte [si], 0x00                         ; Is the next character a NULL char?
     je .finish                                  ; If so, we're done
@@ -378,7 +393,8 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     mul dx                                      ; Set up for the next place value
     mov dx, ax                                  ; Move back into the correct register
 
-    jmp .digit
+    jc .error_overflow                          ; If overflow, error
+    jmp .digit                                  ; Otherwise, next digit
 
 .done:
     clc                                         ; No error
@@ -406,7 +422,15 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     call println                                ; Error message
 
     stc                                         ; Carry flag for error
-    je .end                                     ; We're done
+    jmp .end                                    ; We're done
+
+.error_overflow:
+    call data_kernseg                           ; We're about to access kernel variables
+    mov si, iface_error_oflow
+    call println                                ; Error message
+
+    stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
 
 
 ; GENERATE UNIX TIMESTAMP: Creates a UNIX timestamp from time and date
@@ -1199,3 +1223,5 @@ input_number        dw 0x0000
 
 iface_error_nan     db "ERROR: Not a number.", 0x00
 iface_error_space   db "ERROR: Memory size too small.", 0x00
+iface_error_oflow   db "ERROR: 16-bit overflow.", 0x00
+iface_error_oflow8  db "ERROR: 8-bit overflow.", 0x00
