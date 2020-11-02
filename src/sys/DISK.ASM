@@ -121,15 +121,13 @@ get_file_info:                                  ; Get an item (AL=offset) from a
 
 
 ; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
-; IN: [cluster] = Starting cluster number, [bytes_to_load] = File size (run get_file_cluster to set these up)
+; IN: [cluster] = Starting cluster number, [bytes_to_load] = File size (run get_file_cluster to set these up), [buffer_pointer] = Offset to load to
 ; OUT: CF = Set on error
 
 load_file:                                      ; Load file starting at cluster into buffer
     pusha                                       ; Push register states to stack
 
     call data_kernseg                           ; Segment in which we are loaded
-
-    mov word [buffer_pointer], 0x0000           ; Start loading at offset 0
 
 .load_cluster:
     mov si, iface_disk_cluster
@@ -202,7 +200,7 @@ load_file:                                      ; Load file starting at cluster 
     je .error_bsec                              ; If so, error
 
     cmp ax, 0x0002                              ; Is this an invalid cluster number?
-    je .error_fat                               ; If so, error
+    jbe .error_fat                              ; If so, error
 
     cmp ax, word [cluster]                      ; Is this the cluster we just loaded?
     je .error_fat                               ; If so, error
@@ -431,7 +429,7 @@ write_file:                                     ; Write file buffer to disk as f
     cmp bx, 0x0000                              ; Was this cluster previously free?
     je .change_fat_entry                        ; If so, we need to set it to the next available cluster
 
-    cmp bx, 0xFFF8                              ; Was this cluster previously EOF?
+    cmp bx, 0xFFF7                              ; Was this cluster previously EOF or bad sector?
     jae .change_fat_entry                       ; If so, we need to set it to the next available cluster
 
     mov word [cluster], bx                      ; Otherwise, it is our next cluster to write to

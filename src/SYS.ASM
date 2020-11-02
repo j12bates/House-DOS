@@ -263,8 +263,9 @@ command:                                        ; Main loop: Retrieve command fr
     jc .bad_command                             ; If error, bad command
 
     call get_file_cluster                       ; Get the starting cluster for our file
-
     call clear_file_buffer                      ; Clear the file buffer
+    mov word [buffer_pointer], 0x0000           ; Load into the beginning of the buffer
+
     call load_file                              ; Load file into our file buffer
     jc command                                  ; If error, stop here
 
@@ -574,6 +575,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x65
     je disk_routines.line_address               ; Get line address
+
+    cmp ah, 0x66
+    je disk_routines.load_offset                ; Load file to offset
 
     cmp ah, 0x68
     je disk_routines.write_bytes_qty            ; Write quantity of bytes to file
@@ -1006,6 +1010,8 @@ disk_routines:                                  ; Disk functions
 .load:
     call get_file_cluster                       ; Get the starting cluster of the verified file
     call clear_file_buffer                      ; Clear the file buffer
+    mov word [buffer_pointer], 0x0000           ; Load into the beginning of the buffer
+
     call load_file                              ; Load the file into the file buffer
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1059,6 +1065,14 @@ disk_routines:                                  ; Disk functions
 
 .line_address:
     call get_line_addr                          ; Get line address
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.load_offset:
+    call get_file_cluster                       ; Get the starting cluster of the verified file
+
+    mov word [buffer_pointer], di               ; Put our offset in the correct place
+    call load_file                              ; Load the file into the file buffer
+
     jmp int_ret.preserve_flags                  ; We're done!
 
 .write_bytes_qty:
