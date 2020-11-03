@@ -20,7 +20,6 @@ input:                                          ; Get input from user, store in 
     call data_kernseg                           ; We will be using kernel variables
 
     mov word [input_buffer_addr], di            ; Save our address
-    mov word [input_end], di                    ; Put our address here too
 
     add cx, di                                  ; Find the end of the buffer
     mov word [input_buffer_limit], cx           ; Save this
@@ -37,6 +36,27 @@ input:                                          ; Get input from user, store in 
     mov ah, 0x00                                ; Get keyboard input
     int 0x16                                    ; BIOS keyboard interrupt
 
+.num_lock_handler:
+    push ax                                     ; Preserve character
+
+    mov ah, 0x02                                ; Read keyboard flags
+    int 0x16                                    ; BIOS keyboard interrupt
+
+    test al, 0b00100000                         ; Is NUM-LOCK active?
+    pop ax                                      ; Restore character
+    jz .special_handler                         ; If not, skip all this
+
+    cmp al, 0x00                                ; Does it have an ASCII code?
+    je .special_handler                         ; If not, it's not a num key
+
+    cmp ah, 0x1C                                ; Was the RETURN key pressed?
+    je .terminate                               ; If so, we're done getting input
+
+    cmp ah, 0x0E                                ; Was the BACKSPACE key pressed?
+    je .backspace                               ; If so, erase last char and move cursor left
+
+    mov ah, 0x00                                ; Otherwise, get rid of the scan code and proceed
+
 .special_handler:
     cmp ah, 0x1C                                ; Was the RETURN key pressed?
     je .terminate                               ; If so, we're done getting input
@@ -49,6 +69,12 @@ input:                                          ; Get input from user, store in 
 
     cmp ah, 0x4D                                ; Was the RIGHT ARROW pressed?
     je .right                                   ; If so, move cursor right
+
+    cmp ah, 0x47                                ; Was HOME pressed?
+    je .home                                    ; If so, move cursor to the beginning
+
+    cmp ah, 0x4F                                ; Was END pressed?
+    je .end_input                               ; If so, move cursor to the end of input
 
     cmp al, 0x20                                ; Is it between SPACE and DEL?
     jl .key                                     ; If not, we can't print this character
@@ -109,10 +135,37 @@ input:                                          ; Get input from user, store in 
     mov bh, 0x00                                ; Page 0
     int 0x10                                    ; BIOS VGA interrupt
 
-    call teletype_output                        ; Print the character and advance cursor
+    call teletype_output                        ; Print the same character and advance cursor
     inc di                                      ; Advance the pointer
 
     jmp .key                                    ; Get more input
+
+.home:
+    cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
+    je .key                                     ; If so, get more input
+
+    mov al, 0x08                                ; Otherwise, backwards
+    call teletype_output                        ; Write character
+
+    dec di                                      ; Decrement the pointer
+
+    jmp .home                                   ; And repeat
+
+.end_input:
+    cmp byte [es:di], 0x00                      ; Are we at the end of our input?
+    je .key                                     ; If so, get more input
+
+    mov ah, 0x08                                ; Get character at cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+    call teletype_output                        ; Print the same character and advance cursor
+    inc di                                      ; Advance the pointer
+
+    cmp di, word [input_buffer_limit]           ; Are we at the end of our buffer?
+    je .key                                     ; If so, get more input
+
+    jmp .end_input                              ; Otherwise, repeat
 
 .terminate:
     cmp byte [es:di], 0x00                      ; Are we at the end of our input?
@@ -631,7 +684,6 @@ done:                                           ; Prints the DONE message, then 
 iface_data:
 
 input_buffer_addr   dw 0x0000
-input_end           dw 0x0000
 input_buffer_limit  dw 0x0000
 
 iface_done          db "Done!", 0x00

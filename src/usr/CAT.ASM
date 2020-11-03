@@ -44,6 +44,7 @@ main:
 
     add word [buffer_pointer], ax       ; Add size to overall pointer/counter
 
+.next:
     pop cx                              ; Restore our counter
     loop .file                          ; Repeat with next file
 

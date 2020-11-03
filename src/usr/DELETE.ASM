@@ -11,8 +11,14 @@
 ; ========================================================================
 
 main:
+    mov ah, 0x21                        ; Get total parameters
+    int 0x7E
+
+.file:
+    push cx                             ; Preserve counter
+
     mov ah, 0x20                        ; Get parameter
-    mov cx, 0x0000                      ; Parameter 0
+    dec cx                              ; Our parameter number (avoid an O.B.O.E)
     mov di, fname                       ; The name of our filename to delete
     int 0x7E
 
@@ -22,11 +28,16 @@ main:
     mov si, fname                       ; Filename
     int 0x7E
 
-    jc .done                            ; If failed, error
+    jc .next                            ; If failed, try next file
 
-    mov ah, 0x79                        ; Delete file
+    mov ah, 0x79                        ; Otherwise, delete file
     int 0x7E
 
+.next:
+    pop cx                              ; Restore counter
+    loop .file                          ; Repeat with next file
+
+.apply:
     mov ah, 0x27                        ; Check for flag
     mov al, 0x41                        ; Flag 'A'
     int 0x7E
@@ -44,6 +55,5 @@ main:
 data:
 
 prompt          db "Input filename: ", 0x00
-
 fname           dq 0x0000000000000000
                 dd 0x00000000

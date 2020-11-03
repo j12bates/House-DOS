@@ -130,7 +130,7 @@ command:                                        ; Main loop: Retrieve command fr
     call prompt                                 ; Setup prompt
 
     mov di, input_buffer                        ; Our input buffer
-    mov cx, 0x001F                              ; 31-byte limit
+    mov cx, 0x003F                              ; 63-byte limit
 
     call input                                  ; Get input from user
     call line_break                             ; Line break
@@ -1420,18 +1420,30 @@ input_buffer        dq 0x0000000000000000       ; 0x00021D00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
-
-params              dq 0x0000000000000000       ; 0x00021D20
                     dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-
-misc_buffer         dq 0x0000000000000000       ; 0x00021D40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00021D60
+params              dq 0x0000000000000000       ; 0x00021D40
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+
+misc_buffer         dq 0x0000000000000000       ; 0x00021D80
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+
+param_flags         dq 0x0000000000000000       ; 0x00021DC0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1447,7 +1459,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 25; Compiled 2020-10-29", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 26; Compiled 2020-11-02", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
