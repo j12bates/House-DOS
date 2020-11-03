@@ -74,7 +74,7 @@ verify:                                         ; Verify that a file exists
 
 
 ; GET FILE INFO: Retrieves value from the directory entry of a certain file
-; IN: AL = Offset from start of entry
+; IN: AL = Offset from start of entry, [root_entry] = Root entry number of the file (run verify to set this up)
 ; OUT: AL/AX/DX:AX = Return value (size is automatically detected from offset)
 
 get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
