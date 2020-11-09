@@ -1,0 +1,29 @@
+*********************************** House-DOS Error Reference ***********************************
+=================================================================================================
+
+This document is a reference to the House-DOS kernel error codes and their meanings.
+
+I. Overview & Groupings
+
+The House-DOS kernel contains a bunch of routines for doing a variety of different tasks, and
+also acts as a handler for system calls made by programs. It is responsible for loading programs,
+getting input from the user, and working with devices. It is loaded as the file SYS.BIN, and is
+assembled from the file src/SYS.ASM and all the subsystems located in src/sys/.
+
+CODE GROUPINGS
+
+0x0000 - 0x00FF: Basic system error
+0x0100 - 0x01FF: Data error
+0x0200 - 0x02FF: Disk error
+0x0300 - 0x03FF: Filesystem error
+
+
+II. Basic System Errors
+
+    0x0000: NONDESCRIPT
+    0x0001: CANCELLED BY USER
+    0x0002: PARAMETER MISSING
+    0x0010: DIVIDE BY ZERO
+    0x0011: RTC ERROR
+
+
