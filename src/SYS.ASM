@@ -5,6 +5,7 @@
 ; ========================================================================
 
     BITS 16
+    ORG 0x0000
 
 ; ========================================================================
 ; MAIN ROUTINE
@@ -76,6 +77,11 @@ start:                                          ; House-DOS code
     shl di, 0x2                                 ; 4 bytes per entry
 
     mov word [es:di], handback_manual           ; Manual handback code is here
+    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
+
+    mov di, 0x0000                              ; We will be changing the entry for the DIVIDE BY ZERO handler
+
+    mov word [es:di], divide_zero               ; Manual divide by zero code is here
     mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
 
     call random_seed                            ; Create a random number seed
@@ -291,15 +297,35 @@ handback_manual:                                ; Routine to manually perform ha
     int 0x7E
 
 
+divide_zero:                                    ; Routine for if a DIVIDE_ZERO error happens
+    push ax                                     ; Save register state
+
+    mov ax, 0x0010                              ; House-DOS error code
+    call error                                  ; Display error message if applicable
+
+    pop ax                                      ; Restore register state
+    mov word [register_bckp_a], si              ; Save register state
+
+    pop si                                      ; Restore instruction pointer
+    add si, 0x0002                              ; Move past the DIV instruction
+    push si                                     ; Put it back
+
+    mov si, word [register_bckp_a]              ; Restore register state
+    pushf                                       ; This routine wants a FLAGS image already there
+    jmp int_ret.preserve_flags                  ; Perform an interrupt return
+
+
 ; ========================================================================
 ; SUBSYSTEMS
 ; ========================================================================
 
     %INCLUDE "sys/MEM.ASM"
+    %INCLUDE "sys/DATA.ASM"
     %INCLUDE "sys/LOGIC.ASM"
     %INCLUDE "sys/IFACE.ASM"
     %INCLUDE "sys/DISK.ASM"
     %INCLUDE "sys/MISC.ASM"
+    %INCLUDE "sys/HANDLING.ASM"
 
 
 ; ========================================================================
@@ -324,10 +350,9 @@ get_parameter:                                  ; Get parameter from list
     ret                                         ; Return to caller
 
 .error_param:
-    mov si, iface_error_param
-    call println                                ; Print message
+    mov ax, 0x0002                              ; Missing parameter
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .done                                   ; We're done
 
 
@@ -1382,12 +1407,13 @@ int_ret:                                        ; Return back to command
     mov word [register_bckp_a], ax
     mov word [register_bckp_b], bx              ; Save register states to backup
 
-    add sp, 0x0002                              ; Move stack pointer past the FLAGS image from INT
+    add sp, 0x0002                              ; Move stack pointer past the FLAGS image we make
 
     pop ax                                      ; Pop instruction pointer
     pop bx                                      ; Pop code segment
 
     add sp, 0x0002                              ; Move stack pointer past the FLAGS image from INT
+    push word [flags_image]                     ; Overwrite with our current flags image
 
     push bx                                     ; Push code segment
     push ax                                     ; Push instruction pointer
@@ -1395,20 +1421,10 @@ int_ret:                                        ; Return back to command
     mov ax, word [register_bckp_a]
     mov bx, word [register_bckp_b]              ; Restore register states
 
-    push word [flags_image]                     ; Push our FLAGS image
-
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov ds, ax                                  ; The segment our command is loaded in
-    mov es, ax
-    pop ax                                      ; Restore register state
-
-    popf                                        ; Pop image into the FLAGS register
-
-    retf                                        ; Far return
+    jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x1D00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x1E00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1416,7 +1432,7 @@ times 0x1D00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00021D00
+input_buffer        dq 0x0000000000000000       ; 0x00021E00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1425,7 +1441,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00021D00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00021D40
+params              dq 0x0000000000000000       ; 0x00021E40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1434,7 +1450,7 @@ params              dq 0x0000000000000000       ; 0x00021D40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00021D80
+misc_buffer         dq 0x0000000000000000       ; 0x00021E80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1443,7 +1459,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00021D80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00021DC0
+param_flags         dq 0x0000000000000000       ; 0x00021EC0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1459,7 +1475,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 26; Compiled 2020-11-02", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 27; Compiled 2020-11-08", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
