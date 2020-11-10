@@ -1424,7 +1424,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x1F00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2100 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1432,7 +1432,7 @@ times 0x1F00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00021F00
+input_buffer        dq 0x0000000000000000       ; 0x00022100
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1441,7 +1441,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00021F00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00021F40
+params              dq 0x0000000000000000       ; 0x00022140
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1450,7 +1450,7 @@ params              dq 0x0000000000000000       ; 0x00021F40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00021F80
+misc_buffer         dq 0x0000000000000000       ; 0x00022180
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1459,7 +1459,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00021F80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00021FC0
+param_flags         dq 0x0000000000000000       ; 0x000221C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
