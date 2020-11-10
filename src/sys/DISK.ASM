@@ -221,10 +221,7 @@ load_file:                                      ; Load file starting at cluster 
     ret                                         ; Return to caller
 
 .error_read:
-    mov si, iface_disk_eread
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
+    call disk_error                             ; Handle this error
     jmp .end                                    ; We're done
 
 .error_size:
@@ -493,10 +490,7 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done
 
 .error_write:
-    mov si, iface_disk_ewrite
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
+    call disk_error                             ; Handle this error
     jmp .end                                    ; We're done
 
 .error_attribute:
@@ -684,6 +678,22 @@ rollback:                                       ; Rollback filesystem
 
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done   
+
+
+; HANDLE DISK ERROR: Handles a disk read/write error
+; IN: AH = INT 0x13 status
+; OUT: CF = Set
+
+disk_error:
+    pusha                                       ; Save register states to stack
+
+    mov al, ah                                  ; Move status code into lower byte of error code
+    mov ah, 0x02                                ; Upper byte of error code is for disk
+
+    call error                                  ; Call on error handler
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
 
 
 ; GET FILE LIST: Gets a list of filenames separated by commas

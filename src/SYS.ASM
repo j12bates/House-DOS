@@ -1424,7 +1424,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x1E00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x1F00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1432,7 +1432,7 @@ times 0x1E00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00021E00
+input_buffer        dq 0x0000000000000000       ; 0x00021F00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1441,7 +1441,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00021E00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00021E40
+params              dq 0x0000000000000000       ; 0x00021F40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1450,7 +1450,7 @@ params              dq 0x0000000000000000       ; 0x00021E40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00021E80
+misc_buffer         dq 0x0000000000000000       ; 0x00021F80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1459,7 +1459,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00021E80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00021EC0
+param_flags         dq 0x0000000000000000       ; 0x00021FC0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1475,7 +1475,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 27; Compiled 2020-11-08", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 28; Compiled 2020-11-12", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

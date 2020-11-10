@@ -292,10 +292,9 @@ conv_dec_unsigned_byte:                         ; Convert ASCII decimal at DS:SI
     ret                                         ; Return to caller
 
 .error_overflow:
-    mov si, iface_error_oflow8
-    call println                                ; Display error message
+    mov ax, 0x0111                              ; 8-bit overflow
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .done                                   ; We're done
 
 
@@ -346,11 +345,9 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
     ret                                         ; Return to caller
 
 .error_nan:
-    call data_kernseg                           ; We're about to access kernel variables
-    mov si, iface_error_nan                     ; Error message
-    call println                                ; Print line
+    mov ax, 0x0100                              ; Not a number
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -409,27 +406,21 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     ret                                         ; Return to caller
 
 .error_nan:
-    call data_kernseg                           ; We're about to access kernel variables
-    mov si, iface_error_nan                     ; Error message
-    call println                                ; Print line
+    mov ax, 0x0100                              ; Not a number
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .error_size:
-    call data_kernseg                           ; We're about to access kernel variables
-    mov si, iface_error_space
-    call println                                ; Error message
+    mov ax, 0x0101                              ; Memory size
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .error_overflow:
-    call data_kernseg                           ; We're about to access kernel variables
-    mov si, iface_error_oflow
-    call println                                ; Error message
+    mov ax, 0x0110                              ; 16-bit overflow
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -505,10 +496,9 @@ get_item_list:                                  ; Get a specific item from a com
     ret                                         ; Return to caller
 
 .error_index:
-    mov si, iface_error_index
-    call println                                ; Display error message
+    mov ax, 0x0120                              ; Invalid list index
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 

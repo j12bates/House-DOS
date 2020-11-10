@@ -116,12 +116,9 @@ get_time:                                       ; Get RTC system time
     ret                                         ; Return to caller
 
 .error_rtc:
-    push si                                     ; Save register state to stack
-    mov si, iface_error_rtc
-    call println                                ; Print message
+    mov ax, 0x0011                              ; RTC Error
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
-    pop si                                      ; Restore register state
     jmp .done                                   ; We're done
 
 
