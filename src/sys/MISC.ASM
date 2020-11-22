@@ -187,5 +187,3 @@ speaker_off:
 misc_data:
 
 random_num          dw 0x0000
-
-iface_error_rtc     db "FATAL: RTC Error. Try again.", 0x00

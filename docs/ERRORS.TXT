@@ -16,6 +16,7 @@ CODE GROUPINGS
 0x0100 - 0x01FF: Data error
 0x0200 - 0x02FF: Disk error
 0x0300 - 0x03FF: Filesystem error
+0x0400 - 0x07FF: Buffer error
 
 
 II. Basic System Errors
@@ -59,3 +60,20 @@ IV. Disk Errors
     0x0220: CONTROLLER ERROR
     0x0240: SEEK FAILURE
     0x0280: TIMEOUT
+
+
+V. Filesystem Errors
+
+    0x0300: READ-ONLY
+    0x0301: INVALID FILENAME
+    0x0302: FILE EXISTS
+    0x0303: FILE TOO LARGE
+    0x0304: CLUSTER MARKED BAD
+    0x0305: INCONSISTENT FAT
+    0x0306: NO CLUSTERS AVAILABLE
+    0x0307: NO ENTRIES AVAILABLE
+
+
+VI. Buffer Errors
+
+    0x0500: INVALID LINE NUMBER
