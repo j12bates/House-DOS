@@ -556,10 +556,3 @@ get_total_list:                                 ; Get the total number of list i
 ; ========================================================================
 
 data_squared:
-
-iface_error_nan     db "ERROR: Not a number.", 0x00
-iface_error_space   db "ERROR: Memory size too small.", 0x00
-iface_error_oflow   db "ERROR: 16-bit overflow.", 0x00
-iface_error_oflow8  db "ERROR: 8-bit overflow.", 0x00
-
-iface_error_index   db "ERROR: Invalid list index.", 0x00

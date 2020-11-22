@@ -1475,7 +1475,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 28; Compiled 2020-11-12", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 28; Compiled 2020-11-21", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

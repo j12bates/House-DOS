@@ -102,6 +102,35 @@ error:                                          ; The error handler
     cmp ax, 0x0280
     je disk_errors.timeout                      ; Timeout
 
+.fs:
+    cmp ax, 0x0300
+    je fs_errors.read_only                      ; Read-only
+
+    cmp ax, 0x0301
+    je fs_errors.filename                       ; Invalid filename
+
+    cmp ax, 0x0302
+    je fs_errors.exists                         ; File exists
+
+    cmp ax, 0x0303
+    je fs_errors.size                           ; File too large
+
+    cmp ax, 0x0304
+    je fs_errors.bad_cluster                    ; Cluster marked as bad
+
+    cmp ax, 0x0305
+    je fs_errors.fat                            ; Inconsistent FAT
+
+    cmp ax, 0x0306
+    je fs_errors.full                           ; No clusters available
+
+    cmp ax, 0x0307
+    je fs_errors.full_dir                       ; No directory entries available
+
+.mem:
+    cmp ax, 0x0500
+    je mem_errors.line                          ; Invalid line number
+
 
 sys_errors:                                     ; Kernel error string setup
 
@@ -224,6 +253,48 @@ disk_errors:                                    ; Disk error string setup
     jmp error_print
 
 
+fs_errors:                                      ; Filesystem error strings
+
+.read_only:
+    push error_fs_readonly                      ; File read-only
+    jmp error_print
+
+.filename:
+    push error_fs_fname                         ; Invalid filename
+    jmp error_print
+
+.exists:
+    push error_fs_exists                        ; File exists
+    jmp error_print
+
+.size:
+    push error_fs_64k                           ; File too large
+    jmp error_print
+
+.bad_cluster:
+    push error_fs_bcluster                      ; Bad cluster
+    jmp error_print
+
+.fat:
+    push error_fs_fat                           ; Inconsistent FAT
+    jmp error_print
+
+.full:
+    push error_fs_full                          ; No available clusters
+    jmp error_print
+
+.full_dir:
+    push error_fs_dirfull                       ; No available root entries
+    jmp error_print
+
+
+mem_errors:                                     ; Buffer error strings
+
+.line:
+    push error_mem_line                         ; Invalid line number
+    jmp error_print
+
+
 error_print:                                    ; Display the error message
     mov di, hex_buffer                          ; Our buffer
     call conv_word_hex                          ; Convert error code to hexadecimal
@@ -282,6 +353,17 @@ error_disk_recov    db "Recoverable data error.", 0x00
 error_disk_control  db "Controller error.", 0x00
 error_disk_seek     db "Seek failure.", 0x00
 error_disk_tout     db "Disk timeout.", 0x00
+
+error_fs_readonly   db "File is read-only.", 0x00
+error_fs_fname      db "Invalid filename.", 0x00
+error_fs_exists     db "File exists.", 0x00
+error_fs_64k        db "File too large to load.", 0x00
+error_fs_bcluster   db "Cluster marked as bad.", 0x00
+error_fs_fat        db "Inconsistent FAT.", 0x00
+error_fs_full       db "Disk is full.", 0x00
+error_fs_dirfull    db "No directory entries available.", 0x00
+
+error_mem_line      db "Invalid line number.", 0x00
 
 
 data_handling:

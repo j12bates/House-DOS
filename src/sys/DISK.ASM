@@ -225,24 +225,21 @@ load_file:                                      ; Load file starting at cluster 
     jmp .end                                    ; We're done
 
 .error_size:
-    mov si, iface_disk_esize
-    call println                                ; Print message
+    mov ax, 0x0303                              ; File too large
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .error_fat:
-    mov si, iface_disk_efat
-    call println                                ; Print message
+    mov ax, 0x0305                              ; Inconsistent FAT
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .error_bsec:
-    mov si, iface_disk_ebsec
-    call println                                ; Print message
+    mov ax, 0x0304                              ; Cluster marked bad
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -274,7 +271,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .create_new:
     call next_available_cluster                 ; Get the next available cluster
-    jc .error_full                              ; If error, disk is full
+    jc .abort                                   ; If error, we're done
 
     mov si, iface_disk_search
     call print_str                              ; Print message
@@ -435,7 +432,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .change_fat_entry:
     call next_available_cluster                 ; Get the next cluster available
-    jc .error_full                              ; If error, disk is full
+    jc .abort                                   ; If error, we're done
 
     mov bx, word [cluster]
     mov word [es:di], bx                        ; Move this cluster number into our FAT entry
@@ -475,18 +472,10 @@ write_file:                                     ; Write file buffer to disk as f
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
-.error_full:
-    mov si, iface_disk_efull
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
-    jmp .end                                    ; We're done
-
 .error_root:
-    mov si, iface_disk_eroot
-    call println                                ; Print message
+    mov ax, 0x0307                              ; No entries available
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .error_write:
@@ -494,10 +483,9 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done
 
 .error_attribute:
-    mov si, iface_disk_eronly
-    call println                                ; Print message
+    mov ax, 0x0300                              ; File Read-Only
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .abort:
@@ -599,10 +587,7 @@ apply:                                          ; Apply filesystem changes to di
     ret                                         ; Return to caller
 
 .error_write:
-    mov si, iface_disk_ewrite
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
+    call disk_error                             ; Handle this error
     jmp .end                                    ; We're done
 
 
@@ -673,10 +658,7 @@ rollback:                                       ; Rollback filesystem
     ret                                         ; Return to caller
 
 .error_read:
-    mov si, iface_disk_eread
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
+    call disk_error                             ; Handle this error
     jmp .end                                    ; We're done   
 
 
@@ -796,11 +778,10 @@ rename:                                         ; Rename a file
     ret                                         ; Return to caller
 
 .error_exists:
-    mov si, iface_disk_eexists
-    call println                                ; Print message
+    mov ax, 0x0302                              ; File exists
+    call error                                  ; Handle this error
 
     pop ax                                      ; Restore for balance
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 .abort:
@@ -869,8 +850,7 @@ next_available_cluster:                         ; Get the next cluster available
     add di, 0x0002                              ; Otherwise, move to the next two-byte entry
     loop .check_fat_entry                       ; And repeat
 
-    stc                                         ; If no clusters are free, error
-    jmp .end                                    ; We're done
+    jmp .error_full                             ; If all clusters are full, error
 
 .done:
     shr di, 0x1                                 ; There are two bytes per entry in FAT16
@@ -881,6 +861,12 @@ next_available_cluster:                         ; Get the next cluster available
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+.error_full:
+    mov ax, 0x0306                              ; No clusters available
+    call error                                  ; Handle this error
+
+    jmp .end                                    ; We're done
 
 
 ; ASK TO APPLY CHANGES: Shows filesystem changes, prompts the user to authenticate, then applies changes
@@ -942,10 +928,9 @@ prompt_apply:                                   ; Prompt the user to authenticat
     ret                                         ; Return to caller
 
 .error_cancelled:
-    mov si, iface_disk_cancel
-    call println                                ; Print message
+    mov ax, 0x0001                              ; Cancelled by user
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -969,10 +954,9 @@ prompt_rollback:                                ; Prompt the user to authenticat
     ret                                         ; Return to caller
 
 .error_cancelled:
-    mov si, iface_disk_cancel
-    call println                                ; Print message
+    mov ax, 0x0001                              ; Cancelled by user
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -1042,11 +1026,9 @@ check_attributes:
     ret                                         ; Return to caller
 
 .error_readonly:
-    mov si, iface_disk_eronly
-    call println                                ; Print message
+    mov ax, 0x0300                              ; Read-only
+    call error                                  ; Handle this error
 
-.error:
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -1104,12 +1086,9 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     ret                                         ; Return to caller
 
 .error_filename:
-    call data_kernseg                           ; The segment we're loaded in
+    mov ax, 0x0301                              ; Invalid filename
+    call error                                  ; Handle this error
 
-    mov si, iface_disk_efname
-    call println                                ; Print message
-
-    stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
@@ -1325,15 +1304,4 @@ iface_disk_cancel   db "Operation cancelled.", 0x00
 iface_disk_renamed  db "File renamed. Changes to be applied.", 0x00
 iface_disk_deleted  db "File deleted. Changes to be applied.", 0x00
 iface_disk_nochange db "No changes to apply.", 0x00
-
 iface_disk_nf       db "File not found.", 0x00
-iface_disk_eexists  db "FATAL: File already exists.", 0x00
-iface_disk_esize    db "FATAL: File too large to load.", 0x00
-iface_disk_efull    db "FATAL: No clusters available.", 0x00
-iface_disk_eroot    db "FATAL: No root entries available.", 0x00
-iface_disk_eread    db "FATAL: Error while reading disk.", 0x00
-iface_disk_ewrite   db "FATAL: Error while writing to disk.", 0x00
-iface_disk_efname   db "FATAL: Not a valid filename.", 0x00
-iface_disk_eronly   db "FATAL: File is read-only.", 0x00
-iface_disk_efat     db "FATAL: Inconsistent FAT.", 0x00
-iface_disk_ebsec    db "FATAL: Sector marked as bad.", 0x00

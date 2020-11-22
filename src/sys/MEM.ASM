@@ -89,10 +89,9 @@ get_line_addr:                                  ; Get address of specific line f
     ret                                         ; Return to caller
 
 .error_line:
-    mov si, iface_error_line
-    call println                                ; Print message
+    mov ax, 0x0500                              ; Invalid line number
+    call error                                  ; Handle this error
 
-    stc                                         ; Carry flag for error
     jmp .done                                   ; We're done
 
 
