@@ -7,7 +7,7 @@
     BITS 16
 
 ; ========================================================================
-; NUMBER/NOTATION SUBROUTINES
+; NUMBER/NOTATION ROUTINES
 ; ========================================================================
 
 ; CONVERT WORD TO HEX: Converts word-size value to ASCII hexadecimal notation
@@ -298,12 +298,17 @@ conv_dec_unsigned_byte:                         ; Convert ASCII decimal at DS:SI
     jmp .done                                   ; We're done
 
 
+; ========================================================================
+; NUMBER/NOTATION SUBROUTINES
+; ========================================================================
+
 ; CONVERT HEX TO BINARY: Converts ASCII hexadecimal notation to binary value
 ; IN: CX = Number of hexadecimal digits (bits 0-2, max 4); DS:SI = Source buffer
-; OUT: DX = Resulting value, CF = Set on error
+; OUT: DX = Resulting value, CF = Set on error, segments
 
 conv_hex_bin:                                   ; Convert hexadecimal at DS:SI to binary in DX (CX = digits)
     pusha                                       ; Save register states to stack
+    push ds                                     ; Push our segment
 
     dec cx                                      ; Decrement counter to clear bits
     and cx, 0b00000011                          ; Only look at the rightmost two bits
@@ -337,10 +342,13 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
 
 .end:
     call data_kernseg                           ; We're about to access kernel variables
+    pop word [segment_bckp_a]                   ; Pop segment into memory
+
     mov word [register_bckp_a], dx              ; Save our value
 
     popa                                        ; Restore register states
     mov dx, word [register_bckp_a]              ; Restore our value
+    mov ds, word [segment_bckp_a]               ; Restore our segment
 
     ret                                         ; Return to caller
 
@@ -353,10 +361,11 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
 
 ; CONVERT UNSIGNED DECIMAL TO BINARY: Converts ASCII decimal notation to binary value
 ; IN: CX = Number of decimal digits (bits 0-2, max 5); DS:SI = Source buffer
-; OUT: DX = Resulting value, CF = Set on error
+; OUT: DX = Resulting value, CF = Set on error, segments
 
 conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI to binary, store in DX
     pusha                                       ; Push register states to stack
+    push ds                                     ; Push our segment
 
     and cx, 0b00000111                          ; Only look at the rightmost three bits
     cmp cx, 0x0005                              ; Up to 5 digits in a 16-bit unsigned integer
@@ -398,10 +407,13 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
 
 .end:
     call data_kernseg                           ; We're about to access kernel variables
-    mov word [register_bckp_a], dx              ; Preserve our output
+    pop word [segment_bckp_a]                   ; Pop segment into memory
+
+    mov word [register_bckp_a], dx              ; Save our value
 
     popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore output
+    mov dx, word [register_bckp_a]              ; Restore our value
+    mov ds, word [segment_bckp_a]               ; Restore our segment
 
     ret                                         ; Return to caller
 
@@ -425,7 +437,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
 
 
 ; ========================================================================
-; LIST SUBROUTINES
+; LIST ROUTINES
 ; ========================================================================
 
 ; GET ITEM FROM LIST: Gets a specific item from a comma-separated list

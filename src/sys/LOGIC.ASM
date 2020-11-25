@@ -7,8 +7,24 @@
     BITS 16
 
 ; ========================================================================
-; LOGICAL/CONVERSION SUBROUTINES
+; LOGICAL/CONVERSION ROUTINES
 ; ========================================================================
+
+; CAPITALIZE ASCII CHARACTER: Capitalizes an ASCII character if possible
+; IN: AL = Character
+; OUT: AL = Capitalized character
+
+capitalize_char:                                ; Capitalize char in AL
+    cmp al, 0x61                                ; Are we between lowercase A
+    jl .end
+    cmp al, 0x7A                                ; And lowercase Z?
+    jg .end
+
+    and al, 0b11011111                          ; If so, capitalize
+
+.end:
+    ret                                         ; Return to caller
+
 
 ; GENERATE UNIX TIMESTAMP: Creates a UNIX timestamp from time and date
 ; IN: CF:AX = Seconds elapsed since 00:00:00; DX = Days elapsed since 1970-01-01
@@ -554,6 +570,9 @@ conv_rtcdate_fat:                               ; Convert an RTC date to FAT dat
 
 .years:
     mov ax, cx                                  ; Year is stored here
+
+    call setup_segments                         ; We are going to be writing to and referencing kernel vars
+
     mov di, dec_src                             ; Our destination buffer
     call conv_word_hex                          ; Convert to hex (RTC values are weird)
 
@@ -650,7 +669,6 @@ conv_fat_rtcdate:                               ; Convert a FAT date to the RTC 
 
 .year:
     shr ax, 0x4                                 ; Shift the year into the rightmost bits
-
     add ax, 0x07BC                              ; Years start at 1980
 
     call setup_segments                         ; We're about to use kernel variables
@@ -705,11 +723,17 @@ conv_hz_freq:                                   ; Convert frequency in Hertz to 
     ret                                         ; Return to caller
 
 
+; ========================================================================
+; SUBROUTINES
+; ========================================================================
+
 ; CONVERT RTC VALUE: Converts an RTC value to a proper value
 ; IN: AL = RTC value to convert
 ; OUT: AL = Resulting value
 
 conv_rtcval_byte:                               ; Convert an RTC value in AL to an actual binary value
+    push ds
+    push es                                     ; Save segments to stack
     pusha                                       ; Save register states to stack
 
     call setup_segments                         ; We are going to be writing to and referencing kernel vars
@@ -726,6 +750,8 @@ conv_rtcval_byte:                               ; Convert an RTC value in AL to 
     popa                                        ; Restore register states
     mov al, byte [rtc_byte]                     ; Restore value into correct register
 
+    pop es
+    pop ds                                      ; Restore segments
     ret                                         ; Return to caller
 
 
@@ -734,7 +760,11 @@ conv_rtcval_byte:                               ; Convert an RTC value in AL to 
 ; OUT: AL = RTC value, CF = Set on error
 
 conv_byte_rtcval:                               ; Convert a binary value in AL to an RTC value
+    push ds
+    push es                                     ; Save segments to stack
     pusha                                       ; Save register states to stack
+
+    call setup_segments                         ; We are going to be writing to and referencing kernel vars
 
     cmp al, 0x63                                ; Are we above 99?
     jae .error                                  ; If so, error
@@ -760,6 +790,8 @@ conv_byte_rtcval:                               ; Convert a binary value in AL t
     popa                                        ; Restore register states
     mov al, byte [rtc_byte]                     ; Restore value into correct register
 
+    pop es
+    pop ds                                      ; Restore segments
     ret                                         ; Return to caller
 
 .error:
@@ -767,22 +799,6 @@ conv_byte_rtcval:                               ; Convert a binary value in AL t
 
     stc                                         ; Carry flag for error
     jmp .done                                   ; We're done
-
-
-; CAPITALIZE ASCII CHARACTER: Capitalizes an ASCII character if possible
-; IN: AL = Character
-; OUT: AL = Capitalized character
-
-capitalize_char:                                ; Capitalize char in AL
-    cmp al, 0x61                                ; Are we between lowercase A
-    jl .end
-    cmp al, 0x7A                                ; And lowercase Z?
-    jg .end
-
-    and al, 0b11011111                          ; If so, capitalize
-
-.end:
-    ret                                         ; Return to caller
 
 
 ; ========================================================================

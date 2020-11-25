@@ -7,7 +7,7 @@
     BITS 16
 
 ; ========================================================================
-; INPUT SUBROUTINES
+; INPUT ROUTINES
 ; ========================================================================
 
 ; GET KEYBOARD INPUT: Get user input from the keyboard, and store in the buffer provided
@@ -219,7 +219,7 @@ confirm:                                        ; Ask the user to confirm
 
 
 ; ========================================================================
-; DISPLAY SUBROUTINES
+; DISPLAY ROUTINES
 ; ========================================================================
 
 ; CLEAR SCREEN: Completely clears the screen
