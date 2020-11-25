@@ -293,8 +293,14 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 handback_manual:                                ; Routine to manually perform handback
-    mov ah, 0xFF                                ; Handback
-    int 0x7E
+    add sp, 0x000C                              ; Overwrite the address written for INT 9
+
+    pushf                                       ; Push flags to stack
+    push 0x2000                                 ; Push kernel segment
+    push main.handback                          ; Push address of handback code
+
+    sub sp, 0x0006                              ; Return to the address written for INT 1B
+    iret                                        ; Do an interrupt return to there
 
 
 divide_zero:                                    ; Routine for if a DIVIDE_ZERO error happens
@@ -1470,12 +1476,14 @@ end_buffers:
 ; Storage data region
 register_bckp_a     dw 0x0000
 register_bckp_b     dw 0x0000
+segment_bckp_a      dw 0x0000
+segment_bckp_b      dw 0x0000
 flags_image         dw 0x0000
 
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 28; Compiled 2020-11-21", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 29; Compiled 2020-11-24", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

@@ -7,7 +7,7 @@
     BITS 16
 
 ; ========================================================================
-; DISK SUBROUTINES
+; DISK ROUTINES
 ; ========================================================================
 
 ; VERIFY FILE: Verifies that a file with a given filename exists
@@ -830,6 +830,10 @@ delete:                                         ; Delete a file
     jmp .end                                    ; We're done
 
 
+; ========================================================================
+; SUBROUTINES
+; ========================================================================
+
 ; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
 ; IN: None
 ; OUT: [cluster] = Cluster number; CF = Set on error
@@ -864,97 +868,6 @@ next_available_cluster:                         ; Get the next cluster available
 
 .error_full:
     mov ax, 0x0306                              ; No clusters available
-    call error                                  ; Handle this error
-
-    jmp .end                                    ; We're done
-
-
-; ASK TO APPLY CHANGES: Shows filesystem changes, prompts the user to authenticate, then applies changes
-; IN: None
-; OUT: CF = Set if not authenticated
-
-prompt_apply:                                   ; Prompt the user to authenticate filesystem changes
-    pusha                                       ; Save register states to stack
-
-    call data_kernseg                           ; We want to access our own variables
-    call extra_kernseg                          ; We want to write to our own variables
-
-.check:
-    cmp word [renames], 0x0000                  ; Do we have any renames?
-    jne .numbers                                ; If so, proceed
-
-    cmp word [deletions], 0x0000                ; Do we have any deletions?
-    jne .numbers                                ; If so, proceed
-
-    mov si, iface_disk_nochange
-    call println                                ; Otherwise, we have no changes to apply
-
-    clc                                         ; There wasn't an error
-    jmp .end                                    ; We're done
-
-.numbers:
-    mov ax, word [renames]                      ; The number of renames
-    mov di, iface_disk_changesB                 ; Our spot in the message
-    call conv_word_dec_unsigned                 ; Convert to decimal
-
-    mov ax, word [deletions]                    ; The number of deletions
-    mov di, iface_disk_changesD                 ; Our spot in the message
-    call conv_word_dec_unsigned                 ; Convert to decimal
-
-.message:
-    mov si, iface_disk_changesA                 ; Print the message, one section at a time
-    call print_str
-
-    mov si, iface_disk_changesB
-    call print_str
-
-    mov si, iface_disk_changesC
-    call print_str
-
-    mov si, iface_disk_changesD
-    call print_str
-
-    mov si, iface_disk_changesE
-    call print_str
-
-.apply:
-    call confirm                                ; Ask for confirmation
-    jc .error_cancelled                         ; If not given, cancel
-
-    call apply                                  ; Otherwise, apply filesystem changes
-
-.end:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-.error_cancelled:
-    mov ax, 0x0001                              ; Cancelled by user
-    call error                                  ; Handle this error
-
-    jmp .end                                    ; We're done
-
-
-; ASK TO ROLLBACK FILESYSTEM: Prompts the user to authenticate filesystem rollback
-; IN: None
-; OUT: CF = Set on error
-
-prompt_rollback:                                ; Prompt the user to authenticate filesystem rollback
-    push si                                     ; Save register state to stack
-
-    mov si, iface_ays
-    call print_str                              ; Print message
-
-    call confirm                                ; Ask for confirmation
-    jc .error_cancelled                         ; If not given, cancel
-
-    call rollback                               ; Otherwise, rollback filesystem
-
-.end:
-    pop si                                      ; Restore register state
-    ret                                         ; Return to caller
-
-.error_cancelled:
-    mov ax, 0x0001                              ; Cancelled by user
     call error                                  ; Handle this error
 
     jmp .end                                    ; We're done
@@ -1241,6 +1154,101 @@ update_access_date:                             ; Update a file's access date fi
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+
+; ========================================================================
+; KERNEL-SPECIFIC ROUTINES
+; ========================================================================
+
+; ASK TO APPLY CHANGES: Shows filesystem changes, prompts the user to authenticate, then applies changes
+; IN: None
+; OUT: CF = Set if not authenticated
+
+prompt_apply:                                   ; Prompt the user to authenticate filesystem changes
+    pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; We want to access our own variables
+    call extra_kernseg                          ; We want to write to our own variables
+
+.check:
+    cmp word [renames], 0x0000                  ; Do we have any renames?
+    jne .numbers                                ; If so, proceed
+
+    cmp word [deletions], 0x0000                ; Do we have any deletions?
+    jne .numbers                                ; If so, proceed
+
+    mov si, iface_disk_nochange
+    call println                                ; Otherwise, we have no changes to apply
+
+    clc                                         ; There wasn't an error
+    jmp .end                                    ; We're done
+
+.numbers:
+    mov ax, word [renames]                      ; The number of renames
+    mov di, iface_disk_changesB                 ; Our spot in the message
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
+    mov ax, word [deletions]                    ; The number of deletions
+    mov di, iface_disk_changesD                 ; Our spot in the message
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
+.message:
+    mov si, iface_disk_changesA                 ; Print the message, one section at a time
+    call print_str
+
+    mov si, iface_disk_changesB
+    call print_str
+
+    mov si, iface_disk_changesC
+    call print_str
+
+    mov si, iface_disk_changesD
+    call print_str
+
+    mov si, iface_disk_changesE
+    call print_str
+
+.apply:
+    call confirm                                ; Ask for confirmation
+    jc .error_cancelled                         ; If not given, cancel
+
+    call apply                                  ; Otherwise, apply filesystem changes
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_cancelled:
+    mov ax, 0x0001                              ; Cancelled by user
+    call error                                  ; Handle this error
+
+    jmp .end                                    ; We're done
+
+
+; ASK TO ROLLBACK FILESYSTEM: Prompts the user to authenticate filesystem rollback
+; IN: None
+; OUT: CF = Set on error
+
+prompt_rollback:                                ; Prompt the user to authenticate filesystem rollback
+    push si                                     ; Save register state to stack
+
+    mov si, iface_ays
+    call print_str                              ; Print message
+
+    call confirm                                ; Ask for confirmation
+    jc .error_cancelled                         ; If not given, cancel
+
+    call rollback                               ; Otherwise, rollback filesystem
+
+.end:
+    pop si                                      ; Restore register state
+    ret                                         ; Return to caller
+
+.error_cancelled:
+    mov ax, 0x0001                              ; Cancelled by user
+    call error                                  ; Handle this error
+
+    jmp .end                                    ; We're done
 
 
 ; ========================================================================

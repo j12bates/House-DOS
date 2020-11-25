@@ -7,7 +7,7 @@
     BITS 16
 
 ; ========================================================================
-; MEMORY SUBROUTINES
+; MEMORY ROUTINES
 ; ========================================================================
 
 ; CLEAR FILE BUFFER: Overwrites everything in the file buffer with zeroes
