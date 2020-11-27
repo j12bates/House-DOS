@@ -5,9 +5,9 @@ This was created as a summer project during the 2020 pandemic.
 I've been having lots of fun creating it, and hope to continue to take this project further.
 ***
 Special thanks to:
-- [Jet Pham](github.com/jetpham), for being interested
-- [Ben Johnson](github.com/benjaminjohnson2204), for helping me fix my logic
-- [David Uehara](github.com/DavidUehara) and [Derrick](github.com/TheCodeWeaver), for being awesome
+- [Jet Pham](https://github.com/jetpham), for being interested
+- [Ben Johnson](https://github.com/benjaminjohnson2204), for helping me fix my logic
+- [David Uehara](https://github.com/DavidUehara) and [Derrick](https://github.com/TheCodeWeaver), for being awesome
 
 ## Instructions for Use:
 You will need the Netwide Assembler (NASM).
