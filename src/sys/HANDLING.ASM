@@ -15,6 +15,22 @@ error:                                          ; The error handler
 
     call setup_segments                         ; We're going to read from and write to kernel variables
 
+.cat:                                           ; The categories
+    cmp ah, 0x01                                ; System errors
+    jb .sys
+
+    cmp ah, 0x02                                ; Data errors
+    jb .data
+
+    cmp ah, 0x03                                ; Disk errors
+    jb .disk
+
+    cmp ah, 0x04                                ; Filesystem errors
+    jb .fs
+
+    cmp ah, 0x09                                ; Buffer errors
+    jb .mem
+
 .sys:                                           ; System errors
     cmp ax, 0x0000
     je sys_errors.idk                           ; Unknown error

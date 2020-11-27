@@ -12,16 +12,13 @@
 
 main:
     mov ah, 0x02                        ; Print line
-    mov si, msgA                        ; Message A
-    int 0x7E                            ; Call SYS.BIN
-
-    mov si, msgB                        ; Message B
-    int 0x7E                            ; Call SYS.BIN
+    mov si, msg                         ; Message A
+    int 0x7E
 
     mov ah, 0xFF                        ; We're done
-    int 0x7E                            ; Call SYS.BIN
+    int 0x7E
 
 data:
 
-msgA        db "House-DOS v0.0.2 NATE, Build 29; Compiled 2020-11-24", 0x00
-msgB        db "By Jacob, Jet, and Ben", 0x00
+msg         db "House-DOS v0.0.2 NATE, Build 30; Compiled 2020-11-26", 0x0A
+            db "By Jacob, Jet, and Ben", 0x00

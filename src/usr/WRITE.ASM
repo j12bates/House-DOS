@@ -11,10 +11,8 @@
 ; ========================================================================
 
 main:
-    mov ah, 0x10                        ; Print bytes
-    mov si, helpA                       ; Our instructions
-    mov cx, save                        ; The end of our instructions
-    sub cx, helpA                       ; Subtract the beginning to get the number of bytes
+    mov ah, 0x02                        ; Print line
+    mov si, help                        ; Our instructions
     int 0x7E
 
     mov ah, 0x6E                        ; Clear file buffer
@@ -97,11 +95,11 @@ main:
 
 data:
 
-helpA           db "Enter text line by line, pressing", 0x0A
-helpB           db "RETURN at the end of each line.", 0x0A
-helpC           db "Press RETURN on an empty line to", 0x0A
-helpD           db "end the file.", 0x0A
-lb              db 0x0A
+help            db "Enter text line by line, pressing", 0x0A
+                db "RETURN at the end of each line.", 0x0A
+                db "Press RETURN on an empty line to", 0x0A
+                db "end the file.", 0x0A
+                db 0x00
 
 save            db "Save this file?", 0x00
 prompt          db "Enter a filename: ", 0x00

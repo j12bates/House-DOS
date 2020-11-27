@@ -1,5 +1,13 @@
 # House-DOS
-A real-mode x86 Disk Operating System that is, and forever will be, mostly useless. I endorse use of this operating system, but before installing it on bare metal, I would recommend backing all your files up, unplugging your hard drives, and plugging in a new one.
+A real-mode x86 Disk Operating System that is, and forever will be, mostly useless.
+***
+This was created as a summer project during the 2020 pandemic.
+I've been having lots of fun creating it, and hope to continue to take this project further.
+***
+Special thanks to:
+- [Jet Pham](github.com/jetpham), for being interested
+- [Ben Johnson](github.com/benjaminjohnson2204), for helping me fix my logic
+- [David Uehara](github.com/DavidUehara) and [Derrick](github.com/TheCodeWeaver), for being cool
 
 ## Instructions for Use:
 You will need the Netwide Assembler (NASM).
@@ -11,7 +19,7 @@ You will need the Netwide Assembler (NASM).
 - Printing characters to the console
 - Getting input from the console
 - Getting the time
-- Converting different forms of notation
+- Converting different forms of numeric notation
 - Loading and writing files
 - Getting properties of a file
 - Generating pseudo-random numbers
@@ -20,8 +28,27 @@ You will need the Netwide Assembler (NASM).
 A full and complete reference can be found in `docs/SYSCALL.TXT`. System calls are always being added.
 
 ## Features Coming Soon:
-Here are some features planned for the next release (v0.0.2), which is in the works:
-- Command parameters and flags
-- Internal error handling
-- Loading files to specific areas of the file buffer
+Here are some features planned for the next release (v0.0.3), which is in the works:
+- Data, data, data
+    - Data manipulation
+    - Data operations
+    - Lists
+    - Strings
+    - Numeric Data
+- Program errors
+- Kernel-accessible metadata headers
 - And much more...
+
+## What I've Learned:
+Over the course of creating this project, I've encountered lots and lots of **segmentation errors**.
+Basically, since I like to use different 64K segments for different things, I have to change around the segment registers quite a lot...
+And it ends up reading to or writing from the wrong memory segment.
+
+The answer? Either don't use segments, or **push** them.
+
+Another thing that helps solve the issue is by making subroutines out of code that is *reused* in some form.
+***
+Other things I've learned:
+- If you implement a major paradigm change and it works straight away, do take a second look, but after that you need not worry.
+- Getting a routine to write a file is *very very tricky.*
+- Hardware inconsistencies will always be a pain.

@@ -293,13 +293,13 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 handback_manual:                                ; Routine to manually perform handback
-    add sp, 0x000C                              ; Overwrite the address written for INT 9
+    add sp, 0x0012                              ; Overwrite the address written for INT 9
 
     pushf                                       ; Push flags to stack
     push 0x2000                                 ; Push kernel segment
     push main.handback                          ; Push address of handback code
 
-    sub sp, 0x0006                              ; Return to the address written for INT 1B
+    sub sp, 0x000C                              ; Return to the address written for INT 1B
     iret                                        ; Do an interrupt return to there
 
 
@@ -514,6 +514,21 @@ reboot_fatal:                                   ; Declare fatal error and reboot
 ; ========================================================================
 
 syscall_handler:                                ; System call handler
+
+.cat:                                           ; The categories
+    cmp ah, 0x30                                ; Interface functions
+    jb .iface_funcs
+
+    cmp ah, 0x80                                ; Disk/FS functions
+    jb .disk_funcs
+
+    cmp ah, 0x90                                ; Data functions
+    jb .data_funcs
+
+    cmp ah, 0xE0                                ; General functions
+    jb .general_funcs
+
+    jmp .logical_funcs                          ; Logical functions
 
 .iface_funcs:                                   ; Interfacing functions
     cmp ah, 0x01
@@ -1483,7 +1498,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 29; Compiled 2020-11-24", 0x00
+iface_welcome       db "House-DOS v0.0.2 NATE, Build 30; Compiled 2020-11-26", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
