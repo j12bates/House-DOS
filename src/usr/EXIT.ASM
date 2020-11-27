@@ -16,4 +16,3 @@ main:
 
     mov ah, 0xFF                        ; We're done
     int 0x7E
-

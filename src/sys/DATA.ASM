@@ -307,8 +307,8 @@ conv_dec_unsigned_byte:                         ; Convert ASCII decimal at DS:SI
 ; OUT: DX = Resulting value, CF = Set on error, segments
 
 conv_hex_bin:                                   ; Convert hexadecimal at DS:SI to binary in DX (CX = digits)
-    pusha                                       ; Save register states to stack
     push ds                                     ; Push our segment
+    pusha                                       ; Save register states to stack
 
     dec cx                                      ; Decrement counter to clear bits
     and cx, 0b00000011                          ; Only look at the rightmost two bits
@@ -342,14 +342,12 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
 
 .end:
     call data_kernseg                           ; We're about to access kernel variables
-    pop word [segment_bckp_a]                   ; Pop segment into memory
-
     mov word [register_bckp_a], dx              ; Save our value
 
     popa                                        ; Restore register states
     mov dx, word [register_bckp_a]              ; Restore our value
-    mov ds, word [segment_bckp_a]               ; Restore our segment
 
+    pop ds                                      ; Restore our segment
     ret                                         ; Return to caller
 
 .error_nan:
@@ -364,8 +362,8 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
 ; OUT: DX = Resulting value, CF = Set on error, segments
 
 conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI to binary, store in DX
-    pusha                                       ; Push register states to stack
     push ds                                     ; Push our segment
+    pusha                                       ; Push register states to stack
 
     and cx, 0b00000111                          ; Only look at the rightmost three bits
     cmp cx, 0x0005                              ; Up to 5 digits in a 16-bit unsigned integer
@@ -407,14 +405,12 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
 
 .end:
     call data_kernseg                           ; We're about to access kernel variables
-    pop word [segment_bckp_a]                   ; Pop segment into memory
-
     mov word [register_bckp_a], dx              ; Save our value
 
     popa                                        ; Restore register states
     mov dx, word [register_bckp_a]              ; Restore our value
-    mov ds, word [segment_bckp_a]               ; Restore our segment
 
+    pop ds                                      ; Restore our segment
     ret                                         ; Return to caller
 
 .error_nan:

@@ -147,15 +147,8 @@ load_file:                                      ; Load file starting at cluster 
     mov ah, 0x02                                ; Read disk sectors
     mov al, byte [sectors_cluster]              ; 1 cluster
 
-    int 0x13                                    ; BIOS disk interrupt
-    jnc .bytes                                  ; If no error, prepare to write into the disk buffer
-
-    call reset_disk                             ; Otherwise, reset the disk
-
-    mov ah, 0x02                                ; Read disk sectors
-    mov al, byte [sectors_cluster]              ; 1 cluster
-    int 0x13                                    ; BIOS disk interrupt
-    jc .error_read                              ; Error
+    call disk_op                                ; Perform disk operation
+    jc .end                                     ; If error, we're done
 
 .bytes:
     mov cx, word [bytes_to_load]                ; The number of bytes left in the file to copy over
@@ -219,10 +212,6 @@ load_file:                                      ; Load file starting at cluster 
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
-
-.error_read:
-    call disk_error                             ; Handle this error
-    jmp .end                                    ; We're done
 
 .error_size:
     mov ax, 0x0303                              ; File too large
@@ -395,15 +384,8 @@ write_file:                                     ; Write file buffer to disk as f
     mov ah, 0x03                                ; Write disk sectors
     mov al, byte [sectors_cluster]              ; 1 cluster
 
-    int 0x13                                    ; BIOS disk interrupt
-    jnc .next_cluster                           ; If no error, set up for the next cluster
-
-    call reset_disk                             ; Otherwise, reset the disk
-
-    mov ah, 0x03                                ; Write disk sectors
-    mov al, byte [sectors_cluster]              ; 1 cluster
-    int 0x13                                    ; BIOS disk interrupt
-    jc .error_write                             ; If failed again, error
+    call disk_op                                ; Perform disk operation
+    jc .end                                     ; If error, we're done
 
 .next_cluster:
     mov ax, word [bytes_sector]
@@ -478,10 +460,6 @@ write_file:                                     ; Write file buffer to disk as f
 
     jmp .end                                    ; We're done
 
-.error_write:
-    call disk_error                             ; Handle this error
-    jmp .end                                    ; We're done
-
 .error_attribute:
     mov ax, 0x0300                              ; File Read-Only
     call error                                  ; Handle this error
@@ -530,15 +508,8 @@ apply:                                          ; Apply filesystem changes to di
     mov ax, word [sectors_fat]                  ; An entire FAT
     mov ah, 0x03                                ; Write disk sectors
 
-    int 0x13                                    ; BIOS disk interrupt
-    jnc .next_fat                               ; If no error, prepare to do the next one
-
-    call reset_disk                             ; Otherwise, reset the disk
-
-    mov ax, word [sectors_fat]                  ; An entire FAT
-    mov ah, 0x03                                ; Write disk sectors
-    int 0x13                                    ; BIOS disk interrupt
-    jc .error_write                             ; If failed again, error
+    call disk_op                                ; Perform disk operation
+    jc .end                                     ; If error, we're done
 
 .next_fat:
     pop cx                                      ; Restore our counter
@@ -560,15 +531,8 @@ apply:                                          ; Apply filesystem changes to di
     mov ah, 0x03                                ; Write disk sectors
     mov al, 0x20                                ; Root directory is 32 sectors
 
-    int 0x13                                    ; BIOS disk interrupt
-    jnc .done                                   ; If no error, we are done
-
-    call reset_disk                             ; Otherwise, reset the disk
-
-    mov ah, 0x03                                ; Write disk sectors
-    mov al, 0x20                                ; Root directory is 32 sectors
-    int 0x13                                    ; BIOS disk interrupt
-    jc .error_write                             ; If failed again, error
+    call disk_op                                ; Perform disk operation
+    jc .end                                     ; If error, we're done
 
 .done:
     mov word [renames], 0x0000                  ; Reset the rename counter
@@ -585,10 +549,6 @@ apply:                                          ; Apply filesystem changes to di
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
-
-.error_write:
-    call disk_error                             ; Handle this error
-    jmp .end                                    ; We're done
 
 
 ; ROLLBACK FILESYSTEM: Reloads the FAT and root directory into memory
@@ -614,15 +574,8 @@ rollback:                                       ; Rollback filesystem
     mov ah, 0x02                                ; Read disk sectors
     mov al, byte [sectors_fat]                  ; Read the entire FAT
 
-    int 0x13                                    ; BIOS disk interrupt
-    jnc .load_root                              ; If no error, continue
-
-    call reset_disk                             ; Otherwise, reset the disk
-
-    mov ah, 0x02                                ; Read disk sectors
-    mov al, byte [sectors_fat]                  ; Read the entire FAT
-    int 0x13                                    ; BIOS disk interrupt
-    jc .error_read                              ; If failed, error
+    call disk_op                                ; Perform disk operation
+    jc .end                                     ; If error, we're done
 
 .load_root:
     mov ax, 0x3800
@@ -634,15 +587,8 @@ rollback:                                       ; Rollback filesystem
     mov ah, 0x02                                ; Read disk sectors
     mov al, 0x20                                ; Root directory is 32 sectors
 
-    int 0x13                                    ; BIOS disk interrupt
-    jnc .done                                   ; If no error, we're done!
-
-    call reset_disk                             ; Otherwise, reset the disk
-
-    mov ah, 0x02                                ; Read disk sectors
-    mov al, 0x20                                ; Root directory is 32 sectors
-    int 0x13                                    ; BIOS disk interrupt
-    jc .error_read                              ; If failed, error
+    call disk_op                                ; Perform disk operation
+    jc .end                                     ; If error, we're done
 
 .done:
     mov word [renames], 0x0000                  ; Reset the rename counter
@@ -659,23 +605,7 @@ rollback:                                       ; Rollback filesystem
 
 .error_read:
     call disk_error                             ; Handle this error
-    jmp .end                                    ; We're done   
-
-
-; HANDLE DISK ERROR: Handles a disk read/write error
-; IN: AH = INT 0x13 status
-; OUT: CF = Set
-
-disk_error:
-    pusha                                       ; Save register states to stack
-
-    mov al, ah                                  ; Move status code into lower byte of error code
-    mov ah, 0x02                                ; Upper byte of error code is for disk
-
-    call error                                  ; Call on error handler
-
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
+    jmp .end                                    ; We're done
 
 
 ; GET FILE LIST: Gets a list of filenames separated by commas
@@ -834,6 +764,71 @@ delete:                                         ; Delete a file
 ; SUBROUTINES
 ; ========================================================================
 
+; DISK OPERATION: Uses the BIOS disk interrupt and handles any errors/resets
+; IN: BIOS INT 13 parameters (AH = function, AL = sectors, CX:DX = CHS address & drive num, ES:BX = buffer)
+; OUT: CF = Set on error, errors handled
+
+disk_op:                                        ; Perform a disk operation using the BIOS
+    pusha                                       ; Save register states to stack
+
+    push ax                                     ; Save parameters in case of error
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .done                                   ; If no error, we're done
+
+    call disk_error                             ; Otherwise, handle this error
+    call reset_disk                             ; And reset the disk
+
+    pop ax                                      ; Restore parameters
+    int 0x13                                    ; BIOS disk interrupt
+    jnc .end                                    ; If no error, we're done
+
+    call disk_error                             ; Otherwise, handle this error
+    jmp .end                                    ; We're done
+
+.done:
+    pop ax                                      ; Get parameters out of the stack
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; RESET DISK: Resets the disk, and reboots if failed
+; IN: None
+; OUT: None
+
+reset_disk:                                     ; Reset the disk
+    pusha                                       ; Push register states to stack
+
+    mov si, iface_disk_reset
+    call print_str                              ; Print message
+
+    mov ah, 0x00                                ; Reset disk
+    mov dl, byte [drive_num]
+
+    int 0x13                                    ; BIOS disk interrupt
+    jc reboot_fatal                             ; If there was an error, reboot
+
+    popa                                        ; Otherwise, restore register states
+    ret                                         ; Return to caller
+
+
+; HANDLE DISK ERROR: Handles a disk read/write error
+; IN: AH = INT 0x13 status
+; OUT: CF = Set
+
+disk_error:
+    pusha                                       ; Save register states to stack
+
+    mov al, ah                                  ; Move status code into lower byte of error code
+    mov ah, 0x02                                ; Upper byte of error code is for disk
+
+    call error                                  ; Call on error handler
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
 ; IN: None
 ; OUT: [cluster] = Cluster number; CF = Set on error
@@ -889,26 +884,6 @@ conv_ls_chs:                                    ; Setup Cylinder-Head-Sector fro
     mov ch, al                                  ; The quotient is the cylinder number
 
     mov dl, byte [drive_num]                    ; Drive number
-    ret                                         ; Return to caller
-
-
-; RESET DISK: Resets the disk, and reboots if failed
-; IN: None
-; OUT: None
-
-reset_disk:                                     ; Reset the disk
-    push ax                                     ; Push register states to stack
-
-    mov si, iface_disk_reset
-    call print_str                              ; Print message
-
-    mov ah, 0x00                                ; Reset disk
-    mov dl, byte [drive_num]
-
-    int 0x13                                    ; BIOS disk interrupt
-    jc reboot_fatal                             ; If there was an error, reboot
-    
-    pop ax                                      ; Otherwise, restore register states
     ret                                         ; Return to caller
 
 

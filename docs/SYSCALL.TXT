@@ -393,6 +393,7 @@ V. Interface Functions
 
         Checks if a certain flag was specified by the user.
 
+
 VI. Disk Functions
 
     VERIFY FILE EXISTS
