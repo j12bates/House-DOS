@@ -56,7 +56,7 @@ III. Object/Data Functions
 
     AH = 0x80: STRING OPERATIONS
 
-*       COMPARE STRINGS
+        COMPARE STRINGS
             AL = 0x00
             SI = String A Location
             DI = String B Location
@@ -66,17 +66,28 @@ III. Object/Data Functions
 
             Compares two strings.
 
-*       CONVERT TO UPPERCASE
+        CONVERT TO UPPERCASE
             AL = 0x10
             SI = String Location
+            DI = Destination buffer
 
             Converts all characters in a string to uppercase.
 
-*       CONVERT TO LOWERCASE
+        CONVERT TO LOWERCASE
             AL = 0x11
             SI = String Location
+            DI = Destination buffer
 
             Converts all characters in a string to lowercase.
+
+        GET LENGTH
+            AL = 0x20
+            SI = String Location
+
+            Return:
+            CX = Number of chars in string
+
+            Returns the total number of characters in a string (doesn't count NULL).
 
 
     AH = 0x81: LIST OPERATIONS

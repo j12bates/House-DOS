@@ -276,6 +276,7 @@ command:                                        ; Main loop: Retrieve command fr
     jc command                                  ; If error, stop here
 
     call move_file_bin                          ; Move the contents into the binary buffer
+    call clear_file_buffer                      ; Clear the file buffer again
 
     call line_break                             ; Line break between messages and command output
 
@@ -686,6 +687,18 @@ syscall_handler:                                ; System call handler
     je disk_routines.apply                      ; Apply filesystem changes
 
 .data_funcs:                                    ; Data functions
+    cmp ax, 0x8000
+    je data_routines.str_cmp                    ; Compare strings
+
+    cmp ax, 0x8010
+    je data_routines.str_upcase                 ; Make uppercase
+
+    cmp ax, 0x8011
+    je data_routines.str_downcase               ; Make lowercase
+
+    cmp ax, 0x8020
+    je data_routines.str_length                 ; Get length
+
     cmp ax, 0x8100
     je data_routines.list_get_item              ; Get a list item
 
@@ -932,12 +945,43 @@ iface_routines:                                 ; Interface functions
 
 data_routines:                                  ; Data functions
 
+.str_cmp:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    call cmp_strs                               ; Compare strings
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.str_upcase:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    stc                                         ; Carry flag for uppercase
+    call case_str                               ; Change case
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.str_downcase:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    clc                                         ; Clear carry flag for lowercase
+    call case_str                               ; Change case
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.str_length:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    call str_len                                ; Get string length
+    jmp int_ret                                 ; We're done!
+
 .list_get_item:
     call data_binseg                            ; We want to access data from the command
     call extra_binseg                           ; We want to give data to the command
 
     call get_item_list                          ; Get list item
-
     jmp int_ret.preserve_flags                  ; We're done!
 
 .list_total:
@@ -1498,7 +1542,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.2 NATE, Build 30; Compiled 2020-11-26", 0x00
+iface_welcome       db "House-DOS v0.0.3 NATE, Build 31; Compiled 2020-11-26", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

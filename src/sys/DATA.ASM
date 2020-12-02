@@ -7,6 +7,82 @@
     BITS 16
 
 ; ========================================================================
+; STRING ROUTINES
+; ========================================================================
+
+; GET STRING LENGTH: Gets the length of a string up to the NULL char
+; IN: DS:SI = String location
+; OUT: CX = Number of bytes
+
+str_len:                                        ; Get length of a string
+    pusha                                       ; Save register states to stack
+
+    mov ah, 0x00                                ; Scan for null characters
+    mov di, si                                  ; Move string into destination
+    mov cx, 0xFFFF                              ; Loop as much as necessary
+    repne scasb                                 ; Scan string for null character
+
+    neg cx                                      ; Negate counter to get the number of characters
+    dec cx                                      ; Avoid an O.B.O.E
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; COMPARE STRINGS: Compares two strings
+; IN: DS:SI = Index of source; ES:DI = Index of destination
+; OUT: ZF = Set if equal
+
+cmp_strs:                                       ; Compare two strings
+    pusha                                       ; Save register states to stack
+
+    call str_len                                ; Get length of string
+    inc cx                                      ; Check the null character at the end too
+
+    repe cmpsb                                  ; Loop through each of the bytes in the source and destination
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CHANGE STRING CASE: Changes the case of a string to either upper or lower case
+; IN: DS:SI: Index of source, CF = Set for uppercase, cleared for lower
+; OUT: None
+
+case_str:                                       ; Change the case of a string
+    pusha                                       ; Save register states to stack
+    pushf                                       ; Push flags image
+
+.char:
+    lodsb                                       ; Load next byte
+
+    cmp al, 0x00                                ; Is this a NULL char?
+    je .done                                    ; If so, we're done!
+
+    call capitalize_char                        ; Capitalize the character
+
+    popf                                        ; Restore flags
+    pushf                                       ; And save them again
+    jc .write                                   ; If that's all, write the character
+
+    cmp al, 0x41                                ; Are we between capital A
+    jb .write
+
+    cmp al, 0x5A                                ; And capital Z?
+    ja .write
+
+    or al, 0b00100000                           ; If so, set lowercase bit
+
+.write:
+    stosb                                       ; Write to destination buffer
+    jmp .char                                   ; Repeat
+
+.done:
+    popf                                        ; Get FLAGS image out of stack
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+; ========================================================================
 ; NUMBER/NOTATION ROUTINES
 ; ========================================================================
 

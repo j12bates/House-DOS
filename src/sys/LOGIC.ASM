@@ -16,9 +16,9 @@
 
 capitalize_char:                                ; Capitalize char in AL
     cmp al, 0x61                                ; Are we between lowercase A
-    jl .end
+    jb .end
     cmp al, 0x7A                                ; And lowercase Z?
-    jg .end
+    ja .end
 
     and al, 0b11011111                          ; If so, capitalize
 
