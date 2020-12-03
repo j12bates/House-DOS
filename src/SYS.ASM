@@ -615,7 +615,7 @@ syscall_handler:                                ; System call handler
     je disk_routines.get_bytes_qty              ; Get quantity of bytes from file
 
     cmp ah, 0x63
-    je disk_routines.get_bytes_indexes          ; Get bytes between two indexes
+    je disk_routines.get_bytes_indices          ; Get bytes between two indices
 
     cmp ah, 0x64
     je disk_routines.get_line                   ; Get line contents
@@ -630,7 +630,7 @@ syscall_handler:                                ; System call handler
     je disk_routines.write_bytes_qty            ; Write quantity of bytes to file
 
     cmp ah, 0x69
-    je disk_routines.write_bytes_indexes        ; Write bytes between two indexes to file
+    je disk_routines.write_bytes_indices        ; Write bytes between two indices to file
 
     cmp ah, 0x6A
     je disk_routines.write_line                 ; Write line
@@ -695,6 +695,12 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x8011
     je data_routines.str_downcase               ; Make lowercase
+
+    cmp ax, 0x8012
+    je data_routines.str_sub_qty                ; Get substring (quantity)
+
+    cmp ax, 0x8013
+    je data_routines.str_sub_indices            ; Get substring (indices)
 
     cmp ax, 0x8020
     je data_routines.str_length                 ; Get length
@@ -970,6 +976,22 @@ data_routines:                                  ; Data functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
+.str_sub_qty:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    call substr                                 ; Retrieve substring
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.str_sub_indices:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    sub cx, bx                                  ; Subtract to get the length
+    call substr                                 ; Retrieve substring
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
 .str_length:
     call data_binseg                            ; We want to access data from the command
     call extra_binseg                           ; We want to give data to the command
@@ -1118,7 +1140,7 @@ disk_routines:                                  ; Disk functions
     pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
-.get_bytes_indexes:
+.get_bytes_indices:
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
@@ -1177,7 +1199,7 @@ disk_routines:                                  ; Disk functions
     pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
-.write_bytes_indexes:
+.write_bytes_indices:
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
@@ -1489,7 +1511,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2100 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2200 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1497,7 +1519,7 @@ times 0x2100 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022100
+input_buffer        dq 0x0000000000000000       ; 0x00022200
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1506,7 +1528,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022100
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022140
+params              dq 0x0000000000000000       ; 0x00022240
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1515,7 +1537,7 @@ params              dq 0x0000000000000000       ; 0x00022140
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022180
+misc_buffer         dq 0x0000000000000000       ; 0x00022280
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1524,7 +1546,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022180
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000221C0
+param_flags         dq 0x0000000000000000       ; 0x000222C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
