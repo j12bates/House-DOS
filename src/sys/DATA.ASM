@@ -15,17 +15,26 @@
 ; OUT: CX = Number of bytes
 
 str_len:                                        ; Get length of a string
+    push ds                                     ; Save segment to stack
     pusha                                       ; Save register states to stack
 
-    mov ah, 0x00                                ; Scan for null characters
+    mov al, 0x00                                ; Scan for null characters
     mov di, si                                  ; Move string into destination
     mov cx, 0xFFFF                              ; Loop as much as necessary
+    cld                                         ; Ensure correct direction
+
     repne scasb                                 ; Scan string for null character
 
     neg cx                                      ; Negate counter to get the number of characters
-    dec cx                                      ; Avoid an O.B.O.E
+    sub cx, 0x0002                              ; Avoid two O.B.O.Es
+
+    call data_kernseg                           ; We're about to access kernel variables
+    mov word [register_bckp_a], cx              ; Save our value
 
     popa                                        ; Restore register states
+    mov cx, word [register_bckp_a]              ; Restore our value
+
+    pop ds                                      ; Restore our segment
     ret                                         ; Return to caller
 
 
@@ -38,6 +47,7 @@ cmp_strs:                                       ; Compare two strings
 
     call str_len                                ; Get length of string
     inc cx                                      ; Check the null character at the end too
+    cld                                         ; Ensure correct direction
 
     repe cmpsb                                  ; Loop through each of the bytes in the source and destination
 
@@ -52,6 +62,8 @@ cmp_strs:                                       ; Compare two strings
 case_str:                                       ; Change the case of a string
     pusha                                       ; Save register states to stack
     pushf                                       ; Push flags image
+
+    cld                                         ; Ensure correct direction
 
 .char:
     lodsb                                       ; Load next byte
@@ -78,9 +90,52 @@ case_str:                                       ; Change the case of a string
     jmp .char                                   ; Repeat
 
 .done:
+    stosb                                       ; Write the NULL character (make a valid string)
     popf                                        ; Get FLAGS image out of stack
+
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+
+; GET SUBSTRING: Copy a certain number of bytes from a string at a specific index
+; IN: BX = Starting index; CX = Bytes to copy; DS:SI = String location; ES:DI = Destination buffer
+; OUT: CF = Set on error
+
+substr:                                         ; Get substring
+    pusha                                       ; Save register states to stack
+    push cx                                     ; Preserve counter
+
+    call str_len                                ; Get string length
+
+    cmp bx, cx                                  ; Is our starting index beyond the end of the string?
+    ja .error_index                             ; If so, error
+
+    pop cx                                      ; Restore counter
+    add si, bx                                  ; Add starting index to string location
+    cld                                         ; Ensure correct direction
+
+.char:
+    lodsb                                       ; Load next character
+
+    cmp al, 0x00                                ; Has the string ended?
+    je .error_index                             ; If so, error
+
+    stosb                                       ; Write the character
+    loop .char                                  ; Repeat
+
+.done:
+    mov byte [es:di], 0x00                      ; NULL character for valid string
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_index:
+    mov ax, 0x0140                              ; Invalid string index
+    call error                                  ; Handle this error
+
+    jmp .end                                    ; We're done
+
 
 ; ========================================================================
 ; NUMBER/NOTATION ROUTINES

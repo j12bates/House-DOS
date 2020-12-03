@@ -39,6 +39,9 @@ III. Data Errors
     LISTS
     0x0120: INVALID INDEX
 
+    STRINGS
+    0x0140: INVALID INDEX
+
 
 IV. Disk Errors
 

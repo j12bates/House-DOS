@@ -80,6 +80,30 @@ III. Object/Data Functions
 
             Converts all characters in a string to lowercase.
 
+        GET SUBSTRING (INDEX-LENGTH)
+            AL = 0x12
+            SI = String Location
+            BX = Starting index
+            CX = Length of substring
+            DI = Destination buffer
+
+            Return:
+            CF = Set on error
+
+            Gets a substring from a string.
+
+        GET SUBSTRING (INDEX-INDEX)
+            AL = 0x13
+            SI = String Location
+            BX = Starting index
+            CX = Ending index
+            DI = Destination buffer
+
+            Return:
+            CF = Set on error
+
+            Gets a substring from a string.
+
         GET LENGTH
             AL = 0x20
             SI = String Location

@@ -58,7 +58,7 @@ main:
     pop cx                              ; CX should be the subtrahend
     pop dx                              ; DX should be the minuend
 
-    sub cx, dx                          ; Subtract the subtrahend from the minuend
+    sub dx, cx                          ; Subtract the subtrahend from the minuend
     jmp .print                          ; We have our result
 
 .mul:
