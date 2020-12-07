@@ -11,15 +11,22 @@
 ; ========================================================================
 
 ; GET STRING LENGTH: Gets the length of a string up to the NULL char
-; IN: DS:SI = String location
+; IN: DS:SI = String location (if CF cleared); ES:DI (if CF set)
 ; OUT: CX = Number of bytes
 
 str_len:                                        ; Get length of a string
-    push ds                                     ; Save segment to stack
+    push ds
+    push es                                     ; Save segments to stack
     pusha                                       ; Save register states to stack
 
-    mov al, 0x00                                ; Scan for null characters
+    jc .scan                                    ; If we're using the destination operand, skip this
+
     mov di, si                                  ; Move string into destination
+    mov ax, ds
+    mov es, ax                                  ; Do same with segments
+
+.scan:
+    mov al, 0x00                                ; Scan for null characters
     mov cx, 0xFFFF                              ; Loop as much as necessary
     cld                                         ; Ensure correct direction
 
@@ -34,7 +41,8 @@ str_len:                                        ; Get length of a string
     popa                                        ; Restore register states
     mov cx, word [register_bckp_a]              ; Restore our value
 
-    pop ds                                      ; Restore our segment
+    pop es
+    pop ds                                      ; Restore our segments
     ret                                         ; Return to caller
 
 
@@ -45,6 +53,7 @@ str_len:                                        ; Get length of a string
 cmp_strs:                                       ; Compare two strings
     pusha                                       ; Save register states to stack
 
+    clc                                         ; Use source operand
     call str_len                                ; Get length of string
     inc cx                                      ; Check the null character at the end too
     cld                                         ; Ensure correct direction
@@ -103,25 +112,14 @@ case_str:                                       ; Change the case of a string
 
 substr:                                         ; Get substring
     pusha                                       ; Save register states to stack
-    push cx                                     ; Preserve counter
 
-    call str_len                                ; Get string length
+    call check_string_indices                   ; Check if indices are valid
+    jc .end                                     ; If error, we're done
 
-    cmp bx, cx                                  ; Is our starting index beyond the end of the string?
-    ja .error_index                             ; If so, error
-
-    pop cx                                      ; Restore counter
     add si, bx                                  ; Add starting index to string location
     cld                                         ; Ensure correct direction
 
-.char:
-    lodsb                                       ; Load next character
-
-    cmp al, 0x00                                ; Has the string ended?
-    je .error_index                             ; If so, error
-
-    stosb                                       ; Write the character
-    loop .char                                  ; Repeat
+    rep movsb                                   ; Copy bytes
 
 .done:
     mov byte [es:di], 0x00                      ; NULL character for valid string
@@ -130,11 +128,119 @@ substr:                                         ; Get substring
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
+
+; FIND SUBSTRING: Find first instance of substring within a string
+; IN: DS:SI = String location; ES:DI = Substring (key) location; BX = Starting index to search; CX = Number of bytes to search (0 for remainder of string)
+; OUT: BX = Index of first instance; CF = Set on error
+
+find_substr:                                    ; Find instance of substring
+    push ds                                     ; Save segment to stack
+    pusha                                       ; Save register states to stack
+
+    call check_string_indices                   ; Check if indices are valid
+    jc .done                                    ; If error, we're done
+
+    push si                                     ; Preserve string location
+
+    add cx, bx                                  ; Add starting index to length to get ending index
+    add cx, si                                  ; Add string address to get absolute address
+    push cx                                     ; Push absolute ending index
+
+    stc                                         ; Use destination operand
+    call str_len                                ; Get length of substring
+
+    push cx                                     ; Push the number of bytes in the substring
+    add si, bx                                  ; Start searching at the specified offset
+
+.find:
+    pop cx                                      ; Restore substring length
+    push cx                                     ; Push back to stack
+    push si                                     ; Preserve string pointer
+    push di                                     ; Preserve substring location
+    cld                                         ; Ensure correct direction
+
+    repe cmpsb                                  ; Compare string against substring for equality
+
+    pop di                                      ; Restore substring location
+    pop si                                      ; Restore string pointer
+    je .match                                   ; If we found the whole substring, we have a match
+
+    inc si                                      ; Otherwise, increment string pointer
+
+    pop cx                                      ; Restore substring length
+    pop dx                                      ; Pop absolute ending index
+    push dx
+    push cx                                     ; Push both back to stack
+
+    sub dx, cx                                  ; Subtract length of substring
+    cmp dx, si                                  ; Could our substring still fit in the remainder of the string?
+
+    jb .error_substr                            ; If not, error
+    jmp .find                                   ; Otherwise, keep searching
+
+.match:
+    pop cx                                      ; Restore substring length
+    pop dx                                      ; Get this out of the stack
+
+    mov bx, si                                  ; Move string pointer into BX
+
+    pop si                                      ; Restore string location
+    sub bx, si                                  ; Subtract string location to get relative index
+
+.done:
+    call data_kernseg                           ; We're about to use kernel variables
+    mov word [register_bckp_a], bx              ; Save our value
+
+    popa                                        ; Restore register states
+    mov bx, word [register_bckp_a]              ; Restore our value
+
+    pop ds                                      ; Restore segment
+    ret                                         ; Return to caller
+
+.error_substr:
+    add sp, 0x0006                              ; Clear three words out of the stack
+
+    mov ax, 0x0160                              ; Substring not found
+    call error                                  ; Handle this error
+
+    jmp .done                                   ; We're done
+
+
+; ========================================================================
+; STRING SUBROUTINES
+; ========================================================================
+
+; CHECK STRING INDICES: Check if specified starting index and number of bytes are within the string
+; IN: DS:SI = String location; BX = Starting index; CX = Number of bytes
+; OUT: CF = Set on error (error handled)
+
+check_string_indices:                           ; Check if index parameters are valid
+    pusha                                       ; Save register states to stack
+    push cx                                     ; Push the number of bytes
+
+    clc                                         ; Use source operand
+    call str_len                                ; Get the length of the string
+
+    cmp bx, cx                                  ; Is our starting index within the string?
+    ja .error_index                             ; If not, error
+
+    pop dx                                      ; Restore number of bytes
+    add bx, dx                                  ; Add to the starting index (we now have ending index)
+
+    cmp bx, cx                                  ; Is our ending index within the string as well?
+    ja .error_index                             ; If not, error
+
+    clc                                         ; No error
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
 .error_index:
     mov ax, 0x0140                              ; Invalid string index
     call error                                  ; Handle this error
 
-    jmp .end                                    ; We're done
+    jmp .done                                   ; We're done
 
 
 ; ========================================================================

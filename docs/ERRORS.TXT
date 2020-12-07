@@ -41,6 +41,7 @@ III. Data Errors
 
     STRINGS
     0x0140: INVALID INDEX
+    0x0160: SUBSTRING NOT FOUND
 
 
 IV. Disk Errors
