@@ -690,6 +690,9 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x8000
     je data_routines.str_cmp                    ; Compare strings
 
+    cmp ax, 0x8001
+    je data_routines.str_find                   ; Find substring
+
     cmp ax, 0x8010
     je data_routines.str_upcase                 ; Make uppercase
 
@@ -958,6 +961,13 @@ data_routines:                                  ; Data functions
     call cmp_strs                               ; Compare strings
     jmp int_ret.preserve_flags                  ; We're done!
 
+.str_find:
+    call data_binseg                            ; We want to access data from the command
+    call extra_binseg                           ; We want to give data to the command
+
+    call find_substr                            ; Find substring
+    jmp int_ret.preserve_flags                  ; We're done!
+
 .str_upcase:
     call data_binseg                            ; We want to access data from the command
     call extra_binseg                           ; We want to give data to the command
@@ -996,6 +1006,7 @@ data_routines:                                  ; Data functions
     call data_binseg                            ; We want to access data from the command
     call extra_binseg                           ; We want to give data to the command
 
+    clc                                         ; Use source operand
     call str_len                                ; Get string length
     jmp int_ret                                 ; We're done!
 
@@ -1564,7 +1575,7 @@ flags_image         dw 0x0000
 init                db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.3 NATE, Build 31; Compiled 2020-12-02", 0x00
+iface_welcome       db "House-DOS v0.0.3 NATE, Build 32; Compiled 2020-12-08", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

@@ -66,6 +66,9 @@ error:                                          ; The error handler
     cmp ax, 0x0140
     je data_errors.string_index                 ; Invalid string index
 
+    cmp ax, 0x0160
+    je data_errors.string_find                  ; Substring not found
+
 .disk:
     cmp ax, 0x0201
     je disk_errors.command                      ; Bad driver command
@@ -198,6 +201,10 @@ data_errors:                                    ; Data error string setup
 
 .string_index:
     push error_data_sindex                      ; Invalid string index
+    jmp error_print
+
+.string_find:
+    push error_data_sfind                       ; Substring not found
     jmp error_print
 
 
@@ -358,6 +365,7 @@ error_data_oflow    db "16-bit overflow.", 0x00
 error_data_oflow8   db "8-bit overflow.", 0x00
 error_data_lindex   db "Invalid list index.", 0x00
 error_data_sindex   db "Invalid string index.", 0x00
+error_data_sfind    db "Substring not found.", 0x00
 
 error_disk_command  db "Bad driver command.", 0x00
 error_disk_bsect    db "Bad sector.", 0x00

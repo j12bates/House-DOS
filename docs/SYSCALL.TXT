@@ -66,6 +66,18 @@ III. Object/Data Functions
 
             Compares two strings.
 
+        FIND SUBSTRING IN STRING
+            AL = 0x01
+            SI = String Location
+            BX = Starting index for search
+            CX = Number of bytes to search
+            DI = Substring Location
+
+            Return:
+            BX = Index of first instance found
+
+            Finds the first instance of a substring within a string, given certain bounds.
+
         CONVERT TO UPPERCASE
             AL = 0x10
             SI = String Location
