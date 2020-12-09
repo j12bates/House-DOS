@@ -7,7 +7,7 @@ I've been having lots of fun creating it, and hope to continue to take this proj
 Special thanks to:
 - [Jet Pham](https://github.com/jetpham), for being interested
 - [Ben Johnson](https://github.com/benjaminjohnson2204), for helping me fix my logic
-- [David Uehara](https://github.com/DavidUehara) and [Derrick](https://github.com/TheCodeWeaver), for being awesome
+- [David Uehara](https://github.com/DavidUehara) and [Derrick](https://github.com/Sabacweave), for being awesome
 
 ## Instructions for Use:
 You will need the Netwide Assembler (NASM).
