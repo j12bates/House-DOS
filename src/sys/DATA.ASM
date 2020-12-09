@@ -142,10 +142,20 @@ find_substr:                                    ; Find instance of substring
 
     push si                                     ; Preserve string location
 
+    jcxz .to_eos                                ; If CX is zero, perform a different calculation
+
     add cx, bx                                  ; Add starting index to length to get ending index
     add cx, si                                  ; Add string address to get absolute address
     push cx                                     ; Push absolute ending index
 
+    jmp .substr                                 ; Skip over this calculation
+
+.to_eos:
+    call str_len                                ; Get length of string
+    add cx, si                                  ; Add string address to get absolute ending index
+    push cx                                     ; Push absolute ending index
+
+.substr:
     stc                                         ; Use destination operand
     call str_len                                ; Get length of substring
 

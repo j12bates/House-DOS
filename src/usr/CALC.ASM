@@ -79,13 +79,7 @@ main:
     mov dx, ax                          ; Store in correct register; we have our result
 
 .print:
-    mov ah, 0xF1                        ; Convert binary to unsigned decimal
-    mov di, dec_buffer                  ; Our output buffer
-    int 0x7E
-
-    mov ah, 0x10                        ; Print bytes
-    mov si, dec_buffer                  ; Our input buffer
-    mov cx, 0x0005                      ; Up to 5 digits in a 16-bit integer
+    mov ax, 0x8202                      ; Print word as decimal
     int 0x7E
 
     mov ah, 0x05                        ; Line break
