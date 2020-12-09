@@ -714,6 +714,18 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x8101
     je data_routines.list_total                 ; Get total list items
 
+    cmp ax, 0x8200
+    je data_routines.num_word_hex               ; Print word as hex
+
+    cmp ax, 0x8201
+    je data_routines.num_byte_hex               ; Print byte as hex
+
+    cmp ax, 0x8202
+    je data_routines.num_word_dec               ; Print word as decimal
+
+    cmp ax, 0x8203
+    je data_routines.num_byte_dec               ; Print byte as decimal
+
 .general_funcs:                                 ; General functions
     cmp ah, 0xA0
     je general_routines.random                  ; Generate random number
@@ -1020,6 +1032,60 @@ data_routines:                                  ; Data functions
 .list_total:
     call data_binseg                            ; We want to access data from the command
     call get_total_list                         ; Get total number of list items
+    jmp int_ret                                 ; We're done!
+
+.num_word_hex:
+    pusha                                       ; Save register states to stack
+
+    mov ax, dx                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_word_hex                          ; Convert to hex
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x0004                              ; 4 nibbles in a word
+    call print_bytes                            ; Print bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_byte_hex:
+    pusha                                       ; Save register states to stack
+
+    mov al, dl                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_byte_hex                          ; Convert to hex
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x0002                              ; 2 nibbles in a byte
+    call print_bytes                            ; Print bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_word_dec:
+    pusha                                       ; Save register states to stack
+
+    mov ax, dx                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
+    mov si, di                                  ; Print from our buffer
+    call print_str                              ; Print string
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_byte_dec:
+    pusha                                       ; Save register states to stack
+
+    mov al, dl                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_byte_dec_unsigned                 ; Convert to decimal
+
+    mov si, di                                  ; Print from our buffer
+    call print_str                              ; Print string
+
+    popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
 
 
@@ -1522,7 +1588,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2200 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2300 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1530,7 +1596,7 @@ times 0x2200 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022200
+input_buffer        dq 0x0000000000000000       ; 0x00022300
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1539,7 +1605,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022200
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022240
+params              dq 0x0000000000000000       ; 0x00022340
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1548,7 +1614,7 @@ params              dq 0x0000000000000000       ; 0x00022240
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022280
+misc_buffer         dq 0x0000000000000000       ; 0x00022380
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1557,7 +1623,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022280
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000222C0
+param_flags         dq 0x0000000000000000       ; 0x000223C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1571,6 +1637,9 @@ register_bckp_b     dw 0x0000
 segment_bckp_a      dw 0x0000
 segment_bckp_b      dw 0x0000
 flags_image         dw 0x0000
+
+num_buffer          dd 0x00000000
+                    dw 0x0000
 
 init                db 0x00
 

@@ -69,8 +69,8 @@ III. Object/Data Functions
         FIND SUBSTRING IN STRING
             AL = 0x01
             SI = String Location
-            BX = Starting index for search
-            CX = Number of bytes to search
+            BX = Starting index for search (0 = start of string)
+            CX = Number of bytes to search (0 = until end of string)
             DI = Substring Location
 
             Return:
@@ -147,6 +147,33 @@ III. Object/Data Functions
             CX = Number of items
 
             Gets the number of items in a comma-separated list.
+
+
+    AH = 0x82: NUMBER OPERATIONS
+
+        PRINT WORD AS HEX
+            AL = 0x00
+            DX = Number to print
+
+            Prints integer as hexadecimal notation at cursor position.
+
+        PRINT BYTE AS HEX
+            AL = 0x01
+            DL = Number to print
+
+            Prints byte as hexadecimal notation at cursor position.
+
+        PRINT WORD AS DECIMAL
+            AL = 0x02
+            DX = Number to print
+
+            Prints integer as decimal notation at cursor position.
+
+        PRINT BYTE AS DECIMAL
+            AL = 0x03
+            DL = Number to print
+
+            Prints byte as decimal notation at cursor position.
 
 
 IV. Logic Functions
