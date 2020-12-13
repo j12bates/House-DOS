@@ -31,7 +31,7 @@ error:                                          ; The error handler
     cmp ah, 0x09                                ; Buffer errors
     jb .mem
 
-.sys:                                           ; System errors
+.sys:
     cmp ax, 0x0000
     je sys_errors.idk                           ; Unknown error
 
@@ -41,11 +41,17 @@ error:                                          ; The error handler
     cmp ax, 0x0002
     je sys_errors.param                         ; Missing Parameter
 
+    cmp ax, 0x0003
+    je sys_errors.header                        ; Invalid header field
+
     cmp ax, 0x0010
     je sys_errors.divzero                       ; Divide by zero
 
     cmp ax, 0x0011
     je sys_errors.rtc                           ; RTC error
+
+    cmp ax, 0x0080
+    je bc_errors.header                         ; Missing header
 
 .data:
     cmp ax, 0x0100
@@ -168,12 +174,23 @@ sys_errors:                                     ; Kernel error string setup
     push error_sys_param                        ; Missing parameter
     jmp error_print
 
+.header:
+    push error_sys_header                       ; Invalid header field
+    jmp error_print
+
 .divzero:
     push error_sys_divzero                      ; Divide by zero
     jmp error_print
 
 .rtc:
     push error_sys_rtc                          ; RTC error
+    jmp error_print
+
+
+bc_errors:                                      ; Backwards-compatibility error string setup
+
+.header:
+    push error_bc_header                        ; Missing header
     jmp error_print
 
 
@@ -356,8 +373,11 @@ error_link          db ": ", 0x00
 error_sys_idk       db "An error was encountered.", 0x00
 error_sys_cancelled db "Cancelled by user.", 0x00
 error_sys_param     db "Parameter not given.", 0x00
+error_sys_header    db "Invalid header field.", 0x00
 error_sys_divzero   db "Divide by zero attempted.", 0x00
 error_sys_rtc       db "RTC error.", 0x00
+
+error_bc_header     db "Header not present.", 0x00
 
 error_data_nan      db "Not a number.", 0x00
 error_data_space    db "Memory size too small.", 0x00

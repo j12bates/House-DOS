@@ -114,9 +114,25 @@ main:                                           ; Main code for House-DOS kernel
     cmp ah, 0xFF                                ; Did the last command just finish?
     je .handback                                ; If so, prepare to get a command
 
+    cmp ah, 0xFE                                ; Is this a handback with error?
+    je .exit_error                              ; If so, display the error message
+
     jmp syscall_handler                         ; Otherwise, a system function was called
 
+.exit_error:
+    push si                                     ; Preserve string location
+
+    mov si, iface_perror                        ; Program error message
+    call print_str                              ; Print string
+
+    pop si                                      ; Restore string location
+    call data_binseg                            ; Read from command
+    call println                                ; Print line
+
+    call data_kernseg                           ; Reset segment
+
 .handback:
+    call setup_segments                         ; Ensure segments are all ready
     mov sp, 0x3FFE                              ; Reset stack pointer (we're going to pop something in a bit)
 
     clc                                         ; Show cursor
@@ -131,6 +147,8 @@ main:                                           ; Main code for House-DOS kernel
 command:                                        ; Main loop: Retrieve command from user
     popf                                        ; Get this out of the stack...
     call setup_segments                         ; We're going to be using and writing to kernel variables
+
+    mov byte [header_offset], 0x00              ; Reset header offset
 
     call line_break                             ; Line break
     call prompt                                 ; Setup prompt
@@ -200,6 +218,9 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x24                                ; Is this a dollar-sign?
     je .flags                                   ; If so, these are flags
 
+    cmp al, 0x25                                ; Is this a percent-sign?
+    je .metadata                                ; If so, we're getting metadata
+
     cmp al, 0x00                                ; Is this the end of the input?
     je .load_file                               ; If so, no more parameters
 
@@ -223,7 +244,7 @@ command:                                        ; Main loop: Retrieve command fr
     push di                                     ; Preserve pointer
 
     mov al, 0x00                                ; Look for a null character
-    mov di, param_flags                         ; Write somewhere into our flag list (regex?)
+    mov di, param_flags                         ; Write somewhere into our flag list
     mov cx, 0x0024                              ; 36 bytes in the buffer (36 valid characters)
     cld                                         ; Ensure correct direction
 
@@ -257,6 +278,29 @@ command:                                        ; Main loop: Retrieve command fr
     stosb                                       ; Write byte
     jmp .param_char                             ; And repeat
 
+.metadata:
+    lodsb                                       ; Read the next character
+    call capitalize_char                        ; Capitalize
+
+    add byte [header_offset], 0x02              ; Move our offset ahead a word
+    cmp al, 0x43                                ; Is this a C?
+    je .load_file                               ; If so, proceed
+
+    add byte [header_offset], 0x02              ; Otherwise, move our offset ahead again
+    cmp al, 0x44                                ; Is this a D?
+    je .load_file                               ; If so, proceed
+
+    add byte [header_offset], 0x02              ; Otherwise, move our offset ahead again
+    cmp al, 0x55                                ; Is this a U?
+    je .load_file                               ; If so, proceed
+
+    cmp al, 0x48                                ; Or H?
+    je .load_file                               ; If so, proceed
+
+    mov ax, 0x0003                              ; Otherwise, invalid header field
+    call error                                  ; Handle this error
+    jmp command                                 ; Get a new command
+
 .overwrite_comma:
     pop di                                      ; Restore pointer
     cmp di, params                              ; Have we written any parameters?
@@ -280,11 +324,35 @@ command:                                        ; Main loop: Retrieve command fr
 
     call line_break                             ; Line break between messages and command output
 
+    call data_kernseg                           ; We're about to use some kernel variables
+    cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
+    jne .header                                 ; If so, don't execute
+
     mov ax, 0x4000
     mov ds, ax                                  ; The segment our file is loaded in
     mov es, ax
 
     jmp 0x4000:0x0000                           ; Jump to our loaded binary
+
+.header:
+    mov ax, 0x0000                              ; Clear AX
+    add al, byte [header_offset]                ; Set it to the header offset
+
+    call data_binseg                            ; We want to access data from the command
+    cmp word [0x0000], 0x06EB                   ; Is the header signature there?
+    jne .error_header                           ; If not, error
+
+    mov si, ax                                  ; This is the index within the header
+    mov si, word [si]                           ; The location contained at that point is our string
+
+    call println                                ; Print line
+    jmp main.handback                           ; Simulate a handback and get a new command
+
+.error_header:
+    mov ax, 0x0080                              ; Missing header
+    call error                                  ; Handle this error
+
+    jmp main.handback                           ; Simulate a handback, and get a new command
 
 .bad_command:
     mov si, iface_command_bad
@@ -1642,14 +1710,16 @@ num_buffer          dd 0x00000000
                     dw 0x0000
 
 init                db 0x00
+header_offset       db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.3 NATE, Build 32; Compiled 2020-12-08", 0x00
+iface_welcome       db "House-DOS v0.0.3 NATE, Build 33; Compiled 2020-12-13", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
 iface_reboot        db "Rebooting...", 0x00
 iface_cancelled     db "Cancelled.", 0x00
+iface_perror        db "PROGRAM EXITED WITH ERROR: ", 0x00
 
 iface_ays           db "Are you sure?", 0x00
 iface_error_param   db "ERROR: Parameter not given.", 0x00

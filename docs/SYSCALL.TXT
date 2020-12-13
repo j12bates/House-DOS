@@ -33,6 +33,12 @@ II. Basic Functions
         Signals the end of the command. When this is used, command execution will stop and
         House-DOS will prompt the user for a new command.
 
+    EXIT WITH ERROR
+        AH = 0xFE
+        SI = String location
+
+        Same as a handback, but will display string as an error message.
+
     GET UNIX TIME
         AH = 0xD0
 

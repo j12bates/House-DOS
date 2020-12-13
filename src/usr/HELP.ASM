@@ -38,4 +38,4 @@ msg         db "========= House-DOS Help =========", 0x0A
             db "COPY:       Copy a file", 0x0A
             db "APPEND:     Append a line to file", 0x0A
             db "CALC:       Perform arithmetic", 0x0A
-            db "DATE:       Display time and date", 0x00
+            db "DATE:       Display time and date", 0x0A
