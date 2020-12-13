@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -41,11 +53,9 @@ main:
     cmp al, 0x2F                        ; Is it a forward-slash?
     je .div                             ; If so, divide
 
-    mov ah, 0x02                        ; If none of the above, print line
+    mov ah, 0xFE                        ; If none of the above, exit with error
     mov si, op_error                    ; Our error message
     int 0x7E
-
-    jmp .done                           ; And we're done
 
 .add:
     pop cx                              ; CX should be the adder
@@ -95,3 +105,9 @@ data:
 op_error        db "Invalid operator. Try again using +, -, *, or /.", 0x00
 dec_buffer      dd 0x00000000
                 db 0x00
+
+creator         db "Jet Pham & Jacob Bates", 0x00
+desc            db "A program to do basic arithmetic.", 0x00
+usage           db "CALC <INT> OP <INT>", 0x0A
+                db "OP = +, -, *, or /", 0x0A
+                db "Use <INT8> if OP = *", 0x00
