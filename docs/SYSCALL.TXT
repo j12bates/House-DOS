@@ -379,7 +379,7 @@ V. Interface Functions
         SI = Source
         CX = Number of characters
 
-        Prints out specified number of characters from source.
+        Prints out specified number of characters from source. BS (0x08) is printed as a char.
 
     DRAW BLOCK
         AH = 0x11
@@ -406,6 +406,13 @@ V. Interface Functions
         DL = Col number
 
         Moves the cursor to the specified col while keeping it in the same row.
+
+    PRINT LITERAL BYTES
+        AH = 0x18
+        SI = Source
+        CX = Number of characters
+
+        Similar to PRINT BYTES except newline (0x0A) is printed as a char.
 
     GET PARAMETER
         AH = 0x20
@@ -473,6 +480,24 @@ V. Interface Functions
 
         Checks if a certain flag was specified by the user.
 
+*   LOAD FROM FIRST PARAMETER
+        AH = 0x28
+
+        Return:
+        CF = Set on error
+
+        Gets the first parameter and loads the file with that name.
+
+*   LOAD OFFSET FROM PARAMETER
+        AH = 0x29
+        DI = Offset from file buffer to load into
+        CX = Parameter with filename
+
+        Return:
+        CF = Set on error
+
+        Gets a certain parameter and loads the file with that name to a specific offset.
+
 
 VI. Disk Functions
 
@@ -502,7 +527,6 @@ VI. Disk Functions
         Return:
         SI = Initial value + Number of bytes copied
         DI = Initial value + Number of bytes copied
-        CF = Set on error.
 
         Gets a certain quantity of bytes from the file buffer starting at the given index, and
         stores that in the destination buffer.
@@ -516,7 +540,6 @@ VI. Disk Functions
         Return:
         SI = Initial value + Number of bytes copied
         DI = Initial value + Number of bytes copied
-        CF = Set on error.
 
         Gets bytes from file buffer between the two indexes, and stores that in the destination
         buffer.
@@ -543,7 +566,7 @@ VI. Disk Functions
 
     LOAD FILE TO OFFSET
         AH = 0x66
-        DI = Offset from file buffer to load file to
+        DI = Offset from file buffer to load into
 
         Return:
         CF = Set on error

@@ -651,6 +651,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x13
     je iface_routines.indent                    ; Indent cursor
 
+    cmp ah, 0x18
+    je iface_routines.print_bytes_literal       ; Print literal bytes
+
     cmp ah, 0x20
     je iface_routines.parameter                 ; Get parameter
 
@@ -936,7 +939,10 @@ iface_routines:                                 ; Interface functions
 
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
+
+    clc                                         ; Newlines should behave as newlines
     call print_bytes                            ; Print bytes
+
     jmp int_ret                                 ; We're done!
 
 .block:
@@ -950,6 +956,14 @@ iface_routines:                                 ; Interface functions
 .indent:
     call indent                                 ; Indent cursor
     jmp int_ret.preserve_flags                  ; We're done!
+
+.print_bytes_literal:
+    call data_binseg                            ; We want to access data from the command
+
+    stc                                         ; Newlines should behave as characters
+    call print_bytes                            ; Print bytes
+
+    jmp int_ret                                 ; We're done!
 
 .parameter:
     call extra_binseg                           ; We want to give data to the command
@@ -1656,7 +1670,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2300 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2400 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 ; ========================================================================
 ; DATA SECTION
@@ -1664,7 +1678,7 @@ times 0x2300 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022300
+input_buffer        dq 0x0000000000000000       ; 0x00022400
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1673,7 +1687,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022300
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022340
+params              dq 0x0000000000000000       ; 0x00022440
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1682,7 +1696,7 @@ params              dq 0x0000000000000000       ; 0x00022340
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022380
+misc_buffer         dq 0x0000000000000000       ; 0x00022480
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1691,7 +1705,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022380
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000223C0
+param_flags         dq 0x0000000000000000       ; 0x000224C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1713,7 +1727,7 @@ init                db 0x00
 header_offset       db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.3 NATE, Build 33; Compiled 2020-12-13", 0x00
+iface_welcome       db "House-DOS v0.0.3 NATE, Build 34; Compiled 2020-12-15", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

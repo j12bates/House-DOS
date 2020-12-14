@@ -76,8 +76,9 @@ data:
 
 buffer_pointer  dw 0x0000
 files           dw 0x0000
+
 fname           dq 0x0000000000000000
                 dd 0x00000000
-
+                db 0x00
 
 dest_buffer:
