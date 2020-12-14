@@ -237,7 +237,7 @@ clear:                                          ; Clear screen
     ret                                         ; Return to caller
 
 
-; WRITE CHAR TO TELETYPE: Writes a char and moves cursor forward (works with new lines)
+; WRITE CHAR TO TELETYPE: Writes a char and moves cursor forward (works with new lines/backspaces)
 ; IN: AL = ASCII character to write
 ; OUT: None
 
@@ -292,6 +292,34 @@ teletype_output:                                ; Write character in teletype mo
     jmp .done                                   ; We're done!
 
 
+; LITERAL CHARACTER OUTPUT: Prints a characterand moves cursor forward (backspaces are actually printed)
+; IN: AL = ASCII character to write; CF = Set to print newlines as single characters
+; OUT: None
+
+literal_output:                                 ; Prints literal character and advances cursor
+    pusha                                       ; Save register states to stack
+
+    jc .print                                   ; If we are to print newlines as characters, proceed
+
+    cmp al, 0x0A                                ; Otherwise, is this a newline char?
+    jne .print                                  ; If not, proceed
+
+    call line_break                             ; Otherwise, line break
+    jmp .done                                   ; And we're done!
+
+.print:
+    mov ah, 0x0A                                ; Print character at cursor position
+    mov bh, 0x00                                ; Page 0
+    mov cx, 0x0001                              ; Write character once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    call advance_cursor                         ; Advance cursor
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; PRINT STRING: Prints out a string in teletype mode
 ; IN: DS:SI = Location of string to print
 ; OUT: None
@@ -316,7 +344,7 @@ print_str:                                      ; Prints string in DS:SI
 
 
 ; PRINT STRING WITH FORMATTING: Prints out a string in a specific color
-; IN: DS:SI = Location of string to print, BL = Attribute
+; IN: DS:SI = Location of string to print; BL = Attribute
 ; OUT: None
 
 printf:                                         ; Prints string in DS:SI with color attribute in BL
@@ -380,6 +408,30 @@ line_break:                                     ; Moves cursor down one line
     ret                                         ; Return to caller
 
 
+; ADVANCE CURSOR: Advances the cursor, line-breaking/scrolling if necessary
+; IN: None
+; OUT: None
+
+advance_cursor:                                 ; Advance cursor
+    pusha                                       ; Save register states to stack
+
+    call get_cursor_pos                         ; Get cursor position
+
+    cmp dl, 0x4F                                ; Are we in the rightmost col?
+    je .next_line                               ; If so, we have to do a line break
+
+    inc dl                                      ; Otherwise, just increment the col
+    call move_cursor                            ; Set the cursor to this new position
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.next_line:
+    call line_break                             ; Line break
+    jmp .done                                   ; We're done
+
+
 ; DISPLAY PROMPT: Displays the command prompt
 ; IN: None
 ; OUT: None
@@ -404,7 +456,7 @@ prompt:                                         ; Set up a prompt for the user
 
 
 ; PRINT BYTES: Prints the specified number of bytes in teletype mode
-; IN: CX = Number of bytes to print, DS:SI = Input buffer
+; IN: CX = Number of bytes to print; DS:SI = Input buffer; CF = Set for newlines to act as normal chars
 ; OUT: None
 
 print_bytes:                                    ; Prints number of bytes (CX) starting at DS:SI
@@ -415,10 +467,11 @@ print_bytes:                                    ; Prints number of bytes (CX) st
 .char:
     lodsb                                       ; Load char and increment pointer
 
-    call teletype_output                        ; Write character
-    loop .char                                  ; Repeat
+    pushf                                       ; Preserve flags
+    call literal_output                         ; Write character
+    popf                                        ; Restore flags
 
-    jmp .done                                   ; If we've done all the characters, we're done!
+    loop .char                                  ; Repeat
 
 .done:
     popa                                        ; Restore register states
