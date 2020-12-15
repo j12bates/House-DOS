@@ -293,7 +293,7 @@ V. Interface Functions
 
         Prints out the string in SI in teletype mode.
 
-    PRINT-STRING AND LINE-BREAK
+    PRINT LINE
         AH = 0x02
         SI = String location
 
@@ -480,15 +480,16 @@ V. Interface Functions
 
         Checks if a certain flag was specified by the user.
 
-*   LOAD FROM FIRST PARAMETER
+    LOAD FILE FIRST PARAMETER
         AH = 0x28
 
         Return:
         CF = Set on error
 
-        Gets the first parameter and loads the file with that name.
+        Gets the first parameter, clears the file buffer, and attempts to load the file with that
+        name, should it exist.
 
-*   LOAD OFFSET FROM PARAMETER
+    LOAD FILE PARAMETER TO OFFSET
         AH = 0x29
         DI = Offset from file buffer to load into
         CX = Parameter with filename
@@ -496,7 +497,8 @@ V. Interface Functions
         Return:
         CF = Set on error
 
-        Gets a certain parameter and loads the file with that name to a specific offset.
+        Gets a certain parameter and attempts to load the file with that name to a specific
+        offset.
 
 
 VI. Disk Functions
@@ -561,6 +563,7 @@ VI. Disk Functions
 
         Return:
         SI = Address of line
+        CF = Set on error
 
         Gets the address of a certain line.
 

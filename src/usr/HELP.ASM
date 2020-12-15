@@ -30,6 +30,7 @@ msg         db "========= House-DOS Help =========", 0x0A
             db "DIR:        List all files", 0x0A
             db "FILE:       Get file properties", 0x0A
             db "CAT:        Display file contents", 0x0A
+            db "HEXDUMP:    Display as hex", 0x00
             db "WRITE:      Write a text file", 0x0A
             db "RENAME:     Rename a file", 0x0A
             db "DELETE:     Delete a file", 0x0A
