@@ -480,7 +480,7 @@ V. Interface Functions
 
         Checks if a certain flag was specified by the user.
 
-    LOAD FROM FIRST PARAMETER
+    LOAD FILE FIRST PARAMETER
         AH = 0x28
 
         Return:
@@ -489,7 +489,7 @@ V. Interface Functions
         Gets the first parameter, clears the file buffer, and attempts to load the file with that
         name, should it exist.
 
-    LOAD OFFSET FROM PARAMETER
+    LOAD FILE PARAMETER TO OFFSET
         AH = 0x29
         DI = Offset from file buffer to load into
         CX = Parameter with filename
