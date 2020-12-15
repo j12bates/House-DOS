@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -19,21 +31,9 @@ main:
 .file:
     push cx                             ; Preserve our counter
 
-    mov ah, 0x20                        ; Get parameter
+    mov ah, 0x29                        ; Load file from parameter to offset
     sub cx, word [files]                ; Subtract the total files
     neg cx                              ; Negate to get the files in order
-    mov di, fname                       ; The parameter should be our filename
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x60                        ; Verify file and prepare for loading
-    mov si, fname                       ; Filename
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x66                        ; Load file to offset
     mov di, word [buffer_pointer]       ; Our pointer is our offset
     int 0x7E
 
@@ -80,5 +80,10 @@ files           dw 0x0000
 fname           dq 0x0000000000000000
                 dd 0x00000000
                 db 0x00
+
+creator         db "House-DOS Developers", 0x00
+desc            db "File concatenater. Can also be used to display files.", 0x00
+usage           db "CAT <FILENAME> *<FILENAME>* ...", 0x00
+
 
 dest_buffer:

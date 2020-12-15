@@ -760,6 +760,35 @@ delete:                                         ; Delete a file
     jmp .end                                    ; We're done
 
 
+; LOAD FILE FROM PARAMETER: Loads file with the name given in a certain parameter to a specific offset
+; IN: CX = Parameter number; DI = Offset from buffer
+; OUT: CF = Set on error
+
+load_file_param:                                ; Load file from parameter
+    pusha                                       ; Save register states to stack
+
+    mov word [buffer_pointer], di               ; Our offset goes here in memory
+
+    call clear_misc_buffer                      ; Clear the miscellaneous buffer
+
+    mov di, misc_buffer                         ; Our buffer
+    call get_parameter                          ; Get parameter from command
+
+    mov si, misc_buffer                         ; Our buffer
+    call conv_x3_83                             ; Convert to 8.3 filename and store properly
+    jc .done                                    ; If failed, we're done
+
+    call verify                                 ; Verify file
+    jc .done                                    ; If failed, we're done
+
+    call get_file_cluster                       ; Get starting cluster
+    call load_file                              ; Load file
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; ========================================================================
 ; SUBROUTINES
 ; ========================================================================
@@ -966,6 +995,9 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     stosb                                       ; Store resulting character
 
     loop .ext_char                              ; Repeat
+
+    cmp byte [si], 0x00                         ; Is the final byte a null character?
+    jne .error_filename                         ; If not, this isn't a valid filename
 
     clc                                         ; If we're done, no error
     

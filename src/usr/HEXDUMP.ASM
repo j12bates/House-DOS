@@ -23,20 +23,7 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x20                        ; Get parameter
-    mov cx, 0x0000                      ; First parameter
-    mov di, fname                       ; The parameter should be our filename
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x60                        ; Verify file and prepare for loading
-    mov si, fname                       ; Filename
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x61                        ; Load file to offset
+    mov ah, 0x28                        ; Load file from first parameter
     int 0x7E
 
     jc .done                            ; If error, we're done
@@ -131,7 +118,7 @@ fname           dq 0x0000000000000000
 
 space           db " ", 0x00
 
-creator         db "Jacob Bates", 0x00
+creator         db "House-DOS Developers", 0x00
 desc            db "Dump a file as hex/plaintext.", 0x00
 usage           db "HEXDUMP <FILENAME>", 0x00
 

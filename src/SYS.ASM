@@ -491,7 +491,7 @@ setup_segments:                                 ; Setup DS and ES to the kernel 
 ; IN: None
 ; OUT: None
 
-clear_buffer:                                   ; Clear the miscellaneous buffer
+clear_misc_buffer:                              ; Clear the miscellaneous buffer
     pusha                                       ; Save register states to stack
 
     call setup_segments                         ; We're going to use kernel space
@@ -674,6 +674,12 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x27
     je iface_routines.check_flag                ; Check if flag was specified
+
+    cmp ah, 0x28
+    je iface_routines.param_file                ; Load file from first parameter
+
+    cmp ah, 0x29
+    je iface_routines.param_file_offset         ; Load file from parameter to offset
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -982,7 +988,7 @@ iface_routines:                                 ; Interface functions
 .param_int16:
     push di                                     ; Preserve this value
 
-    call clear_buffer                           ; Clear the miscellaneous buffer
+    call clear_misc_buffer                      ; Clear the miscellaneous buffer
 
     mov di, misc_buffer                         ; Our buffer
     call get_parameter                          ; Get parameter
@@ -1003,7 +1009,7 @@ iface_routines:                                 ; Interface functions
 .param_int8:
     push di                                     ; Preserve this value
 
-    call clear_buffer                           ; Clear the miscellaneous buffer
+    call clear_misc_buffer                      ; Clear the miscellaneous buffer
 
     mov di, misc_buffer                         ; Our buffer
     call get_parameter                          ; Get parameter
@@ -1024,7 +1030,7 @@ iface_routines:                                 ; Interface functions
 .param_byte:
     push di                                     ; Preserve this value
 
-    call clear_buffer                           ; Clear the miscellaneous buffer
+    call clear_misc_buffer                      ; Clear the miscellaneous buffer
 
     mov di, misc_buffer                         ; Our buffer
     call get_parameter                          ; Get parameter from list
@@ -1043,6 +1049,19 @@ iface_routines:                                 ; Interface functions
 
 .check_flag:
     call check_flag                             ; Check if flag was specified
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.param_file:
+    call clear_file_buffer                      ; Clear the file buffer
+
+    mov cx, 0x0000                              ; First parameter
+    mov di, 0x0000                              ; Offset from buffer
+    call load_file_param                        ; Load file from parameter
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.param_file_offset:
+    call load_file_param                        ; Load file from parameter
     jmp int_ret.preserve_flags                  ; We're done!
 
 
