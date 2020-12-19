@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -246,3 +258,12 @@ message_wdt     db "Last write date/time:", 0x00
 message_ronly   db "File is read-only.", 0x00
 message_hidden  db "File is hidden.", 0x00
 message_system  db "This is a system file.", 0x00
+
+creator         db "House-DOS Developers", 0x00
+desc            db "Utility for showing a file's properties.", 0x00
+usage           db "FILE <FILENAME>", 0x0A
+                db "Flags:", 0x0A
+                db "S - Display file size", 0x0A
+                db "C - Display creation date", 0x0A
+                db "A - Display access date", 0x0A
+                db "W - Display write date", 0x0A

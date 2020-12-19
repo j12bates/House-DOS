@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -20,5 +32,10 @@ main:
 
 data:
 
-msg         db "House-DOS v0.0.3 NATE, Build 34; Compiled 2020-12-15", 0x0A
-            db "By Jacob, Jet, and Ben", 0x00
+msg             db "House-DOS v0.0.3 NATE, Build 35; Compiled 2020-12-19", 0x0A
+                db "By Jacob, Jet, and Ben", 0x00
+
+creator         db "House-DOS Developers", 0x00
+desc            db "Show system info.", 0x00
+usage           db "INFO", 0x0A
+                db "Flags: none", 0x00

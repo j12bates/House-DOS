@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -57,3 +69,9 @@ data:
 
 fname           dq 0x0000000000000000
                 dd 0x00000000
+
+creator         db "House-DOS Developers", 0x00
+desc            db "Utility for renaming a file.", 0x00
+usage           db "RENAME <FILENAME-SOURCE> <FILENAME-DEST>", 0x0A
+                db "Flags:", 0x0A
+                db "A - Immediately apply changes", 0x00

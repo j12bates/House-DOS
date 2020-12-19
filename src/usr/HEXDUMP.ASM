@@ -119,7 +119,7 @@ fname           dq 0x0000000000000000
 space           db " ", 0x00
 
 creator         db "House-DOS Developers", 0x00
-desc            db "Dump a file as hex/plaintext.", 0x00
+desc            db "Utility to dump a file as hex/plaintext.", 0x00
 usage           db "HEXDUMP <FILENAME>", 0x00
 
 dest_buffer:

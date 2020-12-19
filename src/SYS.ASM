@@ -207,19 +207,13 @@ command:                                        ; Main loop: Retrieve command fr
     rep stosb                                   ; Clear parameter list
 
     mov di, params                              ; Now, write into our parameter list
-    mov bl, 0x00                                ; We are not escaping spaces
+    mov bx, 0x0000                              ; We are not currently reading a parameter or escaping spaces
 
 .param_char:
     lodsb                                       ; Load next byte from command
 
     cmp al, 0x22                                ; Is this a quotation?
     je .quotation                               ; If so, toggle space-escape
-
-    cmp al, 0x24                                ; Is this a dollar-sign?
-    je .flags                                   ; If so, these are flags
-
-    cmp al, 0x25                                ; Is this a percent-sign?
-    je .metadata                                ; If so, we're getting metadata
 
     cmp al, 0x00                                ; Is this the end of the input?
     je .load_file                               ; If so, no more parameters
@@ -230,11 +224,20 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x20                                ; Is it a space?
     je .next_param                              ; If so, that's one parameter
 
+    cmp bh, 0xFF                                ; Are we currently reading a parameter?
+    je .write                                   ; If so, don't read as flags/header
+
+    cmp al, 0x24                                ; Is this a dollar-sign?
+    je .flags                                   ; If so, these are flags
+
+    cmp al, 0x25                                ; Is this a percent-sign?
+    je .metadata                                ; If so, we're getting metadata
+
 .write:
     stosb                                       ; Otherwise, store byte in list
-    jmp .param_char                             ; And repeat
 
-    jmp .load_file                              ; If we're done, proceed to load file
+    mov bh, 0xFF                                ; We're currently reading a parameter
+    jmp .param_char                             ; And repeat
 
 .quotation:
     xor bl, 0xFF                                ; Toggle space-escape
@@ -276,6 +279,8 @@ command:                                        ; Main loop: Retrieve command fr
 .next_param:
     mov al, 0x2C                                ; Comma (items are separated by commas)
     stosb                                       ; Write byte
+
+    mov bh, 0x00                                ; We're done writing that parameter
     jmp .param_char                             ; And repeat
 
 .metadata:
@@ -328,10 +333,7 @@ command:                                        ; Main loop: Retrieve command fr
     cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
     jne .header                                 ; If so, don't execute
 
-    mov ax, 0x4000
-    mov ds, ax                                  ; The segment our file is loaded in
-    mov es, ax
-
+    call segments_binary                        ; Set segments to the binary segment
     jmp 0x4000:0x0000                           ; Jump to our loaded binary
 
 .header:
@@ -474,7 +476,7 @@ check_flag:                                     ; Check if flag was set
 
 ; SET UP SEGMENTS: Sets both segment registers to the kernel segment
 ; IN: None
-; OUT: DS = 0x2000, ES = 0x2000
+; OUT: DS = 0x2000; ES = 0x2000
 
 setup_segments:                                 ; Setup DS and ES to the kernel segment
     push ax                                     ; Save register state to stack
@@ -482,6 +484,21 @@ setup_segments:                                 ; Setup DS and ES to the kernel 
     mov ax, 0x2000
     mov ds, ax
     mov es, ax                                  ; The segment we're loaded in
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; SET SEGMENTS TO BINARY: Sets both segment registers to the binary segment
+; IN: None
+; OUT: DS = 0x4000; ES = 0x4000
+
+segments_binary:                                ; Setup DS and ES to the binary segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x4000
+    mov ds, ax
+    mov es, ax                                  ; The segment our command is loaded in
 
     pop ax                                      ; Restore register state
     ret                                         ; Return to caller
@@ -1068,22 +1085,17 @@ iface_routines:                                 ; Interface functions
 data_routines:                                  ; Data functions
 
 .str_cmp:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
-
+    call segments_binary                        ; We're working with stuff in the command
     call cmp_strs                               ; Compare strings
     jmp int_ret.preserve_flags                  ; We're done!
 
 .str_find:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
-
+    call segments_binary                        ; We're working with stuff in the command
     call find_substr                            ; Find substring
     jmp int_ret.preserve_flags                  ; We're done!
 
 .str_upcase:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
+    call segments_binary                        ; We're working with stuff in the command
 
     stc                                         ; Carry flag for uppercase
     call case_str                               ; Change case
@@ -1091,8 +1103,7 @@ data_routines:                                  ; Data functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .str_downcase:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
+    call segments_binary                        ; We're working with stuff in the command
 
     clc                                         ; Clear carry flag for lowercase
     call case_str                               ; Change case
@@ -1100,15 +1111,12 @@ data_routines:                                  ; Data functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .str_sub_qty:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
-
+    call segments_binary                        ; We're working with stuff in the command
     call substr                                 ; Retrieve substring
     jmp int_ret.preserve_flags                  ; We're done!
 
 .str_sub_indices:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
+    call segments_binary                        ; We're working with stuff in the command
 
     sub cx, bx                                  ; Subtract to get the length
     call substr                                 ; Retrieve substring
@@ -1116,17 +1124,15 @@ data_routines:                                  ; Data functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .str_length:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
+    call segments_binary                        ; We're working with stuff in the command
 
     clc                                         ; Use source operand
     call str_len                                ; Get string length
+
     jmp int_ret                                 ; We're done!
 
 .list_get_item:
-    call data_binseg                            ; We want to access data from the command
-    call extra_binseg                           ; We want to give data to the command
-
+    call segments_binary                        ; We're working with stuff in the command
     call get_item_list                          ; Get list item
     jmp int_ret.preserve_flags                  ; We're done!
 
@@ -1467,9 +1473,13 @@ disk_routines:                                  ; Disk functions
 .write:
     call data_binseg                            ; We want to access data from the command
 
+    cmp si, 0x0000                              ; Is SI 0?
+    je ._write                                  ; If so, skip ahead
+
     call conv_x3_83                             ; Convert filename to proper format
     jc int_ret.preserve_flags                   ; If error, we're done
 
+._write:
     call write_file                             ; Write file to disk
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1656,12 +1666,8 @@ int_ret:                                        ; Return back to command
     popf                                        ; Restore flags
 
 .flags_used:
-    push ax                                     ; Save register state to stack
-    mov ax, 0x4000
-    mov ds, ax                                  ; The segment our command is loaded in
-    mov es, ax
-    pop ax                                      ; Restore register state
-    
+    call segments_binary                        ; Set segments to the binary segment
+
 .ret:
     iret                                        ; Interrupt return
 
@@ -1746,7 +1752,7 @@ init                db 0x00
 header_offset       db 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.3 NATE, Build 34; Compiled 2020-12-15", 0x00
+iface_welcome       db "House-DOS v0.0.3 NATE, Build 35; Compiled 2020-12-19", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

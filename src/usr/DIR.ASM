@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -19,13 +31,8 @@ main:
     mov si, list_buffer                 ; Our list
     int 0x7E
 
-    mov ah, 0xF1                        ; Convert word to decimal
-    mov dx, cx                          ; Convert our list length
-    mov di, num                         ; Our output buffer
-    int 0x7E
-
-    mov ah, 0x01                        ; Print string
-    mov si, num                         ; Our decimal number
+    mov ax, 0x8201                      ; Print word as decimal
+    mov dx, cx                          ; Our list length
     int 0x7E
 
     mov ah, 0x02                        ; Print line
@@ -75,5 +82,10 @@ num             dd 0x00000000
                 db 0x00
 
 msg             db " files:", 0x00
+
+creator         db "House-DOS Developers", 0x00
+desc            db "Utility for listing files.", 0x00
+usage           db "DIR", 0x0A
+                db "Flags: none", 0x00
 
 list_buffer:

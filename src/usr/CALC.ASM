@@ -107,7 +107,8 @@ dec_buffer      dd 0x00000000
                 db 0x00
 
 creator         db "Jet Pham & Jacob Bates", 0x00
-desc            db "A program to do basic arithmetic.", 0x00
+desc            db "Utility to do basic arithmetic.", 0x00
 usage           db "CALC <INT> OP <INT>", 0x0A
                 db "OP = +, -, *, or /", 0x0A
-                db "Use <INT8> if OP = *", 0x00
+                db "Use <INT8> if OP = *", 0x0A
+                db "Flags: none", 0x00

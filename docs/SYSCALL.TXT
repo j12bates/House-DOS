@@ -487,7 +487,7 @@ V. Interface Functions
         CF = Set on error
 
         Gets the first parameter, clears the file buffer, and attempts to load the file with that
-        name, should it exist.
+        name, should it exist. The file is now verified.
 
     LOAD FILE PARAMETER TO OFFSET
         AH = 0x29
@@ -498,7 +498,7 @@ V. Interface Functions
         CF = Set on error
 
         Gets a certain parameter and attempts to load the file with that name to a specific
-        offset.
+        offset. The file is now verified.
 
 
 VI. Disk Functions
@@ -650,13 +650,14 @@ VI. Disk Functions
 
     WRITE TO DISK
         AH = 0x6F
-        SI = X.3 filename
+        SI = X.3 filename (or 0x0000)
         CX = File size
 
         Return:
         CF = Set on error
 
-        Write file with given filename to disk.
+        Write file with given filename to disk. If SI is 0, then the most recently verified file
+        will be used.
 
     GET FILE SIZE
         AH = 0x70
