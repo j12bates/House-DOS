@@ -7,25 +7,23 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
 main:
-    mov ah, 0x20                        ; Get parameter
-    mov cx, 0x0000                      ; Parameter 0
-    mov di, fname                       ; The name of our file to copy
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-.verify:
-    mov ah, 0x60                        ; Verify file and prepare for loading
-    mov si, fname                       ; Filename
-    int 0x7E
-
-    jc .done                            ; If no such file, end here
-
-    mov ah, 0x61                        ; Load file
+    mov ah, 0x28                        ; Load first parameter as file
     int 0x7E
 
 .destination:
@@ -53,10 +51,10 @@ main:
 
 data:
 
-buffer_pointer  dw 0x0000
-fsize           dw 0x0000
 fname           dq 0x0000000000000000
                 dd 0x00000000
 
-
-dest_buffer:
+creator         db "House-DOS Developers", 0x00
+desc            db "Utility for copying a file.", 0x00
+usage           db "COPY <FILENAME-SOURCE> <FILENAME-DEST>", 0x0A
+                db "Flags: none", 0x00

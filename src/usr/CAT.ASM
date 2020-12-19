@@ -82,8 +82,9 @@ fname           dq 0x0000000000000000
                 db 0x00
 
 creator         db "House-DOS Developers", 0x00
-desc            db "File concatenater. Can also be used to display files.", 0x00
-usage           db "CAT <FILENAME> *<FILENAME>* ...", 0x00
+desc            db "Utility for concatenating and displaying file contents.", 0x00
+usage           db "CAT <FILENAME> *<FILENAME>* ...", 0x0A
+                db "Flags: none", 0x00
 
 
 dest_buffer:

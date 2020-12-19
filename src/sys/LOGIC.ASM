@@ -326,6 +326,11 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
     dec bx                                      ; Avoid an O.B.O.E
     sub dx, bx                                  ; We've already accounted for an extra day each leap year
 
+    jg .epoch                                   ; If we didn't subtract too many, proceed
+    add dx, 0x016D                              ; Otherwise, add back the days
+    dec ax                                      ; And avoid an O.B.O.E with the year
+
+.epoch:
     add ax, 0x07B2                              ; Add 1970 to make it a year number
     push ax                                     ; Push year to stack
 
@@ -333,21 +338,34 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
     cmp al, 0x00                                ; Check if it is divisible by 4
     pushf                                       ; Save result to stack
 
+    dec dx                                      ; Avoid an O.B.O.E with the day
+
 .months:
     mov ax, 0x0001                              ; Start month number here
     mov bx, 0x001F                              ; January is 31 days
-    
+
+    pop cx                                      ; Take this out of the stack for now
     call .check_month                           ; Check January
+    push cx                                     ; Push it back
 
     mov bx, 0x1C                                ; February is 28 days
+
     popf                                        ; Restore modulus result
+    pushf                                       ; Push it back
     jne .feb                                    ; If not a leap year, proceed
+
     inc bx                                      ; Otherwise, February is 29 days
     
 .feb:
+    pop cx                                      ; Take this out of the stack for now
     call .check_month                           ; Check February
+    push cx                                     ; Push it back
 
+    popf                                        ; Restore modulus result
     mov cx, 0x0002                              ; Repeat next step once
+
+    jne .march_june                             ; If not a leap year proceed
+    inc dx                                      ; Otherwise, there's an extra day
 
 .march_june:
     call .check_month                           ; Check March/May

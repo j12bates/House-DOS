@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
@@ -111,5 +123,10 @@ fname           db "XXXXXXXX.XXX"
 ellipse         db "...", 0x00
 
 buffer_pointer  dw 0x0000
+
+creator         db "House-DOS Developers", 0x00
+desc            db "Utility for writing a new text file.", 0x00
+usage           db "WRITE *<FILENAME>*", 0x0A
+                db "Flags: none", 0x00
 
 src_buffer:

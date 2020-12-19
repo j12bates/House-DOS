@@ -7,25 +7,23 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; Main code
 ; ========================================================================
 
 main:
-    mov ah, 0x20                        ; Get parameter
-    mov cx, 0x0000                      ; Parameter 0
-    mov di, fname                       ; The parameter should be our filename
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-.verify:
-    mov ah, 0x60                        ; Verify file and prepare for loading
-    mov si, fname                       ; Filename
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x61                        ; Load file
+    mov ah, 0x28                        ; Load first parameter as file
     int 0x7E
 
     jc .done                            ; If error, we're done
@@ -40,29 +38,25 @@ main:
     mov ah, 0x70                        ; Get size of file
     int 0x7E
 
-    mov cx, ax                          ; Get the entire file
-
-    mov ah, 0x62                        ; Get bytes
-    mov si, 0x0000                      ; Starting at the beginning
-    mov di, dest_buffer                 ; Copy into our buffer
-    int 0x7E
+    mov word [fsize], ax                ; Save the file size to memory
 
     mov ah, 0x04                        ; Get input
+    mov di, src_buffer                  ; Our buffer
     mov cx, 0x80                        ; 128 character limit
     int 0x7E
 
     mov al, 0x0A                        ; Newline character
     stosb                               ; Store in buffer
 
-    mov ah, 0x68                        ; Write bytes to file buffer
-    mov si, dest_buffer                 ; Read from our buffer
-    mov cx, di                          ; The file size is the value of the pointer
-    sub cx, dest_buffer                 ; Relative to the start of our buffer
-    mov di, 0x0000                      ; Write to the beginning of the file buffer
+    mov ah, 0x69                        ; Write bytes to file buffer
+    mov si, src_buffer                  ; Read from our buffer
+    mov cx, di                          ; The ending index is the value of the pointer
+    mov di, word [fsize]                ; Start writing at the end of the file
     int 0x7E
 
-    mov ah, 0x6F                        ; Write file to disk (CX is already what we want)
-    mov si, fname                       ; Our filename
+    mov ah, 0x6F                        ; Write file to disk
+    mov cx, di                          ; Our pointer is at the end; write this many bytes
+    mov si, 0x0000                      ; Our filename
     int 0x7E
 
 .done:
@@ -72,9 +66,12 @@ main:
 
 data:
 
-fname           dq 0x0000000000000000
-                dd 0x00000000
-
+fsize           dw 0x0000
 prompt          db "Input line to append: ", 0x00
 
-dest_buffer:
+creator         db "House-DOS Developers", 0x00
+desc            db "Utility to append a line to a file.", 0x00
+usage           db "APPEND <FILENAME>", 0x0A
+                db "Flags: none", 0x00
+
+src_buffer:
