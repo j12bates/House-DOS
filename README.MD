@@ -8,7 +8,7 @@ I've been having lots of fun creating it, and hope to continue to take this proj
 Special thanks to:
 - [Jet Pham](https://github.com/jetpham), for being interested
 - [Ben Johnson](https://github.com/benjaminjohnson2204), for helping me fix my logic
-- [David Uehara](https://github.com/DavidUehara) and [Derrick](https://github.com/TheCodeWeaver), for being awesome
+- [David Uehara](https://github.com/DavidUehara) and [Derrick](https://github.com/Sabacweave), for being awesome
 
 ## Instructions for Use:
 You will need the Netwide Assembler (NASM).
@@ -47,6 +47,6 @@ The answer? Either don't use segments, or **push** them.
 Another thing that helps solve the issue is by making subroutines out of code that is *reused* in some form.
 ***
 Other things I've learned:
-- If you implement a major paradigm change, and it works straight away, do take a second look, but after that you need not worry.
+- If you implement a major paradigm change and it works straight away, do take a second look, but after that you need not worry.
 - Getting a routine to write a file is *very very tricky.*
 - Hardware inconsistencies will always be a pain.
