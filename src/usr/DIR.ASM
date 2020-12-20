@@ -31,7 +31,7 @@ main:
     mov si, list_buffer                 ; Our list
     int 0x7E
 
-    mov ax, 0x8201                      ; Print word as decimal
+    mov ax, 0x8202                      ; Print word as decimal
     mov dx, cx                          ; Our list length
     int 0x7E
 

@@ -8,7 +8,7 @@
     ORG 0x0000
 
 ; ========================================================================
-; MAIN ROUTINE
+; STARTUP/REDIRECTION
 ; ========================================================================
 
 start:                                          ; House-DOS code
@@ -102,6 +102,10 @@ start:                                          ; House-DOS code
     mov byte [init], 0x01                       ; We've initialized
     xor bx, bx                                  ; Make sure that the zero-flag is set
 
+
+; ========================================================================
+; MAIN ROUTINE
+; ========================================================================
 
 main:                                           ; Main code for House-DOS kernel
     mov bx, 0x2000
@@ -406,7 +410,7 @@ divide_zero:                                    ; Routine for if a DIVIDE_ZERO e
 
 
 ; ========================================================================
-; SUBROUTINES
+; BASIC SUBROUTINES
 ; ========================================================================
 
 ; GET PARAMETER: Gets specified parameter from the parameter list
@@ -1696,6 +1700,7 @@ int_ret:                                        ; Return back to command
 
 
 times 0x2400 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+
 
 ; ========================================================================
 ; DATA SECTION

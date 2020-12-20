@@ -17,6 +17,7 @@
 capitalize_char:                                ; Capitalize char in AL
     cmp al, 0x61                                ; Are we between lowercase A
     jb .end
+
     cmp al, 0x7A                                ; And lowercase Z?
     ja .end
 
@@ -348,7 +349,7 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
     call .check_month                           ; Check January
     push cx                                     ; Push it back
 
-    mov bx, 0x1C                                ; February is 28 days
+    mov bx, 0x001C                              ; February is 28 days
 
     popf                                        ; Restore modulus result
     pushf                                       ; Push it back
@@ -364,7 +365,7 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
     popf                                        ; Restore modulus result
     mov cx, 0x0002                              ; Repeat next step once
 
-    jne .march_june                             ; If not a leap year proceed
+    jne .march_june                             ; If not a leap year, proceed
     inc dx                                      ; Otherwise, there's an extra day
 
 .march_june:
@@ -396,7 +397,7 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
 
     inc ax                                      ; Otherwise, it may be the next month
     sub dx, bx                                  ; We've just accounted for these days
-    mov bx, 0x1F                                ; Months typically are 31 days
+    mov bx, 0x001F                              ; Months typically are 31 days
 
     ret                                         ; Go back
 
