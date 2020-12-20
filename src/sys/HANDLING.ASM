@@ -357,7 +357,10 @@ error_print:                                    ; Display the error message
     call print_str                              ; Display the error link
 
     pop si                                      ; Restore our error message
-    call println                                ; Print the message
+    call print_str                              ; Print the message
+
+    mov si, full_stop                           ; The full stop
+    call println                                ; Print and do a line break
 
 .done:
     stc                                         ; Carry-flag for error
@@ -369,53 +372,54 @@ error_messages:
 
 error_preamble      db "KERNEL ERROR 0x", 0x00
 error_link          db ": ", 0x00
+full_stop           db ".", 0x00
 
-error_sys_idk       db "An error was encountered.", 0x00
-error_sys_cancelled db "Cancelled by user.", 0x00
-error_sys_param     db "Parameter not given.", 0x00
-error_sys_header    db "Invalid header field.", 0x00
-error_sys_divzero   db "Divide by zero attempted.", 0x00
-error_sys_rtc       db "RTC error.", 0x00
+error_sys_idk       db "An error was encountered", 0x00
+error_sys_cancelled db "Cancelled by user", 0x00
+error_sys_param     db "Parameter not given", 0x00
+error_sys_header    db "Invalid header field", 0x00
+error_sys_divzero   db "Divide by zero attempted", 0x00
+error_sys_rtc       db "RTC error", 0x00
 
-error_bc_header     db "Header not present.", 0x00
+error_bc_header     db "Header not present", 0x00
 
-error_data_nan      db "Not a number.", 0x00
-error_data_space    db "Memory size too small.", 0x00
-error_data_oflow    db "16-bit overflow.", 0x00
-error_data_oflow8   db "8-bit overflow.", 0x00
-error_data_lindex   db "Invalid list index.", 0x00
-error_data_sindex   db "Invalid string index.", 0x00
-error_data_sfind    db "Substring not found.", 0x00
+error_data_nan      db "Not a number", 0x00
+error_data_space    db "Memory size too small", 0x00
+error_data_oflow    db "16-bit overflow", 0x00
+error_data_oflow8   db "8-bit overflow", 0x00
+error_data_lindex   db "Invalid list index", 0x00
+error_data_sindex   db "Invalid string index", 0x00
+error_data_sfind    db "Substring not found", 0x00
 
-error_disk_command  db "Bad driver command.", 0x00
-error_disk_bsect    db "Bad sector.", 0x00
-error_disk_write    db "Disk is write-protected.", 0x00
-error_disk_isect    db "Invalid sector.", 0x00
-error_disk_reset    db "Disk reset failed.", 0x00
-error_disk_changed  db "Removable media changed/removed.", 0x00
-error_disk_param    db "Bad parameter table.", 0x00
-error_disk_overr    db "DMA overrun.", 0x00
-error_disk_64k      db "DMA access across bounds.", 0x00
-error_disk_sflag    db "Bad sector flag.", 0x00
-error_disk_cylinder db "Bad cylinder.", 0x00
-error_disk_media    db "Invalid media.", 0x00
-error_disk_nsect    db "Invalid number of sectors.", 0x00
-error_disk_ecc_crc  db "ECC/CRC error.", 0x00
-error_disk_recov    db "Recoverable data error.", 0x00
-error_disk_control  db "Controller error.", 0x00
-error_disk_seek     db "Seek failure.", 0x00
-error_disk_tout     db "Disk timeout.", 0x00
+error_disk_command  db "Bad driver command", 0x00
+error_disk_bsect    db "Bad sector", 0x00
+error_disk_write    db "Disk is write-protected", 0x00
+error_disk_isect    db "Invalid sector", 0x00
+error_disk_reset    db "Disk reset failed", 0x00
+error_disk_changed  db "Removable media changed/removed", 0x00
+error_disk_param    db "Bad parameter table", 0x00
+error_disk_overr    db "DMA overrun", 0x00
+error_disk_64k      db "DMA access across bounds", 0x00
+error_disk_sflag    db "Bad sector flag", 0x00
+error_disk_cylinder db "Bad cylinder", 0x00
+error_disk_media    db "Invalid media", 0x00
+error_disk_nsect    db "Invalid number of sectors", 0x00
+error_disk_ecc_crc  db "ECC/CRC error", 0x00
+error_disk_recov    db "Recoverable data error", 0x00
+error_disk_control  db "Controller error", 0x00
+error_disk_seek     db "Seek failure", 0x00
+error_disk_tout     db "Disk timeout", 0x00
 
-error_fs_readonly   db "File is read-only.", 0x00
-error_fs_fname      db "Invalid filename.", 0x00
-error_fs_exists     db "File exists.", 0x00
-error_fs_64k        db "File too large to load.", 0x00
-error_fs_bcluster   db "Cluster marked as bad.", 0x00
-error_fs_fat        db "Inconsistent FAT.", 0x00
-error_fs_full       db "Disk is full.", 0x00
-error_fs_dirfull    db "No directory entries available.", 0x00
+error_fs_readonly   db "File is read-only", 0x00
+error_fs_fname      db "Invalid filename", 0x00
+error_fs_exists     db "File exists", 0x00
+error_fs_64k        db "File too large to load", 0x00
+error_fs_bcluster   db "Cluster marked as bad", 0x00
+error_fs_fat        db "Inconsistent FAT", 0x00
+error_fs_full       db "Disk is full", 0x00
+error_fs_dirfull    db "No directory entries available", 0x00
 
-error_mem_line      db "Invalid line number.", 0x00
+error_mem_line      db "Invalid line number", 0x00
 
 
 data_handling:
