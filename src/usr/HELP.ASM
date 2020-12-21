@@ -40,7 +40,7 @@ msg         db "========= House-DOS Help =========", 0x0A, 0x0A
             db "COPY     DATE     DELETE   DIR", 0x0A
             db "EXIT     FILE     HELP     HEXDUMP", 0x0A
             db "INFO     QUIT     RENAME   ROLLBACK", 0x0A
-            db "WRITE", 0x0A, 0x0A
+            db "WRITE    SYS", 0x0A, 0x0A
             db "For details on what a command does,", 0x0A
             db "Lookup the DESCRIPTION attribute:", 0x0A, 0x0A
             db "    COMMAND %D", 0x0A, 0x0A
