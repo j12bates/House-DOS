@@ -21,7 +21,7 @@ verify:                                         ; Verify that a file exists
 
 .search_init:
     mov si, iface_disk_search
-    call print_str                              ; Print message
+    call comment                                ; Comment message
 
     mov ax, 0x3800
     mov es, ax                                  ; Segment the root directory is loaded in
@@ -57,7 +57,7 @@ verify:                                         ; Verify that a file exists
     mov word [root_entry], di                   ; Save this in our spot in memory
 
     mov si, iface_disk_found
-    call println                                ; Print message
+    call comment_line                           ; Comment message
 
     clc                                         ; No error
 
@@ -67,7 +67,7 @@ verify:                                         ; Verify that a file exists
 
 .not_found:
     mov si, iface_disk_nf
-    call println                                ; Display message
+    call comment_line                           ; Comment message
 
     stc                                         ; Carry flag for error
     jmp .done                                   ; We're done
@@ -131,7 +131,7 @@ load_file:                                      ; Load file starting at cluster 
 
 .load_cluster:
     mov si, iface_disk_cluster
-    call print_str                              ; Print message
+    call comment                                ; Comment message
 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
@@ -246,7 +246,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .pre_apply:
     mov si, iface_disk_applyw
-    call println                                ; Print message
+    call comment_line                           ; Comment message
 
     call prompt_apply                           ; Apply filesystem changes before writing file
     jc .abort                                   ; If not authorized, abort
@@ -263,7 +263,7 @@ write_file:                                     ; Write file buffer to disk as f
     jc .abort                                   ; If error, we're done
 
     mov si, iface_disk_search
-    call print_str                              ; Print message
+    call comment                                ; Comment message
 
     mov ax, 0x3800
     mov es, ax                                  ; The segment in which the root directory is loaded
@@ -292,7 +292,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .new_file_entry:
     mov si, iface_disk_empty
-    call println                                ; Print message
+    call comment_line                           ; Comment message
 
     mov cx, 0x000B                              ; Copy 11 bytes
     mov si, filename                            ; Our filename
@@ -330,7 +330,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .file_exists:
     mov si, iface_disk_exists
-    call print_str                              ; Display message
+    call msg_warn                               ; Warning message
 
     call confirm                                ; Ask for confirmation
     jc .abort                                   ; If not given, we're done
@@ -368,7 +368,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .write_cluster:
     mov si, iface_disk_write
-    call print_str                              ; Display message
+    call comment                                ; Comment message
 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
@@ -422,8 +422,7 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .write_cluster                          ; We are ready to write the next cluster
 
 .end_file:
-    mov si, iface_done
-    call println                                ; Print message
+    call done                                   ; Done message
 
     mov word [es:di], 0xFFFF                    ; Place an end-of-file marker into this entry
     mov di, bx                                  ; Move the previous value into DI
@@ -446,7 +445,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .done:
     mov si, iface_disk_saved
-    call println                                ; Print message
+    call msg_info                               ; Info message
 
     clc                                         ; No error
 
@@ -467,8 +466,7 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done
 
 .abort:
-    mov si, iface_aborting
-    call println                                ; Print message
+    call abort                                  ; Aborting message
 
     pop ax                                      ; Restore for balance
     stc                                         ; Carry flag for error
@@ -483,10 +481,10 @@ apply:                                          ; Apply filesystem changes to di
     pusha                                       ; Push register states to stack
 
     mov si, iface_disk_apply
-    call println                                ; Print message
+    call comment_line                           ; Comment message
 
     mov si, iface_disk_wfats
-    call print_str                              ; Print message
+    call comment                                ; Comment message
 
     mov cx, word [fats]                         ; Number of FATs to write to
 
@@ -516,11 +514,10 @@ apply:                                          ; Apply filesystem changes to di
     loop .write_fat                             ; Repeat
 
 .write_root:
-    mov si, iface_done
-    call println                                ; Print message
+    call done                                   ; Done message
 
     mov si, iface_disk_wroot
-    call print_str                              ; Print message
+    call comment                                ; Comment message
 
     mov ax, 0x3800
     mov es, ax                                  ; The segment in which the root directory is loaded
@@ -538,11 +535,10 @@ apply:                                          ; Apply filesystem changes to di
     mov word [renames], 0x0000                  ; Reset the rename counter
     mov word [deletions], 0x0000                ; Reset the deletions counter
 
-    mov si, iface_done
-    call println                                ; Print message
+    call done                                   ; Done message
 
     mov si, iface_disk_applied
-    call println                                ; Print message
+    call msg_info                               ; Info message
 
     clc                                         ; No error
 
@@ -561,7 +557,7 @@ rollback:                                       ; Rollback filesystem
     call data_kernseg                           ; Get data from the segment we're loaded in
 
     mov si, iface_disk_rback
-    call println                                ; Print message
+    call comment_line                           ; Comment message
 
 .load_fat:
     mov ax, 0x3000
@@ -595,7 +591,7 @@ rollback:                                       ; Rollback filesystem
     mov word [deletions], 0x0000                ; Reset the deletions counter
 
     mov si, iface_disk_rdback
-    call println                                ; Print message
+    call msg_info                               ; Info message
 
     clc                                         ; No error
 
@@ -701,7 +697,7 @@ rename:                                         ; Rename a file
     inc word [renames]                          ; Increment our changes counter
 
     mov si, iface_disk_renamed
-    call println                                ; Print message
+    call msg_info                               ; Info message
 
 .end:
     popa                                        ; Restore register states
@@ -715,8 +711,7 @@ rename:                                         ; Rename a file
     jmp .end                                    ; We're done
 
 .abort:
-    mov si, iface_aborting
-    call println                                ; Print message
+    call abort                                  ; Aborting message
 
     pop ax                                      ; Restore for balance
     stc                                         ; Carry flag for error
@@ -746,28 +741,25 @@ delete:                                         ; Delete a file
     inc word [deletions]                        ; Increment our changes counter
 
     mov si, iface_disk_deleted
-    call println                                ; Print message
+    call msg_info                               ; Info message
 
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
 .abort:
-    mov si, iface_aborting
-    call println                                ; Print message
+    call abort                                  ; Aborting message
 
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 
 
-; LOAD FILE FROM PARAMETER: Loads file with the name given in a certain parameter to a specific offset
-; IN: CX = Parameter number; DI = Offset from buffer
-; OUT: CF = Set on error
+; VERIFY FILE FROM PARAMETER: Verifies file with the name given in a certain parameter
+; IN: CX = Parameter number
+; OUT: CF = Set if no such file
 
-load_file_param:                                ; Load file from parameter
+verify_file_param:                              ; Verify file from parameter
     pusha                                       ; Save register states to stack
-
-    mov word [buffer_pointer], di               ; Our offset goes here in memory
 
     call clear_misc_buffer                      ; Clear the miscellaneous buffer
 
@@ -779,10 +771,6 @@ load_file_param:                                ; Load file from parameter
     jc .done                                    ; If failed, we're done
 
     call verify                                 ; Verify file
-    jc .done                                    ; If failed, we're done
-
-    call get_file_cluster                       ; Get starting cluster
-    call load_file                              ; Load file
 
 .done:
     popa                                        ; Restore register states
@@ -830,7 +818,7 @@ reset_disk:                                     ; Reset the disk
     pusha                                       ; Push register states to stack
 
     mov si, iface_disk_reset
-    call print_str                              ; Print message
+    call comment                                ; Comment message
 
     mov ah, 0x00                                ; Reset disk
     mov dl, byte [drive_num]
@@ -930,7 +918,7 @@ check_attributes:
     jnc .done                                   ; If not, we're done
 
     mov si, iface_disk_system
-    call print_str                              ; Otherwise, display message
+    call msg_warn                               ; Otherwise, warning message
 
     call confirm                                ; Ask for confirmation
     jc .end                                     ; If not given, we're done
@@ -1185,7 +1173,7 @@ prompt_apply:                                   ; Prompt the user to authenticat
     jne .numbers                                ; If so, proceed
 
     mov si, iface_disk_nochange
-    call println                                ; Otherwise, we have no changes to apply
+    call comment_line                           ; Otherwise, we have no changes to apply
 
     clc                                         ; There wasn't an error
     jmp .end                                    ; We're done
@@ -1238,9 +1226,6 @@ prompt_apply:                                   ; Prompt the user to authenticat
 
 prompt_rollback:                                ; Prompt the user to authenticate filesystem rollback
     push si                                     ; Save register state to stack
-
-    mov si, iface_ays
-    call print_str                              ; Print message
 
     call confirm                                ; Ask for confirmation
     jc .error_cancelled                         ; If not given, cancel

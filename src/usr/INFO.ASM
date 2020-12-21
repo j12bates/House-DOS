@@ -32,7 +32,7 @@ main:
 
 data:
 
-msg             db "House-DOS v0.0.3 NATE, Build 35; Compiled 2020-12-19", 0x0A
+msg             db "House-DOS v0.1 NATE, Build 36; Compiled 2020-12-20", 0x0A
                 db "By Jacob, Jet, and Ben", 0x00
 
 creator         db "House-DOS Developers", 0x00
