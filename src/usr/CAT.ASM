@@ -49,9 +49,6 @@ main:
     loop .file                          ; Repeat with next file
 
 .print:
-    mov ah, 0x05                        ; Line break
-    int 0x7E
-
     mov ah, 0x63                        ; Get bytes (index-index)
     mov si, 0x0000                      ; Starting at the beginning
     mov cx, word [buffer_pointer]       ; And ending at our ultimate pointer

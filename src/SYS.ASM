@@ -8,99 +8,34 @@
     ORG 0x0000
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp start                                   ; Don't execute the header
+
+h_creator       dw creator                      ; Creator string
+h_desc          dw desc                         ; Description string
+h_usage         dw usage                        ; Usage string
+
+
+; ========================================================================
 ; STARTUP/REDIRECTION
 ; ========================================================================
 
 start:                                          ; House-DOS code
     pushf                                       ; Save flags
-    push bx                                     ; Save register state to stack
+    call data_kernseg                           ; Access kernel variables
 
-    mov bx, 0x2000
-    mov ds, bx                                  ; The segment in which we are
+    push bx                                     ; Preserve this value
+    mov bx, cs                                  ; Code segment
+    cmp bx, 0x4000                              ; Is this being used as a command?
+    pop bx                                      ; Restore this value
 
-    cmp byte [init], 0x00                       ; Have we just now been loaded?
-    jne main                                    ; If not, don't initialize again
+    je exec                                     ; If so, run execution code
 
-.init:                                          ; Startup code for House-DOS kernel
-    mov bx, 0x07C0
-    mov es, bx                                  ; The segment in which the bootloader is
-
-    mov word [root_start], ax                   ; Save the start of the root directory
-
-    mov ax, word [es:0x000B]
-    mov word [bytes_sector], ax                 ; Save the number of bytes per sector
-
-    mov al, byte [es:0x000D]
-    mov byte [sectors_cluster], al              ; Save the number of sectors per cluster
-
-    mov ax, word [es:0x000E]
-    mov word [reserved], ax                     ; Save the number of reserved sectors
-
-    mov al, byte [es:0x0010]
-    mov byte [fats], al                         ; Save the number of FATs
-
-    mov ax, word [es:0x0011]
-    mov word [root_entries], ax                 ; Save the number of root entries
-
-    mov ax, word [es:0x0016]
-    mov word [sectors_fat], ax                  ; Save the sectors per FAT
-
-    mov ax, word [es:0x0018]
-    mov word [sectors_track], ax                ; Save the sectors per track
-
-    mov ax, word [es:0x001A]
-    mov word [heads], ax                        ; Save the number of heads
-
-    mov al, byte [es:0x0024]
-    mov byte [drive_num], al                    ; Save our boot drive number
-
-    mov al, byte [sectors_cluster]              ; Our sectors per cluster
-    mov ah, 0x00                                ; Upper byte of factor is zero
-    mul word [bytes_sector]                     ; Multiply by bytes per sector to get the bytes per cluster
-    mov word [bytes_cluster], ax                ; Save the number of bytes per sector
-
-    pop bx                                      ; Take this out of the stack for now
-    mov sp, 0x4000                              ; Make the stack stretch up to the file buffer (32K)
-    push bx                                     ; Push this back
-
-.ivt:
-    mov ax, 0x0000
-    mov es, ax                                  ; The IVT is in this segment
-
-    mov di, 0x007E                              ; We will be changing the entry for this interrupt
-    shl di, 0x2                                 ; 4 bytes per entry
-
-    mov word [es:di], start                     ; Handler (kernel) starts at this offset
-    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
-
-    mov di, 0x001B                              ; We will be changing the entry for the CTRL+BREAK handler
-    shl di, 0x2                                 ; 4 bytes per entry
-
-    mov word [es:di], handback_manual           ; Manual handback code is here
-    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
-
-    mov di, 0x0000                              ; We will be changing the entry for the DIVIDE BY ZERO handler
-
-    mov word [es:di], divide_zero               ; Manual divide by zero code is here
-    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
-
-    call random_seed                            ; Create a random number seed
-
-    call clear                                  ; Clear screen
-
-    mov ax, 0x1003                              ; Configure attribute bit 7
-    mov bl, 0x01                                ; Blink
-    int 0x10                                    ; BIOS VGA interrupt
-
-.autoexec:
-    mov si, iface_welcome
-    call println                                ; Print welcome message
-
-    mov si, iface_info
-    call println                                ; Print info
-
-    mov byte [init], 0x01                       ; We've initialized
-    xor bx, bx                                  ; Make sure that the zero-flag is set
+    cmp byte [init_byte], 0x00                  ; Have we just now been loaded?
+    je init                                     ; If so, run initialization code
 
 
 ; ========================================================================
@@ -108,11 +43,7 @@ start:                                          ; House-DOS code
 ; ========================================================================
 
 main:                                           ; Main code for House-DOS kernel
-    mov bx, 0x2000
-    mov es, bx                                  ; The segment in which we are loaded
-
-    pop bx                                      ; Restore register state
-
+    call setup_segments                         ; Ensure segments are set properly
     je command                                  ; If we were just loaded, get a command
 
     cmp ah, 0xFF                                ; Did the last command just finish?
@@ -335,11 +266,6 @@ command:                                        ; Main loop: Retrieve command fr
     call clear_file_buffer                      ; Clear the file buffer again
 
     call data_kernseg                           ; We're about to use some kernel variables
-
-    test byte [config_iface], 0b00000010        ; Is the COMMENTARY bit set?
-    jnz .jump                                   ; If so, don't do an extra line break
-
-    call line_break                             ; Line break between messages and command output
 
 .jump:
     cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
@@ -605,6 +531,132 @@ reboot_fatal:                                   ; Declare fatal error and reboot
     int 0x16                                    ; BIOS keyboard interrupt
 
     int 0x19                                    ; Reboot
+
+
+; ========================================================================
+; INITIALIZATION CODE
+; ========================================================================
+
+init:                                           ; Initialization code
+    mov bx, 0x07C0
+    mov es, bx                                  ; The segment in which the bootloader is
+
+    mov word [root_start], ax                   ; Save the start of the root directory
+
+    mov ax, word [es:0x000B]
+    mov word [bytes_sector], ax                 ; Save the number of bytes per sector
+
+    mov al, byte [es:0x000D]
+    mov byte [sectors_cluster], al              ; Save the number of sectors per cluster
+
+    mov ax, word [es:0x000E]
+    mov word [reserved], ax                     ; Save the number of reserved sectors
+
+    mov al, byte [es:0x0010]
+    mov byte [fats], al                         ; Save the number of FATs
+
+    mov ax, word [es:0x0011]
+    mov word [root_entries], ax                 ; Save the number of root entries
+
+    mov ax, word [es:0x0016]
+    mov word [sectors_fat], ax                  ; Save the sectors per FAT
+
+    mov ax, word [es:0x0018]
+    mov word [sectors_track], ax                ; Save the sectors per track
+
+    mov ax, word [es:0x001A]
+    mov word [heads], ax                        ; Save the number of heads
+
+    mov al, byte [es:0x0024]
+    mov byte [drive_num], al                    ; Save our boot drive number
+
+    mov al, byte [sectors_cluster]              ; Our sectors per cluster
+    mov ah, 0x00                                ; Upper byte of factor is zero
+    mul word [bytes_sector]                     ; Multiply by bytes per sector to get the bytes per cluster
+    mov word [bytes_cluster], ax                ; Save the number of bytes per sector
+
+    pop bx                                      ; Take this out of the stack for now
+    mov sp, 0x4000                              ; Make the stack stretch up to the file buffer (32K)
+    push bx                                     ; Push this back
+
+.ivt:
+    mov ax, 0x0000
+    mov es, ax                                  ; The IVT is in this segment
+
+    mov di, 0x007E                              ; We will be changing the entry for this interrupt
+    shl di, 0x2                                 ; 4 bytes per entry
+
+    mov word [es:di], start                     ; Handler (kernel) starts at this offset
+    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
+
+    mov di, 0x001B                              ; We will be changing the entry for the CTRL+BREAK handler
+    shl di, 0x2                                 ; 4 bytes per entry
+
+    mov word [es:di], handback_manual           ; Manual handback code is here
+    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
+
+    mov di, 0x0000                              ; We will be changing the entry for the DIVIDE BY ZERO handler
+
+    mov word [es:di], divide_zero               ; Manual divide by zero code is here
+    mov word [es:di+0x02], 0x2000               ; We're loaded at this segment
+
+    call random_seed                            ; Create a random number seed
+
+    call clear                                  ; Clear screen
+
+    mov ax, 0x1003                              ; Configure attribute bit 7
+    mov bl, 0x01                                ; Blink
+    int 0x10                                    ; BIOS VGA interrupt
+
+.autoexec:
+    mov si, iface_welcome
+    call println                                ; Print welcome message
+
+    mov si, iface_info
+    call println                                ; Print info
+
+    mov byte [init_byte], 0xFF                  ; We've initialized
+    xor bx, bx                                  ; Make sure that the zero-flag is set
+
+    jmp main                                    ; Go to main code
+
+
+; ========================================================================
+; EXECUTION CODE
+; ========================================================================
+
+exec:                                           ; Execution code
+    popf                                        ; Get this out of the stack
+    call data_kernseg                           ; Edit kernel variables
+
+    mov byte [config_sys_iface], 0x00           ; Clear interface configuration byte
+
+.errors:
+    mov ah, 0x27                                ; Check parameter
+    mov al, 0x45                                ; 'E' for errors
+    int 0x7E
+
+    jne .commentary                             ; If not set, proceed
+
+    call data_kernseg                           ; Edit kernel variables
+    or byte [config_sys_iface], 0b00000001      ; Set errors bit
+
+.commentary:
+    mov al, 0x43                                ; 'C' for commentary
+    int 0x7E
+
+    jne .done                                   ; If not set, proceed
+
+    call data_kernseg                           ; Edit kernel variables
+    or byte [config_sys_iface], 0b00000010      ; Set commentary bit
+
+.done:
+    mov ah, 0x02                                ; Print line
+    mov si, iface_iface_config                  ; Updating message
+    int 0x7E
+
+    mov ah, 0xFF                                ; We're done!
+    int 0x7E
 
 
 ; ========================================================================
@@ -1734,7 +1786,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2400 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2500 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -1743,7 +1795,7 @@ times 0x2400 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022400
+input_buffer        dq 0x0000000000000000       ; 0x00022500
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1752,7 +1804,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022400
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022440
+params              dq 0x0000000000000000       ; 0x00022540
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1761,7 +1813,7 @@ params              dq 0x0000000000000000       ; 0x00022440
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022480
+misc_buffer         dq 0x0000000000000000       ; 0x00022580
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1770,7 +1822,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022480
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000224C0
+param_flags         dq 0x0000000000000000       ; 0x000225C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1788,11 +1840,21 @@ flags_image         dw 0x0000
 num_buffer          dd 0x00000000
                     dw 0x0000
 
-init                db 0x00
+init_byte           db 0x00
 header_offset       db 0x00
 
 config_iface        db 0x00
 config_sys_iface    db 0x00
+
+null                db 0x00
+
+; Header strings
+creator             db "House-DOS Developers", 0x00
+desc                db "The kernel. Use to modify kernel configurations.", 0x00
+usage               db "SYS", 0x0A
+                    db "Flags:", 0x0A
+                    db "E - Don't display errors", 0x0A
+                    db "C - Don't display commentary", 0x00
 
 ; Interface strings
 iface_welcome       db "House-DOS v0.1 NATE, Build 36; Compiled 2020-12-20", 0x00
@@ -1802,6 +1864,8 @@ iface_shutdown      db "Shutting down...", 0x00
 iface_reboot        db "Rebooting...", 0x00
 iface_cancelled     db "Cancelled.", 0x00
 iface_perror        db "PROGRAM EXITED WITH ERROR: ", 0x00
+
+iface_iface_config  db "Interface configuration updated.", 0x00
 
 iface_ays           db "Are you sure?", 0x00
 iface_error_param   db "ERROR: Parameter not given.", 0x00

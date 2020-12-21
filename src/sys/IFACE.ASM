@@ -348,7 +348,7 @@ print_bytes:                                    ; Prints number of bytes (CX) st
     ret                                         ; Return to caller
 
 
-; INFO MESSAGE: Display a string as an info message (T2 comment)
+; INFO MESSAGE: Display a string as an info message
 ; IN: DS:SI = String location
 ; OUT: None
 
@@ -369,9 +369,9 @@ msg_info:                                       ; Print a string as an info mess
     ret                                         ; Return to caller
 
 
-; WARN MESSAGE: Display a string as a warning message (T2 comment)
+; WARN MESSAGE: Display a string as a warning message and ask for confirmation
 ; IN: DS:SI = String location
-; OUT: None
+; OUT: CF = Set if confirmation not given
 
 msg_warn:                                       ; Print a string as a warning message
     pusha                                       ; Save register states to stack
@@ -384,7 +384,9 @@ msg_warn:                                       ; Print a string as a warning me
 
     pop ds                                      ; Restore segment
     pop si                                      ; Restore string location
-    call println                                ; Print line
+    call print_str                              ; Print line
+
+    call confirm                                ; Ask for confirmation
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -818,6 +820,22 @@ done:                                           ; Print the DONE comment
 
     mov si, iface_done                          ; Message to print
     call comment_line                           ; Print line
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; DONE MESSAGE EXTRA LINE: Comments the DONE message, then does two line breaks
+; IN: None
+; OUT: None (segments)
+
+done_el:                                        ; Print the DONE comment and an extra line
+    pusha                                       ; Save register states to stack
+
+    call done                                   ; Comment DONE
+
+    mov si, null                                ; No string
+    call comment_line                           ; Comment another line break
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller

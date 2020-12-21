@@ -33,9 +33,6 @@ main:
 
     mov word [eof], ax                  ; This is the number of bytes to print
 
-    mov ah, 0x05                        ; Line break
-    int 0x7E
-
 .next_16:
     mov ax, 0x8200                      ; Print word as hex
     mov dx, word [buffer_pointer]       ; Our buffer pointer

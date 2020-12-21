@@ -206,7 +206,7 @@ load_file:                                      ; Load file starting at cluster 
 .done:
     call update_access_date                     ; Update access date
 
-    call done                                   ; We've finished!
+    call done_el                                ; We've finished! Worthy of a break
     clc                                         ; No error
 
 .end:
@@ -330,9 +330,7 @@ write_file:                                     ; Write file buffer to disk as f
 
 .file_exists:
     mov si, iface_disk_exists
-    call msg_warn                               ; Warning message
-
-    call confirm                                ; Ask for confirmation
+    call msg_warn                               ; Warning message/confirmation
     jc .abort                                   ; If not given, we're done
 
     call check_attributes                       ; Check if we can write to this file
@@ -535,7 +533,7 @@ apply:                                          ; Apply filesystem changes to di
     mov word [renames], 0x0000                  ; Reset the rename counter
     mov word [deletions], 0x0000                ; Reset the deletions counter
 
-    call done                                   ; Done message
+    call done_el                                ; Done message, newline
 
     mov si, iface_disk_applied
     call msg_info                               ; Info message
@@ -918,9 +916,7 @@ check_attributes:
     jnc .done                                   ; If not, we're done
 
     mov si, iface_disk_system
-    call msg_warn                               ; Otherwise, warning message
-
-    call confirm                                ; Ask for confirmation
+    call msg_warn                               ; Otherwise, warning message/confirmation
     jc .end                                     ; If not given, we're done
 
 .done:
@@ -1227,7 +1223,8 @@ prompt_apply:                                   ; Prompt the user to authenticat
 prompt_rollback:                                ; Prompt the user to authenticate filesystem rollback
     push si                                     ; Save register state to stack
 
-    call confirm                                ; Ask for confirmation
+    mov si, iface_disk_rchanges
+    call msg_warn                               ; Warning message/confirmation
     jc .error_cancelled                         ; If not given, cancel
 
     call rollback                               ; Otherwise, rollback filesystem
@@ -1283,6 +1280,8 @@ iface_disk_changesC db " renames, ", 0x00
 iface_disk_changesD dd 0x00000000
                     db 0x00
 iface_disk_changesE db " deletions. This cannot be undone.", 0x00
+
+iface_disk_rchanges db "This will roll back all renames and deletions.", 0x00
 
 iface_disk_apply    db "Applying changes to disk...", 0x00
 iface_disk_applied  db "Changes applied to disk.", 0x00
