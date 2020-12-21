@@ -28,9 +28,6 @@ main:
 
     jc .done                            ; If error, we're done
 
-    mov ah, 0x05                        ; Line break
-    int 0x7E
-
     mov ah, 0x01                        ; Print String
     mov si, prompt                      ; Our prompt
     int 0x7E
