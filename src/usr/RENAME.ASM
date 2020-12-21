@@ -23,16 +23,8 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x20                        ; Get parameter
+    mov ah, 0x2A                        ; Verify file from parameter
     mov cx, 0x0000                      ; Parameter 0
-    mov di, fname                       ; The name of our file to copy
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-.verify:
-    mov ah, 0x60                        ; Verify file
-    mov si, fname                       ; Filename
     int 0x7E
 
     jc .done                            ; If failed, we're done

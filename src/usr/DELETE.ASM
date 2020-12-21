@@ -29,15 +29,8 @@ main:
 .file:
     push cx                             ; Preserve counter
 
-    mov ah, 0x20                        ; Get parameter
+    mov ah, 0x2A                        ; Verify file from parameter
     dec cx                              ; Our parameter number (avoid an O.B.O.E)
-    mov di, fname                       ; The name of our filename to delete
-    int 0x7E
-
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x60                        ; Verify file
-    mov si, fname                       ; Filename
     int 0x7E
 
     jc .next                            ; If failed, try next file

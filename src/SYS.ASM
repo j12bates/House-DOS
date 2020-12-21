@@ -154,6 +154,9 @@ command:                                        ; Main loop: Retrieve command fr
 
     mov byte [header_offset], 0x00              ; Reset header offset
 
+    mov al, byte [config_sys_iface]             ; The system interface configuration
+    mov byte [config_iface], al                 ; Move it into the default interface configuration
+
     call line_break                             ; Line break
     call prompt                                 ; Setup prompt
 
@@ -331,9 +334,14 @@ command:                                        ; Main loop: Retrieve command fr
     call move_file_bin                          ; Move the contents into the binary buffer
     call clear_file_buffer                      ; Clear the file buffer again
 
+    call data_kernseg                           ; We're about to use some kernel variables
+
+    test byte [config_iface], 0b00000010        ; Is the COMMENTARY bit set?
+    jnz .jump                                   ; If so, don't do an extra line break
+
     call line_break                             ; Line break between messages and command output
 
-    call data_kernseg                           ; We're about to use some kernel variables
+.jump:
     cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
     jne .header                                 ; If so, don't execute
 
@@ -660,6 +668,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x0D
     je iface_routines.get_cursor                ; Get cursor position
 
+    cmp ah, 0x0F
+    je iface_routines.config                    ; Set interface configuration
+
     cmp ah, 0x10
     je iface_routines.print_bytes               ; Print bytes
 
@@ -701,6 +712,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x29
     je iface_routines.param_file_offset         ; Load file from parameter to offset
+
+    cmp ah, 0x2A
+    je iface_routines.verify_file_param         ; Verify file from parameter
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -964,6 +978,10 @@ iface_routines:                                 ; Interface functions
     call get_cursor_pos                         ; Get cursor position
     jmp int_ret                                 ; We're done!
 
+.config:
+    mov byte [config_iface], al                 ; Set the interface config byte
+    jmp int_ret                                 ; We're done!
+
 .print_bytes:
     call data_binseg                            ; We want to access data from the command
 
@@ -1076,13 +1094,30 @@ iface_routines:                                 ; Interface functions
     call clear_file_buffer                      ; Clear the file buffer
 
     mov cx, 0x0000                              ; First parameter
-    mov di, 0x0000                              ; Offset from buffer
-    call load_file_param                        ; Load file from parameter
+    call verify_file_param                      ; Verify file from parameter
+
+    jc int_ret.preserve_flags                   ; If error, we're done
+
+    call get_file_cluster                       ; Get file starting cluster
+
+    mov word [buffer_pointer], 0x0000           ; Load into the beginning of the buffer
+    call load_file                              ; Load file
 
     jmp int_ret.preserve_flags                  ; We're done!
 
 .param_file_offset:
-    call load_file_param                        ; Load file from parameter
+    call verify_file_param                      ; Verify file from parameter
+    jc int_ret.preserve_flags                   ; If error, we're done
+
+    call get_file_cluster                       ; Get file starting cluster
+
+    mov word [buffer_pointer], di               ; Our offset goes here in memory
+    call load_file                              ; Load file
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.verify_file_param:
+    call verify_file_param                      ; Verify file from parameter
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1756,8 +1791,11 @@ num_buffer          dd 0x00000000
 init                db 0x00
 header_offset       db 0x00
 
+config_iface        db 0x00
+config_sys_iface    db 0x00
+
 ; Interface strings
-iface_welcome       db "House-DOS v0.0.3 NATE, Build 35; Compiled 2020-12-19", 0x00
+iface_welcome       db "House-DOS v0.1 NATE, Build 36; Compiled 2020-12-20", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

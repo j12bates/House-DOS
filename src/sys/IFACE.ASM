@@ -237,89 +237,6 @@ clear:                                          ; Clear screen
     ret                                         ; Return to caller
 
 
-; WRITE CHAR TO TELETYPE: Writes a char and moves cursor forward (works with new lines/backspaces)
-; IN: AL = ASCII character to write
-; OUT: None
-
-teletype_output:                                ; Write character in teletype mode
-    pusha                                       ; Save register states to stack
-
-    mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
-    int 0x10                                    ; BIOS VGA interrupt
-
-    cmp al, 0x08                                ; Is this a backspace?
-    je .backspace                               ; If so, do a backspace
-
-    cmp al, 0x0A                                ; Is this a newline character?
-    je .newline                                 ; If so, do a newline
-
-    cmp dx, 0x184F                              ; Are we in the bottom-right corner?
-    je .scroll                                  ; If so, scroll everything up
-
-.write:
-    mov ah, 0x0E                                ; Teletype output
-    int 0x10                                    ; BIOS VGA interrupt
-
-.done:
-    popa                                        ; Restore register state
-    ret                                         ; Return to caller
-
-.backspace:
-    cmp dl, 0x00                                ; Are we in the leftmost col?
-    jne .write                                  ; If not, proceed normally
-
-    cmp dh, 0x00                                ; Are we in the uppermost row?
-    je .done                                    ; If so, do nothing
-
-    dec dh                                      ; One row up
-    mov dl, 0x4F                                ; Rightmost col
-    call move_cursor                            ; Move the cursor
-
-    jmp .done                                   ; We're done!
-
-.newline:
-    call line_break                             ; Do a line break
-    jmp .done                                   ; We're done!
-
-.scroll:
-    mov ah, 0x0A                                ; Write char
-    mov cx, 0x0001                              ; Write once
-    int 0x10                                    ; BIOS VGA interrupt
-
-    call line_break                             ; Do a line break
-
-    jmp .done                                   ; We're done!
-
-
-; LITERAL CHARACTER OUTPUT: Prints a characterand moves cursor forward (backspaces are actually printed)
-; IN: AL = ASCII character to write; CF = Set to print newlines as single characters
-; OUT: None
-
-literal_output:                                 ; Prints literal character and advances cursor
-    pusha                                       ; Save register states to stack
-
-    jc .print                                   ; If we are to print newlines as characters, proceed
-
-    cmp al, 0x0A                                ; Otherwise, is this a newline char?
-    jne .print                                  ; If not, proceed
-
-    call line_break                             ; Otherwise, line break
-    jmp .done                                   ; And we're done!
-
-.print:
-    mov ah, 0x0A                                ; Print character at cursor position
-    mov bh, 0x00                                ; Page 0
-    mov cx, 0x0001                              ; Write character once
-    int 0x10                                    ; BIOS VGA interrupt
-
-    call advance_cursor                         ; Advance cursor
-
-.done:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
 ; PRINT STRING: Prints out a string in teletype mode
 ; IN: DS:SI = Location of string to print
 ; OUT: None
@@ -408,53 +325,6 @@ line_break:                                     ; Moves cursor down one line
     ret                                         ; Return to caller
 
 
-; ADVANCE CURSOR: Advances the cursor, line-breaking/scrolling if necessary
-; IN: None
-; OUT: None
-
-advance_cursor:                                 ; Advance cursor
-    pusha                                       ; Save register states to stack
-
-    call get_cursor_pos                         ; Get cursor position
-
-    cmp dl, 0x4F                                ; Are we in the rightmost col?
-    je .next_line                               ; If so, we have to do a line break
-
-    inc dl                                      ; Otherwise, just increment the col
-    call move_cursor                            ; Set the cursor to this new position
-
-.done:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-.next_line:
-    call line_break                             ; Line break
-    jmp .done                                   ; We're done
-
-
-; DISPLAY PROMPT: Displays the command prompt
-; IN: None
-; OUT: None
-
-prompt:                                         ; Set up a prompt for the user
-    pusha                                       ; Push register states to stack
-
-    mov ah, 0x0E                                ; Teletype output
-    mov bh, 0x00                                ; Page 0
-
-    mov al, 0x20                                ; Space
-    int 0x10                                    ; BIOS VGA interrupt
-
-    mov al, 0x2D                                ; Hyphen
-    int 0x10                                    ; BIOS VGA interrupt
-
-    mov al, 0x20                                ; Space
-    int 0x10                                    ; BIOS VGA interrupt
-
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
 ; PRINT BYTES: Prints the specified number of bytes in teletype mode
 ; IN: CX = Number of bytes to print; DS:SI = Input buffer; CF = Set for newlines to act as normal chars
 ; OUT: None
@@ -474,6 +344,48 @@ print_bytes:                                    ; Prints number of bytes (CX) st
     loop .char                                  ; Repeat
 
 .done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; INFO MESSAGE: Display a string as an info message (T2 comment)
+; IN: DS:SI = String location
+; OUT: None
+
+msg_info:                                       ; Print a string as an info message
+    pusha                                       ; Save register states to stack
+    push si                                     ; Preserve string location
+    push ds                                     ; Preserve segment as well
+
+    call data_kernseg                           ; We're about to use a kernel variable
+    mov si, iface_info_pfx                      ; Info prefix
+    call print_str                              ; Print string
+
+    pop ds                                      ; Restore segment
+    pop si                                      ; Restore string location
+    call println                                ; Print line
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; WARN MESSAGE: Display a string as a warning message (T2 comment)
+; IN: DS:SI = String location
+; OUT: None
+
+msg_warn:                                       ; Print a string as a warning message
+    pusha                                       ; Save register states to stack
+    push si                                     ; Preserve string location
+    push ds                                     ; Preserve segment as well
+
+    call data_kernseg                           ; We're about to use a kernel variable
+    mov si, iface_warn_pfx                      ; Warning prefix
+    call print_str                              ; Print string
+
+    pop ds                                      ; Restore segment
+    pop si                                      ; Restore string location
+    call println                                ; Print line
+
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -581,6 +493,7 @@ println:                                        ; Prints String in DS:SI, then d
 
 ; DRAW CHARACTER BLOCK: Draws a block of specific length, character, and color at the specified position
 ; IN: CX = Length, AL = Character, BL = Color, DH = Row number (0-24), DL = Col number (0-79)
+; OUT: None
 
 block:                                          ; Draws a block of char AL size CX color BL bits 3-0 at DH, DL
     pusha                                       ; Save register states to stack
@@ -714,17 +627,213 @@ pause_keypress:                                 ; Pause until the user presses a
     ret                                         ; Return to caller
 
 
-; DONE MESSAGE: Prints the DONE message, then does a line break
+; ========================================================================
+; SUBROUTINES
+; ========================================================================
+
+; WRITE CHAR TO TELETYPE: Writes a char and moves cursor forward (works with new lines/backspaces)
+; IN: AL = ASCII character to write
+; OUT: None
+
+teletype_output:                                ; Write character in teletype mode
+    pusha                                       ; Save register states to stack
+
+    mov ah, 0x03                                ; Get cursor position
+    mov bh, 0x00                                ; Page 0
+    int 0x10                                    ; BIOS VGA interrupt
+
+    cmp al, 0x08                                ; Is this a backspace?
+    je .backspace                               ; If so, do a backspace
+
+    cmp al, 0x0A                                ; Is this a newline character?
+    je .newline                                 ; If so, do a newline
+
+    cmp dx, 0x184F                              ; Are we in the bottom-right corner?
+    je .scroll                                  ; If so, scroll everything up
+
+.write:
+    mov ah, 0x0E                                ; Teletype output
+    int 0x10                                    ; BIOS VGA interrupt
+
+.done:
+    popa                                        ; Restore register state
+    ret                                         ; Return to caller
+
+.backspace:
+    cmp dl, 0x00                                ; Are we in the leftmost col?
+    jne .write                                  ; If not, proceed normally
+
+    cmp dh, 0x00                                ; Are we in the uppermost row?
+    je .done                                    ; If so, do nothing
+
+    dec dh                                      ; One row up
+    mov dl, 0x4F                                ; Rightmost col
+    call move_cursor                            ; Move the cursor
+
+    jmp .done                                   ; We're done!
+
+.newline:
+    call line_break                             ; Do a line break
+    jmp .done                                   ; We're done!
+
+.scroll:
+    mov ah, 0x0A                                ; Write char
+    mov cx, 0x0001                              ; Write once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    call line_break                             ; Do a line break
+
+    jmp .done                                   ; We're done!
+
+
+; LITERAL CHARACTER OUTPUT: Prints a characterand moves cursor forward (backspaces are actually printed)
+; IN: AL = ASCII character to write; CF = Set to print newlines as single characters
+; OUT: None
+
+literal_output:                                 ; Prints literal character and advances cursor
+    pusha                                       ; Save register states to stack
+
+    jc .print                                   ; If we are to print newlines as characters, proceed
+
+    cmp al, 0x0A                                ; Otherwise, is this a newline char?
+    jne .print                                  ; If not, proceed
+
+    call line_break                             ; Otherwise, line break
+    jmp .done                                   ; And we're done!
+
+.print:
+    mov ah, 0x0A                                ; Print character at cursor position
+    mov bh, 0x00                                ; Page 0
+    mov cx, 0x0001                              ; Write character once
+    int 0x10                                    ; BIOS VGA interrupt
+
+    call advance_cursor                         ; Advance cursor
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; ADVANCE CURSOR: Advances the cursor, line-breaking/scrolling if necessary
+; IN: None
+; OUT: None
+
+advance_cursor:                                 ; Advance cursor
+    pusha                                       ; Save register states to stack
+
+    call get_cursor_pos                         ; Get cursor position
+
+    cmp dl, 0x4F                                ; Are we in the rightmost col?
+    je .next_line                               ; If so, we have to do a line break
+
+    inc dl                                      ; Otherwise, just increment the col
+    call move_cursor                            ; Set the cursor to this new position
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.next_line:
+    call line_break                             ; Line break
+    jmp .done                                   ; We're done
+
+
+; ========================================================================
+; KERNEL-SPECIFIC ROUTINES
+; ========================================================================
+
+; DISPLAY PROMPT: Displays the command prompt
+; IN: None
+; OUT: None
+
+prompt:                                         ; Set up a prompt for the user
+    pusha                                       ; Push register states to stack
+
+    mov ah, 0x0E                                ; Teletype output
+    mov bh, 0x00                                ; Page 0
+
+    mov al, 0x20                                ; Space
+    int 0x10                                    ; BIOS VGA interrupt
+
+    mov al, 0x2D                                ; Hyphen
+    int 0x10                                    ; BIOS VGA interrupt
+
+    mov al, 0x20                                ; Space
+    int 0x10                                    ; BIOS VGA interrupt
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; COMMENT: Prints out text as commentary
+; IN: DS:SI = String location
+; OUT: None
+
+comment:                                        ; Print a string as commentary
+    pusha                                       ; Save register states to stack
+    push ds                                     ; Preserve segment
+
+    call data_kernseg                           ; We're about to access a kernel variable
+    test byte [config_iface], 0b00000010        ; Is the COMMENTARY bit set?
+
+    pop ds                                      ; Restore segment
+    jnz .done                                   ; If so, don't print anything
+
+    call print_str                              ; Otherwise, print string
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; COMMENT LINE: Prints out text as commentary, then does a line break
+; IN: DS:SI = String location
+; OUT: None
+
+comment_line:                                   ; Print a line as commentary
+    pusha                                       ; Save register states to stack
+    push ds                                     ; Preserve segment
+
+    call data_kernseg                           ; We're about to access a kernel variable
+    test byte [config_iface], 0b00000010        ; Is the COMMENTARY bit set?
+
+    pop ds                                      ; Restore segment
+    jnz .done                                   ; If so, don't print anything
+
+    call println                                ; Otherwise, print line
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; DONE MESSAGE: Comments the DONE message, then does a line break
 ; IN: None
 ; OUT: None (segments)
 
-done:                                           ; Prints the DONE message, then does a line break
+done:                                           ; Print the DONE comment
     pusha                                       ; Save register states to stack
 
     call data_kernseg                           ; Segment in which we're loaded
 
     mov si, iface_done                          ; Message to print
-    call println                                ; Print line
+    call comment_line                           ; Print line
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; ABORTING MESSAGE: Comments the ABORTING message, then does a line break
+; IN: None
+; OUT: None (segments)
+
+abort:                                          ; Print the ABORTING comment
+    pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; Segment in which we're loaded
+
+    mov si, iface_aborting                      ; Message to print
+    call comment_line                           ; Print line
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -738,6 +847,9 @@ iface_data:
 
 input_buffer_addr   dw 0x0000
 input_buffer_limit  dw 0x0000
+
+iface_info_pfx      db "INFO: ", 0x00
+iface_warn_pfx      db "WARN: ", 0x00
 
 iface_done          db "Done!", 0x00
 iface_aborting      db "Aborting.", 0x00

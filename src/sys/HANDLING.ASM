@@ -15,6 +15,9 @@ error:                                          ; The error handler
 
     call setup_segments                         ; We're going to read from and write to kernel variables
 
+    test byte [config_iface], 0b00000001        ; Is the ERROR MESSAGE bit set?
+    jnz error_print.done                        ; If so, don't print anything
+
 .cat:                                           ; The categories
     cmp ah, 0x01                                ; System errors
     jb .sys
@@ -364,6 +367,7 @@ error_print:                                    ; Display the error message
 
 .done:
     stc                                         ; Carry-flag for error
+
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 

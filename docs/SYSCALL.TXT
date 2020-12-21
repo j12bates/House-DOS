@@ -374,6 +374,12 @@ V. Interface Functions
 
         Returns the cursor's current position.
 
+    SET INTERFACE CONFIG
+        AH = 0x0F
+        AL = New value (Bit 0 = Error messages off, Bit 1 = Commentary off)
+
+        Changes the interface configuration.
+
     PRINT BYTES
         AH = 0x10
         SI = Source
@@ -499,6 +505,16 @@ V. Interface Functions
 
         Gets a certain parameter and attempts to load the file with that name to a specific
         offset. The file is now verified.
+
+    VERIFY PARAMETER FILENAME
+        AH = 0x2A
+        CX = Parameter with filename
+
+        Return:
+        CF = Set if file does not exist, cleared if it does.
+
+        Verifies that a file with the filename given in a specific parameter exists, and sets up
+        for loading tha file.
 
 
 VI. Disk Functions
