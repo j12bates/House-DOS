@@ -52,6 +52,9 @@ main:                                           ; Main code for House-DOS kernel
     cmp ah, 0xFE                                ; Is this a handback with error?
     je .exit_error                              ; If so, display the error message
 
+    cmp byte [break_byte], 0xFF                 ; Are we supposed to break the command?
+    je .handback                                ; If so, prepare to get a command
+
     jmp syscall_handler                         ; Otherwise, a system function was called
 
 .exit_error:
@@ -77,6 +80,8 @@ main:                                           ; Main code for House-DOS kernel
     call screen_attribute                       ; Set screen attribute
 
     call speaker_off                            ; Turn off speaker
+
+    mov byte [break_byte], 0x00                 ; Make sure break byte is off
 
 
 command:                                        ; Main loop: Retrieve command from user
@@ -302,14 +307,13 @@ command:                                        ; Main loop: Retrieve command fr
 
 
 handback_manual:                                ; Routine to manually perform handback
-    add sp, 0x0012                              ; Overwrite the address written for INT 9
+    push ds                                     ; Preserve segment
 
-    pushf                                       ; Push flags to stack
-    push 0x2000                                 ; Push kernel segment
-    push main.handback                          ; Push address of handback code
+    call data_kernseg                           ; Access a kernel variable
+    mov byte [break_byte], 0xFF                 ; Set the break byte
 
-    sub sp, 0x000C                              ; Return to the address written for INT 1B
-    iret                                        ; Do an interrupt return to there
+    pop ds                                      ; Restore segment
+    iret                                        ; Do an interrupt return
 
 
 divide_zero:                                    ; Routine for if a DIVIDE_ZERO error happens
@@ -602,7 +606,7 @@ init:                                           ; Initialization code
 
     call random_seed                            ; Create a random number seed
 
-    call clear                                  ; Clear screen
+    call clear                                  ; Clear screen & reset video mode
 
     mov ax, 0x1003                              ; Configure attribute bit 7
     mov bl, 0x01                                ; Blink
@@ -627,9 +631,8 @@ init:                                           ; Initialization code
 
 exec:                                           ; Execution code
     popf                                        ; Get this out of the stack
-    call data_kernseg                           ; Edit kernel variables
 
-    mov byte [config_sys_iface], 0x00           ; Clear interface configuration byte
+    mov bl, 0b00000000                          ; This register will be our new value
 
 .errors:
     mov ah, 0x27                                ; Check parameter
@@ -637,20 +640,26 @@ exec:                                           ; Execution code
     int 0x7E
 
     jne .commentary                             ; If not set, proceed
-
-    call data_kernseg                           ; Edit kernel variables
-    or byte [config_sys_iface], 0b00000001      ; Set errors bit
+    or bl, 0b00000001                           ; Otherwise, set errors bit
 
 .commentary:
     mov al, 0x43                                ; 'C' for commentary
     int 0x7E
 
-    jne .done                                   ; If not set, proceed
+    jne .hidden                                 ; If not set, proceed
+    or bl, 0b00000010                           ; Otherwise, set commentary bit
 
-    call data_kernseg                           ; Edit kernel variables
-    or byte [config_sys_iface], 0b00000010      ; Set commentary bit
+.hidden:
+    mov al, 0x48                                ; 'H' for hidden files
+    int 0x7E
+
+    jne .done                                   ; If not set, proceed
+    or bl, 0b00000100                           ; Otherwise, set hidden files bit
 
 .done:
+    call data_kernseg                           ; Edit kernel variables
+    mov byte [config_sys_iface], bl             ; Replace config byte with our new value
+
     mov ah, 0x02                                ; Print line
     mov si, iface_iface_config                  ; Updating message
     int 0x7E
@@ -767,6 +776,12 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x2A
     je iface_routines.verify_file_param         ; Verify file from parameter
+
+    cmp ah, 0x30
+    je iface_routines.info_msg                  ; INFO message
+
+    cmp ah, 0x31
+    je iface_routines.warn_msg                  ; WARN message
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -1170,6 +1185,16 @@ iface_routines:                                 ; Interface functions
 
 .verify_file_param:
     call verify_file_param                      ; Verify file from parameter
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.info_msg:
+    call data_binseg                            ; Get data from the command
+    call msg_info                               ; Print message
+    jmp int_ret                                 ; We're done!
+
+.warn_msg:
+    call data_binseg                            ; Get data from the command
+    call msg_warn                               ; Print message/get confirmation
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1841,6 +1866,7 @@ num_buffer          dd 0x00000000
                     dw 0x0000
 
 init_byte           db 0x00
+break_byte          db 0x00
 header_offset       db 0x00
 
 config_iface        db 0x00
@@ -1848,16 +1874,19 @@ config_sys_iface    db 0x00
 
 null                db 0x00
 
+logo_fname          db "LOGO.MCB", 0x00
+
 ; Header strings
 creator             db "House-DOS Developers", 0x00
 desc                db "The kernel. Use to modify kernel configurations.", 0x00
 usage               db "SYS", 0x0A
                     db "Flags:", 0x0A
                     db "E - Don't display errors", 0x0A
-                    db "C - Don't display commentary", 0x00
+                    db "C - Don't display commentary", 0x0A
+                    db "H - Display hidden files", 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.1 NATE, Build 36; Compiled 2020-12-20", 0x00
+iface_welcome       db "House-DOS v0.1 NATE, Build 37; Compiled 2020-12-22", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

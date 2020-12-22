@@ -34,6 +34,9 @@ A full and complete reference can be found in `docs/SYSCALL.TXT`. System calls a
 Here are some features planned for the next release (v0.1), which is in the works:
 - Text Editor
 - Boot Screen
+- Interface configurations
+  - Within command
+  - System-wide
 - A Game
 - And much more...
 

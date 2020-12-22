@@ -609,6 +609,13 @@ rollback:                                       ; Rollback filesystem
 list_files:                                     ; Retrieve a list of all filenames
     pusha                                       ; Save register states to stack
 
+    call data_kernseg                           ; Use a kernel variable
+
+    mov bl, byte [config_iface]                 ; The interface configuration byte
+    and bl, 0b00000100                          ; Mask out everything but the hidden files flag
+    xor bl, 0b00000100                          ; Invert the hidden files flag
+    shr bl, 0x1                                 ; Shift into the position of the visibility flag
+
     mov si, 0x0000                              ; Start reading directory at offset zero
     mov cx, 0x0200                              ; 512 entries in the root directory
 
@@ -622,9 +629,10 @@ list_files:                                     ; Retrieve a list of all filenam
     cmp byte [si], 0xE5                         ; Is this the deleted character?
     je .next_entry                              ; If so, skip this one
 
-    test byte [si+0x0B], 0x02                   ; Test the visibility flag in the attribute byte
-    jnz .next_entry                             ; If hidden, skip this one
+    test byte [si+0x0B], bl                     ; Test the visibility flag with the configuration
+    jnz .next_entry                             ; If hidden & don't show hidden files, skip this one
 
+.fname:
     push si                                     ; Preserve our pointer
     push es
     push di                                     ; Save our output buffer
@@ -1158,8 +1166,7 @@ update_access_date:                             ; Update a file's access date fi
 prompt_apply:                                   ; Prompt the user to authenticate filesystem changes
     pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; We want to access our own variables
-    call extra_kernseg                          ; We want to write to our own variables
+    call setup_segments                         ; Using kernel variables
 
 .check:
     cmp word [renames], 0x0000                  ; Do we have any renames?
