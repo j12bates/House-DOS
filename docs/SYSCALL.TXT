@@ -376,9 +376,9 @@ V. Interface Functions
 
     SET INTERFACE CONFIG
         AH = 0x0F
-        AL = New value (Bit 0 = Error messages off, Bit 1 = Commentary off)
+        AL = New value (Bit 0 = Error messages off, Bit 1 = Commentary off, Bit 2 = List Hidden Files)
 
-        Changes the interface configuration.
+        Changes the interface configuration for the command.
 
     PRINT BYTES
         AH = 0x10
@@ -476,7 +476,7 @@ V. Interface Functions
 
         Checks if any flags were input as part of the command.
 
-    CHECK FOR FLAG
+    CHECK FLAG
         AH = 0x27
         AL = Flag ASCII code
 
@@ -515,6 +515,21 @@ V. Interface Functions
 
         Verifies that a file with the filename given in a specific parameter exists, and sets up
         for loading tha file.
+
+    INFO MESSAGE
+        AH = 0x30
+        SI = String Location
+
+        Prints a string as an INFO message.
+
+    WARN MESSAGE
+        AH = 0x31
+        SI = String Location
+
+        Return:
+        CF = Set if confirmation not given
+
+        Prints a string as a WARN message, then asks for confirmation.
 
 
 VI. Disk Functions

@@ -23,6 +23,17 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
+    mov ah, 0x27                        ; Check flag
+    mov al, 0x48                        ; 'H' for hidden files
+    int 0x7E
+
+    jne .list                           ; If not set, proceed
+
+    mov ah, 0x0F                        ; Otherwise, config interface
+    mov al, 0b00000100                  ; List hidden files
+    int 0x7E
+
+.list:
     mov ah, 0x77                        ; Get list of files
     mov di, list_buffer                 ; Our output buffer
     int 0x7E
@@ -75,6 +86,7 @@ main:
     mov ah, 0xFF                        ; We're done
     int 0x7E
 
+
 data:
 
 fname           db "XXXXXXXX.XXX", 0x00
@@ -86,6 +98,7 @@ msg             db " files:", 0x00
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for listing files.", 0x00
 usage           db "DIR", 0x0A
-                db "Flags: none", 0x00
+                db "Flags:", 0x0A
+                db "H - List Hidden Files", 0x00
 
 list_buffer:
