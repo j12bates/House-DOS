@@ -181,6 +181,20 @@ III. Object/Data Functions
 
             Prints byte as decimal notation at cursor position.
 
+    AH = 0x83: DATE OPERATIONS
+
+        PRINT UNIX TIME AS DATESTAMP
+            AL = 0x00
+            DX:BX = UNIX timestamp
+
+            Prints UNIX timestamp as ASCII YYYY-MM-DD datestamp.
+
+        PRINT UNIX TIME AS TIMESTAMP
+            AL = 0x01
+            DX:BX = UNIX timestamp
+
+            Prints UNIX timestamp as ASCII HH:MM:SS timestamp.
+
 
 IV. Logic Functions
 
@@ -374,6 +388,14 @@ V. Interface Functions
 
         Returns the cursor's current position.
 
+    GET INTERFACE CONFIG
+        AH = 0x0E
+
+        Return:
+        AL = Interface config byte
+
+        Retrieves the value of the interface configuration byte.
+
     SET INTERFACE CONFIG
         AH = 0x0F
         AL = New value (Bit 0 = Error messages off, Bit 1 = Commentary off, Bit 2 = List Hidden Files)
@@ -412,6 +434,11 @@ V. Interface Functions
         DL = Col number
 
         Moves the cursor to the specified col while keeping it in the same row.
+
+    ADVANCE CURSOR
+        AH = 0x14
+
+        Moves the cursor ahead one character.
 
     PRINT LITERAL BYTES
         AH = 0x18
