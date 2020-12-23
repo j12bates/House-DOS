@@ -819,7 +819,7 @@ hide_reveal:                                    ; Hide/reveal a file
 
 ; VERIFY FILE FROM PARAMETER: Verifies file with the name given in a certain parameter
 ; IN: CX = Parameter number
-; OUT: CF = Set if no such file
+; OUT: CF = Set on error; [root_entry] = Number of the file's directory entry
 
 verify_file_param:                              ; Verify file from parameter
     pusha                                       ; Save register states to stack
@@ -833,7 +833,7 @@ verify_file_param:                              ; Verify file from parameter
     call conv_x3_83                             ; Convert to 8.3 filename and store properly
     jc .done                                    ; If failed, we're done
 
-    call verify                                 ; Verify file
+    call verify_error_nf                        ; Verify file/produce error
 
 .done:
     popa                                        ; Restore register states
@@ -1215,6 +1215,27 @@ update_access_date:                             ; Update a file's access date fi
 ; ========================================================================
 ; KERNEL-SPECIFIC ROUTINES
 ; ========================================================================
+
+; VERIFY WITH ERROR: Verifies a file and produces an error if unsuccessful
+; IN: [filename] = 8.3 filename
+; OUT: CF = Set on error; [root_entry] = Number of file's directory entry
+
+verify_error_nf:                                ; Verifies file, produces error if not found
+    pusha                                       ; Save register states to stack
+
+    call verify                                 ; Verify file
+    jc .error_nf                                ; If failed, error
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.error_nf:
+    mov ax, 0x0380                              ; File not found
+    call error                                  ; Handle this error
+
+    jmp .done                                   ; We're done
+
 
 ; ASK TO APPLY CHANGES: Shows filesystem changes, prompts the user to authenticate, then applies changes
 ; IN: None

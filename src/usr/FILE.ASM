@@ -29,8 +29,13 @@ main:
 
     jc .done                            ; If error, we're done
 
-    mov ah, 0x05                        ; Line break
+    mov ah, 0x0E                        ; Get interface configuration
     int 0x7E
+
+    test al, 0b00000010                 ; Is commentary off?
+    jnz .flags_used                     ; If so, no line break
+
+    call line_break                     ; Otherwise, line break
 
 .flags_used:
     mov ah, 0x26                        ; Check if flags were used
@@ -108,20 +113,22 @@ print_indent:                           ; Print the message and then indent to t
 
 
 date_time:                              ; Print out the UNIX timestamp as date/time
-    mov ah, 0xD3                        ; Convert to datestamp
-    mov di, date_buffer                 ; Our destination buffer
+    mov ax, 0x8300                      ; Print UNIX timestamp as datestamp
     int 0x7E
 
-    mov ah, 0xD2                        ; Convert to timestamp
-    mov di, time_buffer                 ; Our destination buffer
+    mov ah, 0x14                        ; Advance cursor
     int 0x7E
 
-    mov ah, 0x01                        ; Print string
-    mov si, date_buffer                 ; Our date
+    mov ax, 0x8301                      ; Print UNIX timestamp as timestamp
     int 0x7E
 
-    mov ah, 0x02                        ; Print line
-    mov si, time_buffer                 ; Our time
+    call line_break                     ; Line break
+
+    ret                                 ; Return to caller
+
+
+line_break:                             ; Use the LINE BREAK system call
+    mov ah, 0x05                        ; Line break
     int 0x7E
 
     ret                                 ; Return to caller
@@ -130,20 +137,17 @@ date_time:                              ; Print out the UNIX timestamp as date/t
 property:                               ; Routines to get and print certain properties
 
 .size:
+    mov si, message_size                ; Size message
+    call print_indent                   ; Print message and indent
+
     mov ah, 0x70                        ; Get size of file
     int 0x7E
 
     mov dx, ax                          ; Move file size into DX
-    mov ah, 0xF1                        ; Convert to decimal
-    mov di, dec_buffer                  ; Our output buffer
+    mov ax, 0x8202                      ; Print as decimal
     int 0x7E
 
-    mov si, message_size                ; Size message
-    call print_indent                   ; Print message and indent
-
-    mov ah, 0x02                        ; Print line
-    mov si, dec_buffer                  ; Our decimal number
-    int 0x7E
+    call line_break                     ; Line break
 
     ret                                 ; Return to caller
 
@@ -159,19 +163,16 @@ property:                               ; Routines to get and print certain prop
     ret                                 ; Return to caller
 
 .access:
-    mov ah, 0x72                        ; Get access date
-    int 0x7E
-
-    mov ah, 0xD3                        ; Convert to datestamp
-    mov di, date_buffer                 ; Our destination buffer
-    int 0x7E
-
     mov si, message_access              ; Our access date
     call print_indent                   ; Print message and indent
 
-    mov ah, 0x02                        ; Print line
-    mov si, date_buffer                 ; Our date
+    mov ah, 0x72                        ; Get access date
     int 0x7E
+
+    mov ax, 0x8300                      ; Print UNIX timestamp as date
+    int 0x7E
+
+    call line_break                     ; Line break
 
     ret                                 ; Return to caller
 
@@ -228,19 +229,6 @@ permissions:                            ; Routine to get the file permissions
 ; ========================================================================
 
 data:
-
-fname           dq 0x0000000000000000
-                dd 0x00000000
-
-dec_buffer      dd 0x00000000
-                dw 0x0000
-
-date_buffer     dq 0x0000000000000000
-                dw 0x0000
-                db 0x20, 0x00
-
-time_buffer     dq 0x0000000000000000
-                db 0x00
 
 message_size    db "File size:", 0x00
 message_cdt     db "Creation date/time:", 0x00

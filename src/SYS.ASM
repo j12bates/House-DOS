@@ -729,6 +729,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x0D
     je iface_routines.get_cursor                ; Get cursor position
 
+    cmp ah, 0x0E
+    je iface_routines.get_config                ; Get interface configuration
+
     cmp ah, 0x0F
     je iface_routines.config                    ; Set interface configuration
 
@@ -743,6 +746,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x13
     je iface_routines.indent                    ; Indent cursor
+
+    cmp ah, 0x14
+    je iface_routines.advance                   ; Advance cursor
 
     cmp ah, 0x18
     je iface_routines.print_bytes_literal       ; Print literal bytes
@@ -908,6 +914,12 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x8203
     je data_routines.num_byte_dec               ; Print byte as decimal
 
+    cmp ax, 0x8300
+    je data_routines.date_dstamp                ; Print UNIX time as datestamp
+
+    cmp ax, 0x8301
+    je data_routines.date_tstamp                ; Print UNIX time as timestamp
+
 .general_funcs:                                 ; General functions
     cmp ah, 0xA0
     je general_routines.random                  ; Generate random number
@@ -1048,6 +1060,10 @@ iface_routines:                                 ; Interface functions
     call get_cursor_pos                         ; Get cursor position
     jmp int_ret                                 ; We're done!
 
+.get_config:
+    mov al, byte [config_iface]                 ; Get the interface config byte
+    jmp int_ret                                 ; We're done!
+
 .config:
     mov byte [config_iface], al                 ; Set the interface config byte
     jmp int_ret                                 ; We're done!
@@ -1071,6 +1087,10 @@ iface_routines:                                 ; Interface functions
 .indent:
     call indent                                 ; Indent cursor
     jmp int_ret.preserve_flags                  ; We're done!
+
+.advance:
+    call advance_cursor                         ; Advance cursor
+    jmp int_ret                                 ; We're done!
 
 .print_bytes_literal:
     call data_binseg                            ; We want to access data from the command
@@ -1314,6 +1334,40 @@ data_routines:                                  ; Data functions
     popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
 
+.date_dstamp:
+    pusha                                       ; Save register states to stack
+
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in DX:BX
+    mov di, date_buffer                         ; Our buffer
+
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+    call conv_days_rtcdate                      ; Convert to RTC date
+    call conv_rtcdate_stamp                     ; Convert to datestamp
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x0A                                ; 10 bytes in a datestamp
+    call print_bytes                            ; Print bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.date_tstamp:
+    pusha                                       ; Save register states to stack
+
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in DX:BX
+    mov di, time_buffer                         ; Our buffer
+
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+    call conv_seconds_rtctime                   ; Convert to RTC time
+    call conv_rtctime_stamp                     ; Convert to timestamp
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x08                                ; 8 bytes in a timestamp
+    call print_bytes                            ; Print bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
 
 general_routines:                               ; General functions
 
@@ -1418,7 +1472,7 @@ disk_routines:                                  ; Disk functions
     call conv_x3_83                             ; Convert filename to proper format
     jc int_ret.preserve_flags                   ; If error, we're done
 
-    call verify                                 ; Search the directory and verify the file's entry
+    call verify_error_nf                        ; Search the directory and verify the file's entry
 
     jmp int_ret.preserve_flags                  ; We're done!
 
@@ -1876,6 +1930,11 @@ flags_image         dw 0x0000
 num_buffer          dd 0x00000000
                     dw 0x0000
 
+date_buffer         dq 0x0000000000000000
+                    dw 0x0000
+
+time_buffer         dq 0x0000000000000000
+
 init_byte           db 0x00
 break_byte          db 0x00
 header_offset       db 0x00
@@ -1895,7 +1954,7 @@ usage               db "SYS", 0x0A
                     db "H - Display hidden files", 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.1 NATE, Build 37; Compiled 2020-12-23", 0x00
+iface_welcome       db "House-DOS v0.1 NATE, Build 38; Compiled 2020-12-23", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
