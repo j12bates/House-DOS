@@ -53,7 +53,7 @@ main:
 
     mov ah, 0x6F                        ; Write file to disk
     mov cx, di                          ; Our pointer is at the end; write this many bytes
-    mov si, 0x0000                      ; Our filename
+    mov si, 0x0000                      ; Write most recently verified file
     int 0x7E
 
 .done:

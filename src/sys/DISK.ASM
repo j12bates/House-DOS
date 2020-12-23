@@ -530,8 +530,9 @@ apply:                                          ; Apply filesystem changes to di
     jc .end                                     ; If error, we're done
 
 .done:
-    mov word [renames], 0x0000                  ; Reset the rename counter
+    mov word [renames], 0x0000                  ; Reset the renames counter
     mov word [deletions], 0x0000                ; Reset the deletions counter
+    mov word [vis_changes], 0x0000              ; Reset the visibility changes counter
 
     call done_el                                ; Done message, newline
 
@@ -585,8 +586,9 @@ rollback:                                       ; Rollback filesystem
     jc .end                                     ; If error, we're done
 
 .done:
-    mov word [renames], 0x0000                  ; Reset the rename counter
+    mov word [renames], 0x0000                  ; Reset the renames counter
     mov word [deletions], 0x0000                ; Reset the deletions counter
+    mov word [vis_changes], 0x0000              ; Reset the visibility changes counter
 
     mov si, iface_disk_rdback
     call msg_info                               ; Info message
@@ -668,16 +670,16 @@ list_files:                                     ; Retrieve a list of all filenam
 
 
 ; RENAME FILE: Renames a specific file
-; IN: [filename] = Filename to rename to; [root_entry] = Root entry of file to rename (run get_file_info to set this up)
+; IN: [filename] = Filename to rename to; [root_entry] = Root entry of file to rename (verify to set this up)
 ; OUT: CF = Set on error
 
 rename:                                         ; Rename a file
     pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; Get data from the segment we're loaded in
+    call data_kernseg                           ; Use kernel variables
     push word [root_entry]                      ; Save our root entry
 
-    call check_attributes                       ; Check if we can write to the file
+    call check_attributes                       ; Check if we can change this file
     jc .abort                                   ; If we can't, abort
 
 .check_dest_exists:
@@ -705,6 +707,8 @@ rename:                                         ; Rename a file
     mov si, iface_disk_renamed
     call msg_info                               ; Info message
 
+    clc                                         ; No error
+
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -725,18 +729,19 @@ rename:                                         ; Rename a file
 
 
 ; DELETE FILE: Deletes a specific file (Overwrites first char of directory entry with 0xE5)
-; IN: [root_entry] = Root entry of file to delete (run get_file_info to set up)
+; IN: [root_entry] = Root entry of file to delete (verify to set up)
 ; OUT: CF = Set on error
 
 delete:                                         ; Delete a file
     pusha                                       ; Push register states to stack
 
-    call check_attributes                       ; Check if we can write to this file
+    call check_attributes                       ; Check if we can change this file
     jc .abort                                   ; If we can't, abort
 
     mov ax, 0x3800
     mov es, ax                                  ; The segment our root directory is loaded in
 
+    call data_kernseg                           ; Use kernel variables
     mov di, word [root_entry]                   ; The directory entry for the file
     shl di, 0x5                                 ; 32 bytes per entry
 
@@ -749,6 +754,8 @@ delete:                                         ; Delete a file
     mov si, iface_disk_deleted
     call msg_info                               ; Info message
 
+    clc                                         ; No error
+
 .end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -757,6 +764,56 @@ delete:                                         ; Delete a file
     call abort                                  ; Aborting message
 
     stc                                         ; Carry flag for error
+    jmp .end                                    ; We're done
+
+
+; HIDE/REVEAL FILE: Sets/unsets the hidden flag in the attribute byte of a specific file
+; IN: [root_entry] = Root entry of file to hide/reveal (verify to set up), CF = Set to reveal, cleared to hide
+; OUT: CF = Set on error
+
+hide_reveal:                                    ; Hide/reveal a file
+    pusha                                       ; Push register states to stack
+    pushf                                       ; Preserve flags
+
+    call check_attributes                       ; Check if we can change this file
+    jc .abort                                   ; If we can't abort
+
+    call data_kernseg                           ; Use kernel variables
+    mov si, word [root_entry]                   ; The directory entry for the file
+    shl si, 0x5                                 ; 32 bytes per entry
+
+    mov ax, 0x3800
+    mov es, ax                                  ; The segment our root directory is loaded in
+
+    mov al, byte [es:si+0x000B]                 ; Get the attribute byte
+
+    popf                                        ; Restore flags
+    jc .reveal                                  ; If carry flag, reveal
+
+.hide:
+    or al, 0b00000010                           ; Set the hidden flag
+    jmp .done                                   ; Proceed
+
+.reveal:
+    and al, 0b11111101                          ; Clear the hidden flag
+
+.done:
+    mov byte [es:si+0x000B], al                 ; Write the new attribute byte in
+    inc word [vis_changes]                      ; Increment our counter
+
+    mov si, iface_disk_vchanged
+    call msg_info                               ; INFO message
+
+    clc                                         ; No error
+
+.end:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.abort:
+    call abort                                  ; Aborting message
+
+    stc                                         ; Carry-flag for error
     jmp .end                                    ; We're done
 
 
@@ -1175,6 +1232,9 @@ prompt_apply:                                   ; Prompt the user to authenticat
     cmp word [deletions], 0x0000                ; Do we have any deletions?
     jne .numbers                                ; If so, proceed
 
+    cmp word [vis_changes], 0x0000              ; Do we have any visibility changes?
+    jne .numbers                                ; If so, proceed
+
     mov si, iface_disk_nochange
     call comment_line                           ; Otherwise, we have no changes to apply
 
@@ -1190,20 +1250,21 @@ prompt_apply:                                   ; Prompt the user to authenticat
     mov di, iface_disk_changesD                 ; Our spot in the message
     call conv_word_dec_unsigned                 ; Convert to decimal
 
+    mov ax, word [vis_changes]                  ; The number of visibility changes
+    mov di, iface_disk_changesF                 ; Our spot in the message
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
 .message:
     mov si, iface_disk_changesA                 ; Print the message, one section at a time
-    call print_str
-
-    mov si, iface_disk_changesB
     call print_str
 
     mov si, iface_disk_changesC
     call print_str
 
-    mov si, iface_disk_changesD
+    mov si, iface_disk_changesE
     call print_str
 
-    mov si, iface_disk_changesE
+    mov si, iface_disk_changesG
     call print_str
 
 .apply:
@@ -1279,16 +1340,21 @@ root_start          dw 0x0000
 
 renames             dw 0x0000
 deletions           dw 0x0000
+vis_changes         dw 0x0000
 
-iface_disk_changesA db "This will result in ", 0x00
+iface_disk_changesA db "This will result in "
 iface_disk_changesB dd 0x00000000
                     db 0x00
-iface_disk_changesC db " renames, ", 0x00
+iface_disk_changesC db " renames, "
 iface_disk_changesD dd 0x00000000
                     db 0x00
-iface_disk_changesE db " deletions. This cannot be undone.", 0x00
+iface_disk_changesE db " deletions, and "
+iface_disk_changesF dd 0x00000000
+                    db 0x00
+iface_disk_changesG db " visibility changes.", 0x0A
+                    db "This cannot be undone.", 0x00
 
-iface_disk_rchanges db "This will roll back all renames and deletions.", 0x00
+iface_disk_rchanges db "This will roll back all renames, deletions, and visibility changes.", 0x00
 
 iface_disk_apply    db "Applying changes to disk...", 0x00
 iface_disk_applied  db "Changes applied to disk.", 0x00
@@ -1309,5 +1375,6 @@ iface_disk_reset    db "Resetting disk...", 0x00
 iface_disk_cancel   db "Operation cancelled.", 0x00
 iface_disk_renamed  db "File renamed. Changes to be applied.", 0x00
 iface_disk_deleted  db "File deleted. Changes to be applied.", 0x00
+iface_disk_vchanged db "File visibility changed. Changes to be applied.", 0x00
 iface_disk_nochange db "No changes to apply.", 0x00
 iface_disk_nf       db "File not found.", 0x00

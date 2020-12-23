@@ -158,6 +158,9 @@ error:                                          ; The error handler
     cmp ax, 0x0307
     je fs_errors.full_dir                       ; No directory entries available
 
+    cmp ax, 0x0380
+    je fs_errors.nf                             ; File not found
+
 .mem:
     cmp ax, 0x0500
     je mem_errors.line                          ; Invalid line number
@@ -337,6 +340,10 @@ fs_errors:                                      ; Filesystem error strings
     push error_fs_dirfull                       ; No available root entries
     jmp error_print
 
+.nf:
+    push error_fs_nf                            ; File not found
+    jmp error_print
+
 
 mem_errors:                                     ; Buffer error strings
 
@@ -422,6 +429,7 @@ error_fs_bcluster   db "Cluster marked as bad", 0x00
 error_fs_fat        db "Inconsistent FAT", 0x00
 error_fs_full       db "Disk is full", 0x00
 error_fs_dirfull    db "No directory entries available", 0x00
+error_fs_nf         db "File not found", 0x00
 
 error_mem_line      db "Invalid line number", 0x00
 
