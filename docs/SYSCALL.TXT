@@ -769,6 +769,15 @@ VI. Disk Functions
 
         Deletes the verified file.
 
+    HIDE/REVEAL FILE
+        AH = 0x7A
+        CF = Set to reveal, cleared to hide
+
+        Return:
+        CF = Set on error
+
+        Hides/reveals the verified file.
+
     ROLLBACK FILESYSTEM
         AH = 0x7E
 

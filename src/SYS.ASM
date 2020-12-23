@@ -859,6 +859,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x79
     je disk_routines.delete                     ; Delete file
 
+    cmp ah, 0x7A
+    je disk_routines.hide_reveal                ; Hide/reveal file
+
     cmp ah, 0x7E
     je disk_routines.rollback                   ; Rollback filesystem
 
@@ -1710,6 +1713,11 @@ disk_routines:                                  ; Disk functions
     call delete                                 ; Delete
     jmp int_ret.preserve_flags                  ; We're done!
 
+.hide_reveal:
+    popf                                        ; Restore flags
+    call hide_reveal                            ; Hide/reveal file
+    jmp int_ret.preserve_flags_flags_used       ; We're done!
+
 .rollback:
     call prompt_rollback                        ; Rollback filesystem
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1787,6 +1795,9 @@ int_ret:                                        ; Return back to command
 .ret:
     iret                                        ; Interrupt return
 
+.preserve_flags_flags_used:
+    pushf                                       ; Push something to the stack
+
 .preserve_flags:
     pushf                                       ; Create a new FLAGS image
     pop word [flags_image]                      ; Place into memory
@@ -1811,7 +1822,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2500 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2600 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -1820,7 +1831,7 @@ times 0x2500 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022500
+input_buffer        dq 0x0000000000000000       ; 0x00022600
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1829,7 +1840,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022500
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022540
+params              dq 0x0000000000000000       ; 0x00022640
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1838,7 +1849,7 @@ params              dq 0x0000000000000000       ; 0x00022540
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022580
+misc_buffer         dq 0x0000000000000000       ; 0x00022680
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1847,7 +1858,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022580
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000225C0
+param_flags         dq 0x0000000000000000       ; 0x000226C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1874,8 +1885,6 @@ config_sys_iface    db 0x00
 
 null                db 0x00
 
-logo_fname          db "LOGO.MCB", 0x00
-
 ; Header strings
 creator             db "House-DOS Developers", 0x00
 desc                db "The kernel. Use to modify kernel configurations.", 0x00
@@ -1886,7 +1895,7 @@ usage               db "SYS", 0x0A
                     db "H - Display hidden files", 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.1 NATE, Build 37; Compiled 2020-12-22", 0x00
+iface_welcome       db "House-DOS v0.1 NATE, Build 37; Compiled 2020-12-23", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
