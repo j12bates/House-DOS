@@ -116,6 +116,8 @@ substr:                                         ; Get substring
     call check_string_indices                   ; Check if indices are valid
     jc .end                                     ; If error, we're done
 
+    jcxz .done                                  ; If counter is zero, avoid an endless loop
+
     add si, bx                                  ; Add starting index to string location
     cld                                         ; Ensure correct direction
 

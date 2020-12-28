@@ -1,5 +1,5 @@
 ; ========================================================================
-; House-DOS INFO COMMAND
+; House-DOS CLEAR COMMAND
 ; 
 ; Written by Jacob Bates
 ; ========================================================================
@@ -23,8 +23,11 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x02                        ; Print line
-    mov si, msg                         ; Message A
+    mov ah, 0x06                        ; Clear screen
+    int 0x7E
+
+    mov ah, 0x08                        ; Set cursor position
+    mov dx, 0x0000                      ; Upper left corner
     int 0x7E
 
     mov ah, 0xFF                        ; We're done
@@ -32,10 +35,7 @@ main:
 
 data:
 
-msg             db "House-DOS v0.1 NATE, Build 39; Compiled 2020-12-27", 0x0A
-                db "By Jacob, Jet, and Ben", 0x00
-
 creator         db "House-DOS Developers", 0x00
-desc            db "Show system info.", 0x00
-usage           db "INFO", 0x0A
+desc            db "Utility for clearing the console.", 0x00
+usage           db "CLEAR", 0x0A
                 db "Flags: none", 0x00

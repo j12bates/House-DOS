@@ -36,11 +36,11 @@ data:
 
 msg         db "========= House-DOS Help =========", 0x0A, 0x0A
             db "Here is a list of the commands:", 0x0A
-            db "APPEND   APPLY    CALC     CAT", 0x0A
-            db "COPY     DATE     DELETE   DIR", 0x0A
-            db "EXIT     FILE     HELP     HEXDUMP", 0x0A
-            db "HIDE     INFO     QUIT     RENAME", 0x0A
-            db "ROLLBACK WRITE    SYS", 0x0A, 0x0A
+            db "APPEND    APPLY     CALC      CAT", 0x0A
+            db "CLEAR     COPY      DATE      DELETE", 0x0A
+            db "DIR       EXIT      FILE      HELP", 0x0A
+            db "HEXDUMP   HIDE      INFO      QUIT", 0x0A
+            db "RENAME    ROLLBACK  WRITE     SYS", 0x0A, 0x0A
             db "For details on what a command does,", 0x0A
             db "Lookup the DESCRIPTION attribute:", 0x0A, 0x0A
             db "    COMMAND %D", 0x0A, 0x0A

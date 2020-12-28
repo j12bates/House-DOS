@@ -824,7 +824,7 @@ syscall_handler:                                ; System call handler
     je disk_routines.insert_bytes_qty           ; Insert quantity of bytes
 
     cmp ah, 0x6C
-    je disk_routines.insert_bytes_indexes       ; Insert bytes between two indexes
+    je disk_routines.insert_bytes_indices       ; Insert bytes between two indices
 
     cmp ah, 0x6D
     je disk_routines.insert_line                ; Insert line
@@ -1489,6 +1489,9 @@ disk_routines:                                  ; Disk functions
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
+    cmp cx, 0x0000                              ; Is our counter zero?
+    je int_ret                                  ; If so, avoid an endless loop
+
     push cx                                     ; Save register states to stack
 
     cld                                         ; Ensure correct direction
@@ -1501,10 +1504,14 @@ disk_routines:                                  ; Disk functions
     call data_fileseg                           ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
+    cmp cx, si                                  ; Would our counter be zero?
+    je int_ret                                  ; If so, avoid an endless loop
+
     push cx                                     ; Save register states to stack
 
     sub cx, si                                  ; Convert index to number of bytes
     cld                                         ; Ensure correct direction
+
     rep movsb                                   ; Copy the correct number of bytes
 
     pop cx                                      ; Restore register states
@@ -1548,6 +1555,9 @@ disk_routines:                                  ; Disk functions
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
+    cmp cx, 0x0000                              ; Is our counter zero?
+    je int_ret                                  ; If so, avoid an endless loop
+
     push cx                                     ; Save register states to stack
 
     cld                                         ; Ensure correct direction
@@ -1560,10 +1570,14 @@ disk_routines:                                  ; Disk functions
     call data_binseg                            ; We want to access data from the command
     call extra_fileseg                          ; We want to give data to the file buffer
 
+    cmp cx, si                                  ; Would our counter be zero?
+    je int_ret                                  ; If so, avoid an endless loop
+
     push cx                                     ; Save register states to stack
     
     sub cx, si                                  ; Convert index to number of bytes
     cld                                         ; Ensure correct direction
+
     rep movsb                                   ; Copy the correct number of bytes
 
     pop cx                                      ; Restore register states
@@ -1575,40 +1589,41 @@ disk_routines:                                  ; Disk functions
     jmp int_ret                                 ; We're done!
 
 .insert_bytes_qty:
-    cmp cx, 0x0000                              ; Is our counter zero?
-    je int_ret                                  ; If so, do nothing
-
     xchg si, di                                 ; The destination is the source for shifting
     call shift                                  ; Shift everything in the file buffer over
     xchg si, di                                 ; Restore destination and source
 
     call data_binseg                            ; We want to access data from the command
 
-    pusha                                       ; Save register states to stack
+    cmp cx, 0x0000                              ; Is our counter zero?
+    je int_ret                                  ; If so, avoid an endless loop
+
+    push cx                                     ; Save register states to stack
 
     cld                                         ; Ensure correct direction
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
+    pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
-.insert_bytes_indexes:
-    pusha                                       ; Save register states to stack
-
-    sub cx, si                                  ; Convert index to number of bytes
-    cmp cx, 0x0000                              ; Is our counter zero?
-    je int_ret                                  ; If so, do nothing
-
+.insert_bytes_indices:
     xchg si, di                                 ; The destination is the source for shifting
     call shift                                  ; Shift everything in the file buffer over to make room
     xchg si, di                                 ; Restore destination and source
 
     call data_binseg                            ; We want to access data from the command
 
+    cmp cx, si                                  ; Would our counter be zero?
+    je int_ret                                  ; If so, avoid an endless loop
+
+    push cx                                     ; Save register states to stack
+
+    sub cx, si                                  ; Convert index to number of bytes
     cld                                         ; Ensure correct direction
+
     rep movsb                                   ; Copy the correct number of bytes
 
-    popa                                        ; Restore register states
+    pop cx                                      ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .insert_line:
@@ -1649,7 +1664,7 @@ disk_routines:                                  ; Disk functions
     cmp si, 0x0000                              ; Is SI 0?
     je ._write                                  ; If so, skip ahead
 
-    call conv_x3_83                             ; Convert filename to proper format
+    call conv_x3_83                             ; Otherwise, convert filename to proper format
     jc int_ret.preserve_flags                   ; If error, we're done
 
 ._write:
@@ -1876,7 +1891,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2600 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2800 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -1885,7 +1900,7 @@ times 0x2600 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022600
+input_buffer        dq 0x0000000000000000       ; 0x00022800
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1894,7 +1909,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022600
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022640
+params              dq 0x0000000000000000       ; 0x00022840
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1903,7 +1918,7 @@ params              dq 0x0000000000000000       ; 0x00022640
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022680
+misc_buffer         dq 0x0000000000000000       ; 0x00022880
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1912,7 +1927,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022680
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000226C0
+param_flags         dq 0x0000000000000000       ; 0x000228C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -1954,7 +1969,7 @@ usage               db "SYS", 0x0A
                     db "H - Display hidden files", 0x00
 
 ; Interface strings
-iface_welcome       db "House-DOS v0.1 NATE, Build 38; Compiled 2020-12-23", 0x00
+iface_welcome       db "House-DOS v0.1 NATE, Build 39; Compiled 2020-12-27", 0x00
 iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00

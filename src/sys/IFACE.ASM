@@ -332,6 +332,7 @@ line_break:                                     ; Moves cursor down one line
 print_bytes:                                    ; Prints number of bytes (CX) starting at DS:SI
     pusha                                       ; Push register states to stack
 
+    jcxz .done                                  ; If counter is zero, avoid endless loop
     cld                                         ; Ensure correct direction
 
 .char:
