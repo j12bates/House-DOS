@@ -59,6 +59,8 @@ main:
     sub cx, word [buffer_pointer]       ; Subtract to get the number of bytes copied
     push cx                             ; Preserve number of characters
 
+    jcxz .chars_ascii                   ; If counter is zero, avoid an endless loop
+
     mov word [buffer_pointer], si       ; Update the buffer pointer
     mov si, dest_buffer                 ; Read from our buffer
     cld                                 ; Ensure correct direction
