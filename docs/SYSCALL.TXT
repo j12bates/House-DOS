@@ -57,6 +57,33 @@ II. Basic Functions
 
         Reboots the system.
 
+    GET OS VERSION STRING
+        AH = 0xB0
+        DI = Destination buffer
+
+        Return:
+        DI = Initial value + bytes copied
+
+        Retrieves the House-DOS version string.
+
+    GET OS CREATOR STRING
+        AH = 0xB1
+        DI = Destination buffer
+
+        Return:
+        DI = Initial value + bytes copied
+
+        Retrieves the House-DOS creator string.
+
+    GET CPU BRAND STRING
+        AH = 0xB2
+        DI = Destination buffer
+
+        Return:
+        DI = Initial value + bytes copied
+
+        Retrieves the CPU branding string.
+
 
 III. Object/Data Functions
 
@@ -121,6 +148,13 @@ III. Object/Data Functions
             CF = Set on error
 
             Gets a substring from a string.
+
+        CHOMP LEADING SPACES
+            AL = 0x18
+            SI = String Location
+            DI = Destination buffer
+
+            Chomps any leading spaces off of a string.
 
         GET LENGTH
             AL = 0x20
@@ -633,6 +667,16 @@ VI. Disk Functions
         CF = Set on error
 
         Loads the file that was just verified into the specified offset from the file buffer.
+
+    GET LINE/COL FROM ADDRESS
+        AH = 0x67
+        SI = Address
+
+        Return:
+        CX = Line Number
+        DX = Col Number
+
+        Gets the line and column from a specified address.
 
     WRITE BYTES (INDEX-QUANTITY)
         AH = 0x68

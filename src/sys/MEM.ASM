@@ -131,6 +131,54 @@ get_line_length:                                ; Get the number of characters u
     jmp .done                                   ; We're done!
 
 
+; GET LINE/COL FROM ADDRESS: Converts an address to the line and col numbers
+; IN: SI = Address
+; OUT: CX = Line number; DX = Col number
+
+addr_line_col:                                  ; Convert address to line/col
+    pusha                                       ; Save register states to stack
+
+    mov bx, 0x0000                              ; Start line at zero
+    mov dx, 0x0000                              ; Start col at zero
+
+    mov cx, si                                  ; Loop through this many bytes
+    jcxz .done                                  ; If counter is zero, avoid an endless loop
+
+    call data_fileseg                           ; Read from the file buffer
+    mov si, 0x0000                              ; Start from the first byte
+
+    cld                                         ; Ensure correct direction
+
+.char:
+    lodsb                                       ; Load next byte
+
+    cmp al, 0x0A                                ; Is this a newline?
+    je .next_line                               ; If so, we've hit the next line
+
+    inc dx                                      ; Otherwise, increment col number
+    loop .char                                  ; Repeat with next character
+
+    jmp .done                                   ; If no more characters, we're done
+
+.next_line:
+    inc bx                                      ; Increment line number
+    mov dx, 0x0000                              ; Clear column number
+
+    loop .char                                  ; Repeat with next character
+
+.done:
+    call data_kernseg                           ; Use kernel variables
+    mov word [register_bckp_a], bx              ; Preserve the row
+    mov word [register_bckp_b], dx              ; Preserve the col
+
+    popa                                        ; Restore register states
+
+    mov cx, word [register_bckp_a]              ; Restore the row into CX
+    mov dx, word [register_bckp_b]              ; Restore the col
+
+    ret                                         ; Return to caller
+
+
 ; WRITE LINE: Writes a line into the file buffer
 ; IN: CX = Line number, DS:SI = Input buffer
 ; OUT: CF = Set on error
