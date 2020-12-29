@@ -612,12 +612,50 @@ init:                                           ; Initialization code
     mov bl, 0x01                                ; Blink
     int 0x10                                    ; BIOS VGA interrupt
 
-.autoexec:
-    mov si, iface_welcome
-    call println                                ; Print welcome message
+.cpu:
+    call setup_segments                         ; Use kernel variables
+    mov di, info_cpu                            ; CPU info buffer
 
-    mov si, iface_info
-    call println                                ; Print info
+    mov eax, 0x80000002                         ; First bit of brand string
+    call .cpu_string                            ; Get info and append
+
+    mov eax, 0x80000003                         ; Next bit
+    call .cpu_string                            ; Get info and append
+
+    mov eax, 0x80000004                         ; Next bit
+    call .cpu_string                            ; Get info and append
+
+    xor eax, eax
+    xor ebx, ebx
+    xor ecx, ecx
+    xor edx, edx                                ; Clear out the upper words for sanity
+
+    mov si, info_cpu                            ; CPU info buffer
+    mov di, si                                  ; Write to where we're reading
+    call str_chomp                              ; Chomp leading spaces
+
+    jmp .autoexec                               ; Skip over this subroutine
+
+.cpu_string:
+    cpuid                                       ; Get CPU info
+
+    mov dword [di+0x00], eax
+    mov dword [di+0x04], ebx
+    mov dword [di+0x08], ecx
+    mov dword [di+0x0C], edx                    ; Put the values into our buffer
+
+    add di, 0x0010                              ; Move our pointer ahead
+    ret                                         ; Return to caller
+
+.autoexec:
+    mov si, info_os
+    call println                                ; Print OS info
+
+    mov si, info_creator
+    call println                                ; Print creator info
+
+    mov si, info_cpu
+    call println                                ; Print CPU info
 
     mov byte [init_byte], 0xFF                  ; We've initialized
     xor bx, bx                                  ; Make sure that the zero-flag is set
@@ -811,6 +849,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x66
     je disk_routines.load_offset                ; Load file to offset
 
+    cmp ah, 0x67
+    je disk_routines.line_col                   ; Convert address to line/col numbers
+
     cmp ah, 0x68
     je disk_routines.write_bytes_qty            ; Write quantity of bytes to file
 
@@ -893,6 +934,9 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x8013
     je data_routines.str_sub_indices            ; Get substring (indices)
 
+    cmp ax, 0x8018
+    je data_routines.str_chomp                  ; Chomp leading spaces
+
     cmp ax, 0x8020
     je data_routines.str_length                 ; Get length
 
@@ -932,6 +976,15 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0xA3
     je general_routines.reboot                  ; Reboot system
+
+    cmp ah, 0xB0
+    je general_routines.os_version              ; Get OS version string
+
+    cmp ah, 0xB1
+    je general_routines.os_creator              ; Get OS creator string
+
+    cmp ah, 0xB2
+    je general_routines.cpu_brand               ; Get CPU brand string
 
     cmp ah, 0xC0
     je general_routines.sleep_milli             ; Sleep milliseconds
@@ -1262,6 +1315,11 @@ data_routines:                                  ; Data functions
 
     jmp int_ret.preserve_flags                  ; We're done!
 
+.str_chomp:
+    call segments_binary                        ; We're working with stuff in the command
+    call str_chomp                              ; Chomp leading spaces
+    jmp int_ret                                 ; Return to caller
+
 .str_length:
     call segments_binary                        ; We're working with stuff in the command
 
@@ -1385,6 +1443,33 @@ general_routines:                               ; General functions
 
 .reboot:
     call reboot                                 ; Reboot
+    jmp int_ret                                 ; We're done!
+
+.os_version:
+    push si                                     ; Save register state
+
+    mov si, info_os                             ; OS info string
+    call str_return                             ; Give string to command
+
+    pop si                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
+.os_creator:
+    push si                                     ; Save register state
+
+    mov si, info_creator                        ; Creator info string
+    call str_return                             ; Give string to command
+
+    pop si                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
+.cpu_brand:
+    push si                                     ; Save register state
+
+    mov si, info_cpu                            ; CPU brand string
+    call str_return                             ; Give string to command
+
+    pop si                                      ; Restore register state
     jmp int_ret                                 ; We're done!
 
 .sleep_milli:
@@ -1550,6 +1635,10 @@ disk_routines:                                  ; Disk functions
     call load_file                              ; Load the file into the file buffer
 
     jmp int_ret.preserve_flags                  ; We're done!
+
+.line_col:
+    call addr_line_col                          ; Convert address to line/col numbers
+    jmp int_ret                                 ; We're done!
 
 .write_bytes_qty:
     call data_binseg                            ; We want to access data from the command
@@ -1968,9 +2057,17 @@ usage               db "SYS", 0x0A
                     db "C - Don't display commentary", 0x0A
                     db "H - Display hidden files", 0x00
 
+; Information strings
+info_os             db "House-DOS v0.1 NATE, Build 40; Compiled 2020-12-29", 0x00
+info_creator        db "By Jacob, Jet, and Ben", 0x00
+info_cpu            dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+                    dq 0x0000000000000000
+
 ; Interface strings
-iface_welcome       db "House-DOS v0.1 NATE, Build 39; Compiled 2020-12-27", 0x00
-iface_info          db "By Jacob, Jet, and Ben", 0x00
 iface_command_bad   db "Bad command.", 0x00
 iface_shutdown      db "Shutting down...", 0x00
 iface_reboot        db "Rebooting...", 0x00

@@ -218,6 +218,35 @@ find_substr:                                    ; Find instance of substring
     jmp .done                                   ; We're done
 
 
+; CHOMP STRING: Chomp the leading spaces off of a string
+; IN: DS:SI = String location; ES:DI = Output buffer
+; OUT: None
+
+str_chomp:                                      ; Chomp leading spaces from string
+    pusha                                       ; Save register states to stack
+
+    cld                                         ; Ensure correct direction
+
+.count_spaces:
+    lodsb                                       ; Load next byte
+
+    cmp al, 0x20                                ; Is it a space?
+    je .count_spaces                            ; If so, repeat
+
+    clc                                         ; Otherwise, use DS:SI
+    dec si                                      ; Undo the increment from LODSB
+    call str_len                                ; Get length of string
+
+    rep movsb                                   ; Copy bytes
+
+    mov al, 0x00                                ; NULL char
+    stosb                                       ; Write to end the string
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; ========================================================================
 ; STRING SUBROUTINES
 ; ========================================================================
@@ -253,6 +282,35 @@ check_string_indices:                           ; Check if index parameters are 
     call error                                  ; Handle this error
 
     jmp .done                                   ; We're done
+
+
+; ========================================================================
+; STRING KERNEL-SPECIFIC ROUTINES
+; ========================================================================
+
+; RETURN A STRING: Returns a specific string to the command
+; IN: DS:SI = String location; DI = Destination buffer
+; OUT: DI = Initial value + bytes copied
+
+str_return:                                     ; Return a string to a command
+    pusha                                       ; Save register states to stack
+
+    call extra_binseg                           ; Give data to the command
+    clc                                         ; Use DS:SI
+    call str_len                                ; Get length of string
+
+    rep movsb                                   ; Copy bytes
+
+    mov al, 0x00                                ; NULL char
+    stosb                                       ; Write to end string
+
+.done:
+    mov word [register_bckp_a], di              ; Preserve this value
+
+    popa                                        ; Restore register states
+    mov di, word [register_bckp_a]              ; Restore this value
+
+    ret                                         ; Return to caller
 
 
 ; ========================================================================
