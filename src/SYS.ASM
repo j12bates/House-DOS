@@ -1709,7 +1709,7 @@ disk_routines:                                  ; Disk functions
     call data_binseg                            ; We want to access data from the command
 
     cmp cx, 0x0000                              ; Is our counter zero? Is it negative?
-    jle int_ret                                 ; If so, avoid an endless loop, or don't overwrite shifted byets
+    jle int_ret                                 ; If so, avoid an endless loop, or don't overwrite shifted bytes
 
     push cx                                     ; Save register states to stack
 
