@@ -30,7 +30,7 @@ clear_file_buffer:                              ; Clear the file buffer (0x10000
     ret                                         ; Return to caller
 
 
-; LOAD AS BINARY: Moves everything in the file segment to the binary segment for execution
+; LOAD AS BINARY: Moves everything in the I/O buffer to the binary segment for execution
 ; IN: None
 ; OUT: None (segments)
 
@@ -42,7 +42,7 @@ move_file_bin:                                  ; Load the file buffer as a bina
 
     mov si, 0x0000
     mov di, 0x0000                              ; Start at offset 0
-    mov cx, 0xFFFF                              ; Repeat for each of the 64K bytes
+    mov cx, 0xFFFF                              ; Load 64K
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Copy all bytes over

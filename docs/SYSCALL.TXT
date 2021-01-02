@@ -33,13 +33,13 @@ II. Basic Functions
         Signals the end of the command. When this is used, command execution will stop and
         House-DOS will prompt the user for a new command.
 
-    EXIT WITH ERROR
+    EXIT_ERROR
         AH = 0xFE
         SI = String location
 
         Same as a handback, but will display string as an error message.
 
-    GET UNIX TIME
+    GET_UNIXTIME
         AH = 0xD0
 
         Return:
@@ -47,17 +47,17 @@ II. Basic Functions
 
         Returns the current UNIX timestamp.
 
-    SHUT DOWN SYSTEM
+    SHUTDOWN
         AH = 0xA2
 
         Shuts down the system.
 
-    REBOOT SYSTEM
+    REBOOT
         AH = 0xA3
 
         Reboots the system.
 
-    GET OS VERSION STRING
+    GET_OS_VERSION_STRING
         AH = 0xB0
         DI = Destination buffer
 
@@ -66,7 +66,7 @@ II. Basic Functions
 
         Retrieves the House-DOS version string.
 
-    GET OS CREATOR STRING
+    GET_OS_CREATOR_STRING
         AH = 0xB1
         DI = Destination buffer
 
@@ -75,7 +75,7 @@ II. Basic Functions
 
         Retrieves the House-DOS creator string.
 
-    GET CPU BRAND STRING
+    GET_CPU_BRAND_STRING
         AH = 0xB2
         DI = Destination buffer
 
@@ -89,7 +89,7 @@ III. Object/Data Functions
 
     AH = 0x80: STRING OPERATIONS
 
-        COMPARE STRINGS
+        STRING_COMPARE
             AL = 0x00
             SI = String A Location
             DI = String B Location
@@ -99,7 +99,7 @@ III. Object/Data Functions
 
             Compares two strings.
 
-        FIND SUBSTRING IN STRING
+        STRING_FIND_SUBSTRING
             AL = 0x01
             SI = String Location
             BX = Starting index for search (0 = start of string)
@@ -111,21 +111,21 @@ III. Object/Data Functions
 
             Finds the first instance of a substring within a string, given certain bounds.
 
-        CONVERT TO UPPERCASE
+        STRING_UPCASE
             AL = 0x10
             SI = String Location
             DI = Destination buffer
 
             Converts all characters in a string to uppercase.
 
-        CONVERT TO LOWERCASE
+        STRING_DOWNCASE
             AL = 0x11
             SI = String Location
             DI = Destination buffer
 
             Converts all characters in a string to lowercase.
 
-        GET SUBSTRING (INDEX-LENGTH)
+        STRING_SUBSTRING_IQ
             AL = 0x12
             SI = String Location
             BX = Starting index
@@ -137,7 +137,7 @@ III. Object/Data Functions
 
             Gets a substring from a string.
 
-        GET SUBSTRING (INDEX-INDEX)
+        STRING_SUBSTRING_INDICES
             AL = 0x13
             SI = String Location
             BX = Starting index
@@ -149,14 +149,14 @@ III. Object/Data Functions
 
             Gets a substring from a string.
 
-        CHOMP LEADING SPACES
+        STRING_CHOMP_LEASING_SPACES
             AL = 0x18
             SI = String Location
             DI = Destination buffer
 
             Chomps any leading spaces off of a string.
 
-        GET LENGTH
+        STRING_LENGTH
             AL = 0x20
             SI = String Location
 
@@ -168,7 +168,7 @@ III. Object/Data Functions
 
     AH = 0x81: LIST OPERATIONS
 
-        GET ITEM
+        LIST_ITEM
             AL = 0x00
             CX = Index of item
             SI = List Location
@@ -179,7 +179,7 @@ III. Object/Data Functions
 
             Retrieves a specific item from a comma-separated list.
 
-        GET TOTAL ITEMS
+        LIST_TOTAL
             AL = 0x01
             SI = List Location
 
@@ -191,25 +191,25 @@ III. Object/Data Functions
 
     AH = 0x82: NUMBER OPERATIONS
 
-        PRINT WORD AS HEX
+        INT_HEX
             AL = 0x00
             DX = Number to print
 
             Prints integer as hexadecimal notation at cursor position.
 
-        PRINT BYTE AS HEX
+        BYTE_HEX
             AL = 0x01
             DL = Number to print
 
             Prints byte as hexadecimal notation at cursor position.
 
-        PRINT WORD AS DECIMAL
+        INT_DEC
             AL = 0x02
             DX = Number to print
 
             Prints integer as decimal notation at cursor position.
 
-        PRINT BYTE AS DECIMAL
+        BYTE_DEC
             AL = 0x03
             DL = Number to print
 
@@ -217,13 +217,13 @@ III. Object/Data Functions
 
     AH = 0x83: DATE OPERATIONS
 
-        PRINT UNIX TIME AS DATESTAMP
+        UNIXTIME_DATESTAMP
             AL = 0x00
             DX:BX = UNIX timestamp
 
             Prints UNIX timestamp as ASCII YYYY-MM-DD datestamp.
 
-        PRINT UNIX TIME AS TIMESTAMP
+        UNIXTIME_TIMESTAMP
             AL = 0x01
             DX:BX = UNIX timestamp
 
@@ -232,7 +232,7 @@ III. Object/Data Functions
 
 IV. Logic Functions
 
-    CONVERT WORD TO HEX
+    INT_HEX_MEM
         AH = 0xF0
         DX = Value to convert
         DI = 4-byte output buffer
@@ -240,7 +240,7 @@ IV. Logic Functions
         Converts the value in DX into ASCII hexadecimal notation, which is stored in the four-
         byte output buffer.
 
-    CONVERT WORD TO UNSIGNED ASCII DECIMAL
+    INT_DEC_MEM
         AH = 0xF1
         DX = Value to convert
         DI = 5-byte output buffer
@@ -248,7 +248,7 @@ IV. Logic Functions
         Converts the value in DX into ASCII decimal notation (unsigned), which is stored in the
         five-byte output buffer.
 
-    CONVERT HEX TO WORD
+    HEX_INT_MEM
         AH = 0xF2
         SI = 4-byte input buffer
 
@@ -259,7 +259,7 @@ IV. Logic Functions
         Converts the ASCII hexadecimal number in the four-byte input buffer to a word-size binary
         value in DX.
 
-    CONVERT ASCII DECIMAL TO WORD
+    DEC_INT_MEM
         AH = 0xF3
         SI = 5-byte input buffer
 
@@ -270,7 +270,7 @@ IV. Logic Functions
         Converts the ASCII decimal number in the five-byte input buffer to a word-size binary
         value in DX.
 
-    CONVERT BYTE TO HEX
+    BYTE_HEX_MEM
         AH = 0xF4
         DL = Value to convert
         DI = 2-byte output buffer
@@ -278,7 +278,7 @@ IV. Logic Functions
         Converts the value in DL into ASCII hexadecimal notation, which is stored in the two-
         byte output buffer.
 
-    CONVERT BYTE TO UNSIGNED ASCII DECIMAL
+    BYTE_DEC_MEM
         AH = 0xF5
         DL = Value to convert
         DI = 3-byte output buffer
@@ -286,7 +286,7 @@ IV. Logic Functions
         Converts the value in DL into ASCII decimal notation (unsigned), which is stored in the
         three-byte output buffer.
 
-    CONVERT HEX TO BYTE
+    HEX_BYTE_MEM
         AH = 0xF6
         SI = 2-byte input buffer
 
@@ -297,7 +297,7 @@ IV. Logic Functions
         Converts the ASCII hexadecimal number in the two-byte input buffer to a byte-size binary
         value in DX.
 
-    CONVERT ASCII DECIMAL TO BYTE
+    DEC_BYTE_MEM
         AH = 0xF7
         SI = 3-byte input buffer
 
@@ -308,7 +308,7 @@ IV. Logic Functions
         Converts the ASCII decimal number in the three-byte input buffer to a byte-size binary
         value.
 
-    CONVERT UNIX TIME TO SECONDS/DAYS
+    DISASSEMBLE_UNIXTIME
         AH = 0xD1
         DX:BX = UNIX timestamp
 
@@ -318,14 +318,14 @@ IV. Logic Functions
 
         Returns the number of seconds since 00:00:00 and the number of days since 1970-01-01.
 
-    CONVERT UNIX TIME TO ASCII TIMESTAMP
+    UNIXTIME_TIMESTAMP_MEM
         AH = 0xD2
         DX:BX = UNIX timestamp
         DI = 8-byte output buffer
 
         Stores the current time in HH:MM:SS form in the buffer pointed to by DI.
 
-    CONVERT UNIX TIME TO ASCII DATESTAMP
+    UNIXTIME_DATESTAMP_MEM
         AH = 0xD3
         DX:BX = UNIX timestamp
         DI = 10-byte output buffer
@@ -335,19 +335,19 @@ IV. Logic Functions
 
 V. Interface Functions
 
-    PRINT-STRING
+    PRINT
         AH = 0x01
         SI = String location
 
         Prints out the string in SI in teletype mode.
 
-    PRINT LINE
+    PRINT_LINE
         AH = 0x02
         SI = String location
 
         Prints out the string in SI in teletype mode, and then moves the cursor to the next line.
 
-    REQUEST CONFIRMATION
+    CONFIRM
         AH = 0x03
 
         Return:
@@ -356,7 +356,7 @@ V. Interface Functions
         Prompts the user to give confirmation before proceeding. The carry-flag will be set if
         confirmation was not given.
 
-    GET KEYBOARD INPUT
+    INPUT
         AH = 0x04
         DI = Buffer location
         CX = Size of buffer
@@ -367,53 +367,55 @@ V. Interface Functions
         Retrieves user input through the keyboard. Any input will be printed out in teletype
         mode, and the input will be stored in the buffer pointed to by DI.
 
-    LINE-BREAK
+    LINE_BREAK
         AH = 0x05
 
         Moves the cursor to the far left of the next line down.
 
-    CLEAR SCREEN
+    CLEAR_SCREEN
         AH = 0x06
 
         Clears the screen.
 
-    SHOW/HIDE CURSOR
+    SHOW_HIDE_CURSOR
         AH = 0x07
         CF = Cleared for show, set for hide
 
         Shows or hides the cursor.
 
-    SET CURSOR POSITION
+    SET_CURSOR_POSITION
         AH = 0x08
         DH = Row number
         DL = Col number
 
         Moves the cursor to the specified position.
 
-    PAUSE FOR KEYPRESS
+    PAUSE
         AH = 0x09
 
         Pauses execution until a key is pressed.
 
-    SET ENTIRE SCREEN ATTRIBUTE
+    SET_SCREEN_ATTRIBUTE
         AH = 0x0A
         BL = Attribute (Bits 0-3 = Foreground color, Bits 4-6 = Background color, Bit 7 = Blink)
 
         Sets the foreground/background color of the entire screen.
 
-    PRINT STRING FORMATTED
+    PRINT_FORMATTED
         AH = 0x0B
         BL = Attribute
+        SI = String location
 
         Prints a string in a specific color.
 
-    PRINT LINE FORMATTED
+    PRINT_LINE_FORMATTED
         AH = 0x0C
         BL = Attribute
+        SI = String location
 
         Prints a string in a specific color, and then moves the cursor to the next line.
 
-    GET CURSOR POSITION
+    GET_CURSOR_POSITION
         AH = 0x0D
 
         Return:
@@ -422,7 +424,7 @@ V. Interface Functions
 
         Returns the cursor's current position.
 
-    GET INTERFACE CONFIG
+    GET_IFACE_CONFIG
         AH = 0x0E
 
         Return:
@@ -430,20 +432,20 @@ V. Interface Functions
 
         Retrieves the value of the interface configuration byte.
 
-    SET INTERFACE CONFIG
+    SET_IFACE_CONFIG
         AH = 0x0F
         AL = New value (Bit 0 = Error messages off, Bit 1 = Commentary off, Bit 2 = List Hidden Files)
 
         Changes the interface configuration for the command.
 
-    PRINT BYTES
+    PRINT_BYTES
         AH = 0x10
         SI = Source
         CX = Number of characters
 
         Prints out specified number of characters from source. BS (0x08) is printed as a char.
 
-    DRAW BLOCK
+    DRAW_BLOCK
         AH = 0x11
         AL = Char ASCII code
         BL = Color (Bit 0 = Blue, Bit 1 = Green, Bit 2 = Red, Bit 3 = Intensity)
@@ -453,7 +455,7 @@ V. Interface Functions
 
         Draws a block of a specific length, color, and character starting at the specified spot.
 
-    GET CURRENT KEYBOARD CHARACTER
+    GET_KEYBOARD_STATUS
         AH = 0x12
 
         Return:
@@ -463,25 +465,25 @@ V. Interface Functions
 
         Returns the scan code and ASCII code of the key being pressed on the keyboard.
 
-    INDENT CURSOR
+    INDENT_CURSOR
         AH = 0x13
         DL = Col number
 
         Moves the cursor to the specified col while keeping it in the same row.
 
-    ADVANCE CURSOR
+    ADVANCE_CURSOR
         AH = 0x14
 
         Moves the cursor ahead one character.
 
-    PRINT LITERAL BYTES
+    PRINT_BYTES_LITERAL
         AH = 0x18
         SI = Source
         CX = Number of characters
 
         Similar to PRINT BYTES except newline (0x0A) is printed as a char.
 
-    GET PARAMETER
+    GET_PARAM
         AH = 0x20
         CX = Item index (0 = first item)
         DI = Output buffer
@@ -491,7 +493,7 @@ V. Interface Functions
 
         Retrieves a certain parameter from the command input by the user.
 
-    GET TOTAL PARAMETERS
+    GET_PARAMS_TOTAL
         AH = 0x21
 
         Return:
@@ -499,7 +501,7 @@ V. Interface Functions
 
         Gets the number of parameters given to the command.
 
-    GET PARAMETER AS 16-BIT INTEGER
+    GET_PARAM_INT
         AH = 0x22
         CX = Item index (0 = first item)
 
@@ -509,7 +511,7 @@ V. Interface Functions
 
         Retrieves a certain parameter as a 16-bit integer (converted from decimal).
 
-    GET PARAMETER AS 8-BIT INTEGER
+    GET_PARAM_INT8
         AH = 0x23
         CX = Item index (0 = first item)
 
@@ -519,7 +521,7 @@ V. Interface Functions
 
         Retrieves a certain parameter as an 8-bit integer (converted from decimal).
 
-    GET PARAMETER AS BYTE
+    GET_PARAM_BYTE
         AH = 0x24
         CX = List item (0 = first item)
 
@@ -529,7 +531,7 @@ V. Interface Functions
 
         Retrieves a certain parameter as a byte (ASCII code).
 
-    CHECK IF FLAGS WERE USED
+    CHECK_FLAGS_USED
         AH = 0x26
 
         Return:
@@ -537,7 +539,7 @@ V. Interface Functions
 
         Checks if any flags were input as part of the command.
 
-    CHECK FLAG
+    CHECK_FLAG
         AH = 0x27
         AL = Flag ASCII code
 
@@ -547,7 +549,7 @@ V. Interface Functions
 
         Checks if a certain flag was specified by the user.
 
-    LOAD FILE FIRST PARAMETER
+    LOAD_FILE_PARAM1
         AH = 0x28
 
         Return:
@@ -556,7 +558,7 @@ V. Interface Functions
         Gets the first parameter, clears the file buffer, and attempts to load the file with that
         name, should it exist. The file is now verified.
 
-    LOAD FILE PARAMETER TO OFFSET
+    LOAD_FILE_PARAM_OFFSET
         AH = 0x29
         DI = Offset from file buffer to load into
         CX = Parameter with filename
@@ -567,7 +569,7 @@ V. Interface Functions
         Gets a certain parameter and attempts to load the file with that name to a specific
         offset. The file is now verified.
 
-    VERIFY PARAMETER FILENAME
+    VERIFY_FILE_PARAM
         AH = 0x2A
         CX = Parameter with filename
 
@@ -577,13 +579,13 @@ V. Interface Functions
         Verifies that a file with the filename given in a specific parameter exists, and sets up
         for loading tha file.
 
-    INFO MESSAGE
+    INFO_MSG
         AH = 0x30
         SI = String Location
 
         Prints a string as an INFO message.
 
-    WARN MESSAGE
+    WARN_MSG
         AH = 0x31
         SI = String Location
 
@@ -595,7 +597,7 @@ V. Interface Functions
 
 VI. Disk Functions
 
-    VERIFY FILE EXISTS
+    VERIFY
         AH = 0x60
         SI = X.3 filename
 
@@ -604,7 +606,7 @@ VI. Disk Functions
 
         Verifies that a file with the given filename exists, and sets up for loading that file.
 
-    LOAD FILE
+    LOAD_FILE
         AH = 0x61
 
         Return:
@@ -612,7 +614,7 @@ VI. Disk Functions
 
         Clears the file buffer and loads the file that was just verified into it.
 
-    GET BYTES (INDEX-QUANTITY)
+    GET_BYTES_IQ
         AH = 0x62
         SI = Byte to start at
         CX = Number of bytes
@@ -625,7 +627,7 @@ VI. Disk Functions
         Gets a certain quantity of bytes from the file buffer starting at the given index, and
         stores that in the destination buffer.
 
-    GET BYTES (INDEX-INDEX)
+    GET_BYTES_INDICES
         AH = 0x63
         SI = Byte to start at
         CX = Byte to stop at (non-inclusive)
@@ -638,7 +640,7 @@ VI. Disk Functions
         Gets bytes from file buffer between the two indexes, and stores that in the destination
         buffer.
 
-    GET LINE
+    GET_LINE
         AH = 0x64
         CX = Line number
         DI = Destination buffer
@@ -649,7 +651,7 @@ VI. Disk Functions
 
         Gets a certain line from the file buffer, and stores that in the destination buffer.
 
-    GET LINE ADDRESS
+    GET_LINE_ADDR
         AH = 0x65
         CX = Line number
 
@@ -659,7 +661,7 @@ VI. Disk Functions
 
         Gets the address of a certain line.
 
-    LOAD FILE TO OFFSET
+    LOAD_FILE_OFFSET
         AH = 0x66
         DI = Offset from file buffer to load into
 
@@ -668,7 +670,7 @@ VI. Disk Functions
 
         Loads the file that was just verified into the specified offset from the file buffer.
 
-    GET LINE/COL FROM ADDRESS
+    CONV_ADDR_LINE_COL
         AH = 0x67
         SI = Address
 
@@ -678,7 +680,7 @@ VI. Disk Functions
 
         Gets the line and column from a specified address.
 
-    WRITE BYTES (INDEX-QUANTITY)
+    WRITE_BYTES_IQ
         AH = 0x68
         SI = Source buffer
         CX = Number of bytes
@@ -691,7 +693,7 @@ VI. Disk Functions
         WRITES a certain quantity of bytes from the source buffer into the file buffer at the
         given index.
 
-    WRITE BYTES (INDEX-INDEX)
+    WRITE_BYTES_INDICES
         AH = 0x69
         SI = Source buffer
         CX = End of source buffer
@@ -704,7 +706,7 @@ VI. Disk Functions
         WRITES bytes from the buffer between the two indexes into the file buffer at the given
         index.
 
-    WRITE LINE
+    WRITE_LINE
         AH = 0x6A
         SI = Source buffer
         CX = Line number
@@ -713,19 +715,19 @@ VI. Disk Functions
         CX = Bytes offset
         CF = Set on error
 
-        WRITES a certain quantity of lines from the source buffer into the file buffer at the
-        given line number.
+        WRITES a line from the source buffer into the file buffer at the given line number.
 
-    INSERT BYTES (INDEX-QUANTITY)
+    INSERT_BYTES_IQ
         AH = 0x6B
         SI = Source buffer
         CX = Number of bytes
         DI = Byte to start writing at
 
         INSERTS a certain quantity of bytes from the source buffer into the file buffer at the
-        given index.
+        given index. Negative numbers (above 32,767) will simply shift bytes in the buffer to the
+        left, without writing any new data.
 
-    INSERT BYTES (INDEX-INDEX)
+    INSERT_BYTES_INDICES
         AH = 0x6C
         SI = Source buffer
         CX = End of source buffer
@@ -734,7 +736,7 @@ VI. Disk Functions
         INSERTS bytes from the buffer between the two indexes into the file buffer at the given
         index.
 
-    INSERT LINE
+    INSERT_LINE
         AH = 0x6D
         SI = Source buffer
         CX = Line number
@@ -745,12 +747,12 @@ VI. Disk Functions
 
         INSERTS a line from the source buffer into the file buffer at the given line number.
 
-    CLEAR ENTIRE BUFFER
+    CLEAR_BUFFER
         AH = 0x6E
 
         Overwrites everything in the file buffer with zeroes.
 
-    WRITE TO DISK
+    WRITE_TO_DISK
         AH = 0x6F
         SI = X.3 filename (or 0x0000)
         CX = File size
@@ -761,7 +763,7 @@ VI. Disk Functions
         Write file with given filename to disk. If SI is 0, then the most recently verified file
         will be used.
 
-    GET FILE SIZE
+    GET_SIZE_FILE
         AH = 0x70
 
         Return:
@@ -769,7 +771,7 @@ VI. Disk Functions
 
         Returns the size of the file last verified.
 
-    GET FILE CREATION DATE
+    GET_CREATION_DATE_FILE
         AH = 0x71
 
         Return:
@@ -777,7 +779,7 @@ VI. Disk Functions
 
         Returns the creation date/time of the file last verified in the form of a UNIX timestamp.
 
-    GET FILE ACCESS DATE
+    GET_ACCESS_DATE_FILE
         AH = 0x72
 
         Return:
@@ -785,7 +787,7 @@ VI. Disk Functions
 
         Returns the access date of the file last verified in the form of a UNIX timestamp.
 
-    GET FILE WRITE DATE
+    GET_WRITE_DATE_FILE
         AH = 0x73
 
         Return:
@@ -793,7 +795,7 @@ VI. Disk Functions
 
         Returns the write date/time of the file last verified in the form of a UNIX timestamp.
 
-    CHECK FILE READ-ONLY
+    CHECK_FILE_READONLY
         AH = 0x74
 
         Return:
@@ -801,7 +803,7 @@ VI. Disk Functions
 
         Sets the carry flag if the file last verified is read-only.
 
-    CHECK FILE HIDDEN
+    CHECK_FILE_HIDDEN
         AH = 0x75
 
         Return:
@@ -809,7 +811,7 @@ VI. Disk Functions
 
         Sets the carry flag if the file last verified is hidden.
 
-    CHECK FILE SYSTEM
+    CHECK_FILE_SYSTEM
         AH = 0x76
 
         Return:
@@ -817,13 +819,13 @@ VI. Disk Functions
 
         Sets the carry flag if the file last verified is an important system file.
 
-    GET LIST OF FILES
+    GET_FILE_LIST
         AH = 0x77
         DI = Output buffer
 
         Returns a comma-separated list of files from the root directory.
 
-    RENAME FILE
+    RENAME_FILE
         AH = 0x78
         SI = X.3 filename to rename to
 
@@ -832,7 +834,7 @@ VI. Disk Functions
 
         Renames the verified file.
 
-    DELETE FILE
+    DELETE_FILE
         AH = 0x79
 
         Return:
@@ -840,7 +842,7 @@ VI. Disk Functions
 
         Deletes the verified file.
 
-    HIDE/REVEAL FILE
+    HIDE_REVEAL_FILE
         AH = 0x7A
         CF = Set to reveal, cleared to hide
 
@@ -849,7 +851,7 @@ VI. Disk Functions
 
         Hides/reveals the verified file.
 
-    ROLLBACK FILESYSTEM
+    ROLLBACK
         AH = 0x7E
 
         Return:
@@ -858,7 +860,7 @@ VI. Disk Functions
         Re-loads the FAT and directory from the disk into memory, thereby getting rid of all
         filesystem changes since last apply.
 
-    APPLY FILESYSTEM CHANGES
+    APPLY
         AH = 0x7F
 
         Return:
@@ -870,7 +872,7 @@ VI. Disk Functions
 
 VII. Miscellaneous Functions
 
-    GENERATE RANDOM NUMBER
+    GEN_RANDOM_NUMBER
         AH = 0xA0
 
         Return:
@@ -878,18 +880,18 @@ VII. Miscellaneous Functions
 
         Generates and returns a very poorly-generated pseudo-random number.
 
-    GENERATE RANDOM NUMBER SEED
+    GEN_NEW_SEED
         AH = 0xA1
 
-        Generates a new random seed. (Is ineffective if used multiple times a second.)
+        Generates a new random number seed. (Ineffective if used multiple times a second.)
 
-    SLEEP MILLISECONDS
+    SLEEP_MILLIS
         AH = 0xC0
         CX = Number of milliseconds
 
         Halts execution for the specified number of milliseconds.
 
-    SLEEP FRAMES
+    SLEEP_FRAMES
         AH = 0xC1
         BX = Framerate/Frequency
         CX = Number of frames
@@ -897,13 +899,13 @@ VII. Miscellaneous Functions
         Halts instruction for the specified number of frames if a frame is 1/Frequency seconds
         long.
 
-    PC SPEAKER TONE
+    PC_SPEAKER_TONE
         AH = 0xC2
         DX = Frequency (Hz)
 
         Plays tone of specified frequency on the PC speaker.
 
-    MUTE PC SPEAKER
+    PC_SPEAKER_MUTE
         AH = 0xC3
 
         Stops the PC speaker until a new tone is played.
