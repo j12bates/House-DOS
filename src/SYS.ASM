@@ -85,7 +85,7 @@ main:                                           ; Main code for House-DOS kernel
 
 
 command:                                        ; Main loop: Retrieve command from user
-    popf                                        ; Get this out of the stack...
+    popf                                        ; Get this out of the stack
     call setup_segments                         ; We're going to be using and writing to kernel variables
 
     mov byte [header_offset], 0x00              ; Reset header offset
@@ -398,7 +398,7 @@ check_flag:                                     ; Check if flag was set
     ja .invalid                                 ; If so, not a valid flag
 
 .check:
-    mov cx, 0x24                                ; 36 bytes in the buffer (36 valid characters)
+    mov cx, 0x0024                              ; 36 bytes in the buffer (36 valid characters)
     mov di, param_flags                         ; Our flag buffer
     cld                                         ; Ensure correct direction
 
@@ -634,7 +634,7 @@ init:                                           ; Initialization code
     mov di, si                                  ; Write to where we're reading
     call str_chomp                              ; Chomp leading spaces
 
-    jmp .autoexec                               ; Skip over this subroutine
+    jmp .noise                                  ; Skip over this subroutine
 
 .cpu_string:
     cpuid                                       ; Get CPU info
@@ -646,6 +646,30 @@ init:                                           ; Initialization code
 
     add di, 0x0010                              ; Move our pointer ahead
     ret                                         ; Return to caller
+
+.noise:
+    mov dx, 0x0106                              ; C4
+    call conv_hz_freq                           ; Convert to a frequency number
+    call speaker_tone                           ; Play on PC speaker
+
+    mov cx, 0x00C0                              ; Some number of milliseconds
+    call sleep                                  ; Pause execution
+
+    mov dx, 0x0188                              ; G4
+    call conv_hz_freq                           ; Convert to a frequency number
+    call speaker_tone                           ; Play on PC speaker
+
+    mov cx, 0x0060                              ; Half the time
+    call sleep                                  ; Pause execution
+
+    mov dx, 0x020C                              ; C5
+    call conv_hz_freq                           ; Convert to a frequency number
+    call speaker_tone                           ; Play on PC speaker
+
+    mov cx, 0x0120                              ; 1 1/2 times the original time
+    call sleep                                  ; Pause execution
+
+    call speaker_off                            ; Mute PC speaker
 
 .autoexec:
     mov si, info_os
@@ -684,7 +708,7 @@ exec:                                           ; Execution code
     mov al, 0x43                                ; 'C' for commentary
     int 0x7E
 
-    jne .hidden                                 ; If not set, proceed
+    je .hidden                                  ; If set, proceed
     or bl, 0b00000010                           ; Otherwise, set commentary bit
 
 .hidden:
@@ -1403,7 +1427,7 @@ data_routines:                                  ; Data functions
     call conv_rtcdate_stamp                     ; Convert to datestamp
 
     mov si, di                                  ; Print from our buffer
-    mov cx, 0x0A                                ; 10 bytes in a datestamp
+    mov cx, 0x000A                              ; 10 bytes in a datestamp
     call print_bytes                            ; Print bytes
 
     popa                                        ; Restore register states
@@ -1420,7 +1444,7 @@ data_routines:                                  ; Data functions
     call conv_rtctime_stamp                     ; Convert to timestamp
 
     mov si, di                                  ; Print from our buffer
-    mov cx, 0x08                                ; 8 bytes in a timestamp
+    mov cx, 0x0008                              ; 8 bytes in a timestamp
     call print_bytes                            ; Print bytes
 
     popa                                        ; Restore register states
@@ -1684,8 +1708,8 @@ disk_routines:                                  ; Disk functions
 
     call data_binseg                            ; We want to access data from the command
 
-    cmp cx, 0x0000                              ; Is our counter zero?
-    je int_ret                                  ; If so, avoid an endless loop
+    cmp cx, 0x0000                              ; Is our counter zero? Is it negative?
+    jle int_ret                                 ; If so, avoid an endless loop, or don't overwrite shifted byets
 
     push cx                                     ; Save register states to stack
 
@@ -2043,8 +2067,8 @@ init_byte           db 0x00
 break_byte          db 0x00
 header_offset       db 0x00
 
-config_iface        db 0x00
-config_sys_iface    db 0x00
+config_iface        db 0b00000000
+config_sys_iface    db 0b00000010
 
 null                db 0x00
 
@@ -2054,11 +2078,11 @@ desc                db "The kernel. Use to modify kernel configurations.", 0x00
 usage               db "SYS", 0x0A
                     db "Flags:", 0x0A
                     db "E - Don't display errors", 0x0A
-                    db "C - Don't display commentary", 0x0A
-                    db "H - Display hidden files", 0x00
+                    db "C - Display commentary", 0x0A
+                    db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1 NATE, Build 40; Compiled 2020-12-29", 0x00
+info_os             db "House-DOS v0.1 NATE, Build 41; Compiled 2021-01-01", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

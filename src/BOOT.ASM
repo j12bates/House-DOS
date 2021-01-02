@@ -1,4 +1,8 @@
-; The HouseDOS Bootloader
+; ========================================================================
+; House-DOS BOOTLOADER
+;
+; Written by Jacob Bates
+; ========================================================================
 
     BITS 16
 
@@ -6,10 +10,11 @@
     nop
 
 
+; ========================================================================
 ; BIOS Parameter Block
-; This was made to match up with the BPB of a blank 32M image formatted as FAT16.
+; ========================================================================
 
-OEM                 db "HDOSNATE"       ; OEM ID
+OEM                 db "HDOSNATE"       ; OEM label
 bytes_sector        dw 0x0200           ; Number of bytes per sector (DO NOT CHANGE)
 sectors_cluster     db 0x04             ; Number of sectors per cluster
 reserved            dw 0x0001           ; Number of sectors reserved for bootsector
@@ -30,14 +35,17 @@ label               db "NATE       "    ; Volume label
 filesystem          db "FAT16   "       ; Volume filesystem type
 
 
-; Main bootloader code
+; ========================================================================
+; MAIN PROCEDURE
+; ========================================================================
 
 main:
     mov ax, 0x07C0
     mov ds, ax                          ; Segment we're loaded at
+
     mov ax, 0x0800
     mov ss, ax                          ; Where we want the stack to be
-    mov sp, 0x8000                      ; Make the stack stretch up to the I/O buffer
+    mov sp, 0x4000                      ; 16K stack
 
     mov byte [drive_num], dl            ; Save boot drive number
 
@@ -164,14 +172,10 @@ main:
     mov si, word [cluster]              ; Our cluster number
     shl si, 0x1                         ; There are two bytes per entry in FAT16
 
-    push ds                             ; Save our data segment
-
     mov ax, 0x3000
-    mov ds, ax                          ; Segment where the FAT is loaded
+    mov es, ax                          ; Segment where the FAT is loaded
 
-    mov ax, word [ds:si]                ; DS:SI is pointing to the FAT entry
-
-    pop ds                              ; Return to the segment we are loaded in
+    mov ax, word [es:si]                ; SI is pointing to the FAT entry
     mov word [cluster], ax              ; The entry contains our next cluster
 
     cmp ax, 0xFFF8                      ; Is this the end of the file?
@@ -195,7 +199,9 @@ main:
     jmp 0x2000:0x0000                   ; Jump!
 
     
-; Calculation routines
+; ========================================================================
+; CALCULATION ROUTINES
+; ========================================================================
 
 calc_root_start:                        ; Calculate the first sector of the root directory
     push dx                             ; Push register states to stack
@@ -208,6 +214,7 @@ calc_root_start:                        ; Calculate the first sector of the root
     
     pop dx                              ; Restore register states
     ret                                 ; Return to caller
+
 
 calc_chs_ls:                            ; Setup Cylinder-Head-Sector from LBA (AX)
     mov dx, 0x0000
@@ -224,7 +231,9 @@ calc_chs_ls:                            ; Setup Cylinder-Head-Sector from LBA (A
     ret                                 ; Return to caller
 
 
-; Other routines
+; ========================================================================
+; MISCELLANEOUS ROUTINES
+; ========================================================================
 
 print_str:                              ; Print string in SI
     pusha                               ; Push register states to stack
@@ -237,6 +246,7 @@ print_str:                              ; Print string in SI
 
 .char:
     lodsb                               ; Load next character
+
     cmp al, 0x00                        ; Is it a NULL character?
     je .end                             ; If so, we are done
 
@@ -255,6 +265,7 @@ print_str:                              ; Print string in SI
     popa                                ; Restore register states
     ret                                 ; Return to caller
 
+
 reset_disk:                             ; Reset the disk
     push ax                             ; Push register states to stack
 
@@ -270,9 +281,11 @@ reset_disk:                             ; Reset the disk
     pop ax                              ; Otherwise, restore register states
     ret                                 ; Return to caller
 
+
 reboot_fatal:                           ; Display FATAL
     mov si, msg_fatal
     call print_str                      ; Print message
+
 
 reboot:                                 ; Prompt user to press a key and reboot
     mov si, msg_reboot
@@ -284,7 +297,9 @@ reboot:                                 ; Prompt user to press a key and reboot
     int 0x19                            ; Reboot
 
 
-; Data
+; ========================================================================
+; DATA SECTION
+; ========================================================================
 
 data:
 
@@ -303,6 +318,6 @@ buffer_pointer      dw 0x0000
 kern_filename       db "SYS     BIN"
 
 
-times 510-($-$$)    db 0x00             ; Pad remainder of bootsector with zeroes
+times 510 - ($-$$)  db 0x00             ; Pad remainder of bootsector with zeroes
 boot_sig            dw 0xAA55           ; Boot signature
 
