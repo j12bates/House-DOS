@@ -249,6 +249,7 @@ shift:                                          ; Shift everything from one poin
     sub si, cx                                  ; Subtract the offset to get the correct source index
 
     pop cx                                      ; Restore our index
+    inc cx                                      ; Avoid an O.B.O.E with index vs. qty
     neg cx                                      ; Negate it to get the total number of bytes to be moved
 
     std                                         ; Move from right to left

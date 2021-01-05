@@ -606,7 +606,9 @@ init:                                           ; Initialization code
 
     call random_seed                            ; Create a random number seed
 
-    call clear                                  ; Clear screen & reset video mode
+    mov ah, 0x00                                ; Set video mode
+    mov al, 0x03                                ; 80x25
+    int 0x10                                    ; BIOS VGA interrupt
 
     mov ax, 0x1003                              ; Configure attribute bit 7
     mov bl, 0x01                                ; Blink
@@ -811,6 +813,9 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x14
     je iface_routines.advance                   ; Advance cursor
+
+    cmp ah, 0x15
+    je iface_routines.key_blocking              ; Get next key
 
     cmp ah, 0x18
     je iface_routines.print_bytes_literal       ; Print literal bytes
@@ -1101,6 +1106,10 @@ iface_routines:                                 ; Interface functions
 
 .clear:
     call clear                                  ; Clear screen
+
+    mov dx, 0x0000                              ; Upper left corner
+    call move_cursor                            ; Set cursor position
+
     jmp int_ret                                 ; We're done!
 
 .cursor:
@@ -1158,7 +1167,7 @@ iface_routines:                                 ; Interface functions
     jmp int_ret                                 ; We're done!
 
 .key_nonblocking:
-    call get_key_nonblocking                    ; Get key
+    call get_key_nonblocking                    ; Get keyboard status
     jmp int_ret.preserve_flags                  ; We're done!
 
 .indent:
@@ -1167,6 +1176,10 @@ iface_routines:                                 ; Interface functions
 
 .advance:
     call advance_cursor                         ; Advance cursor
+    jmp int_ret                                 ; We're done!
+
+.key_blocking:
+    call get_key                                ; Get next key
     jmp int_ret                                 ; We're done!
 
 .print_bytes_literal:
@@ -2082,7 +2095,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1 NATE, Build 41; Compiled 2021-01-01", 0x00
+info_os             db "House-DOS v0.1 NATE, Build 42; Compiled 2021-01-04", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
