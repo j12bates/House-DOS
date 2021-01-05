@@ -476,6 +476,13 @@ V. Interface Functions
 
         Moves the cursor ahead one character.
 
+    GET_NEXT_KEY
+        AH = 0x15
+
+        Return:
+        AH = Key scan code
+        AL = ASCII code
+
     PRINT_BYTES_LITERAL
         AH = 0x18
         SI = Source

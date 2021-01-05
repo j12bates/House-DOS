@@ -31,13 +31,17 @@ Alternatively, you can download a disk image from [jetpham.com](http://jetpham.c
 A full and complete reference can be found in `docs/SYSCALL.TXT`. System calls are always being added.
 
 ## Features Coming Soon:
-Here are some features planned for the next release (v0.1), which is in the works:
-- Text Editor
-- Boot Screen
-- Interface configurations
-  - Within command
-  - System-wide
-- A Game
+Here are some features planned for the next release (v0.1.1), which is in the works:
+- I/O Buffer
+  - New system calls for reading/writing
+  - Pipelines & Continuity (`|`)
+  - Output Redirection (`>`)
+  - File Input (`<`)
+  - Basic Device Files
+    - Console
+    - Longer-Term Memory Buffer
+    - Null
+  - Updated stock programs
 - And much more...
 
 ## What I've Learned:

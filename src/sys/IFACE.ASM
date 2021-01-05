@@ -229,9 +229,15 @@ confirm:                                        ; Ask the user to confirm
 clear:                                          ; Clear screen
     pusha                                       ; Push register states to stack
 
-    mov ah, 0x00                                ; Set video mode
-    mov al, 0x03                                ; 80x25
-    int 0x10                                    ; BIOS VGA interrupt
+    mov ax, 0xB800                              ; VGA video memory
+    mov es, ax                                  ; Write to that segment
+    mov di, 0x0000                              ; Starting at the beginning
+
+    mov ax, 0x0700                              ; Black background, dim white foreground, SPACE character
+    mov cx, 0x07D0                              ; 2000 characters onscreen
+    cld                                         ; Ensure correct direction
+
+    rep stosw                                   ; Write words in to each space on the screen
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -581,9 +587,20 @@ screen_attribute:                               ; Set the attribute of all chara
     ret                                         ; Return to caller
 
 
-; GET KEY BEING PRESSED: Returns the scan code and ASCII code of whatever key is being pressed
+; GET NEXT KEY: Returns the scan code and ASCII code of the next key pressed; waits for a key
 ; IN: None
-; OUT: AH = Scan code, AL = ASCII code, CF = Set if no key
+; OUT: AH = Scan code; AL = ASCII code
+
+get_key:                                        ; Returns scan code/ASCII of next key pressed in AX
+    mov ah, 0x00                                ; Get next key
+    int 0x16                                    ; BIOS keyboard interrupt
+
+    ret                                         ; Return to caller
+
+
+; GET KEYBOARD STATUS: Returns the scan code and ASCII code of whatever key is being pressed
+; IN: None
+; OUT: AH = Scan code; AL = ASCII code; CF = Set if no key
 
 get_key_nonblocking:                            ; Returns scan code/ASCII of key pressed in AX, CF set if no key
     pusha                                       ; Save register states to stack
