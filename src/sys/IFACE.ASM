@@ -232,9 +232,11 @@ clear:                                          ; Clear screen
     mov ax, 0xB800                              ; VGA video memory
     mov es, ax                                  ; Write to that segment
     mov di, 0x0000                              ; Starting at the beginning
-    mov cx, 0x07D0                              ; 2000 characters onscreen
 
     mov ax, 0x0700                              ; Black background, dim white foreground, SPACE character
+    mov cx, 0x07D0                              ; 2000 characters onscreen
+    cld                                         ; Ensure correct direction
+
     rep stosw                                   ; Write words in to each space on the screen
 
     popa                                        ; Restore register states
