@@ -1,5 +1,5 @@
 ; ========================================================================
-; House-DOS KERNEL: MEMORY SUBSYSTEM
+; House-DOS KERNEL: BUFFER SUBSYSTEM
 ; 
 ; Written by Jacob Bates
 ; ========================================================================
@@ -7,14 +7,53 @@
     BITS 16
 
 ; ========================================================================
-; MEMORY ROUTINES
+; BUFFER ROUTINES
 ; ========================================================================
 
-; CLEAR FILE BUFFER: Overwrites everything in the file buffer with zeroes
+; OUTPUT BYTES: Outputs a certain nummber of bytes to the I/O buffer at the pointer location
+; IN: DS:SI = Source buffer; CX = Number of bytes; [buffer_pointer] = Destination index
+; OUT: [buffer_pointer] = Initial value + bytes copied
+
+out_bytes:                                      ; Output bytes to the I/O buffer
+    pusha                                       ; Save register states to stack
+
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, word [gs:buffer_pointer]            ; Write starting at our pointer
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes over
+
+    mov word [gs:buffer_pointer], di            ; Update buffer pointer
+    call update_endpoint                        ; Update buffer endpoint
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; OUTPUT BYTE: Outputs a byte to the I/O buffer at the pointer location
+; IN: AL = Byte to output; [buffer_pointer] = Destination index
+; OUT: [buffer_pointer] = Initial value + bytes copied
+
+out_byte:                                       ; Output byte to the I/O buffer
+    pusha                                       ; Save register states to stack
+
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, word [gs:buffer_pointer]            ; Write starting at our pointer
+
+    stosb                                       ; Write byte
+
+    inc word [gs:buffer_pointer]                ; Increment buffer pointer
+    call update_endpoint                        ; Update buffer endpoint
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CLEAR I/O BUFFER: Overwrites everything in the file buffer with zeroes
 ; IN: None
 ; OUT: None (segments)
 
-clear_file_buffer:                              ; Clear the file buffer (0x10000-0x1FFFF)
+clear_buffer:                                   ; Clear the I/O buffer (0x10000-0x1FFFF)
     pusha                                       ; Save register states to stack
 
     call extra_fileseg                          ; Write to the file buffer
@@ -25,6 +64,9 @@ clear_file_buffer:                              ; Clear the file buffer (0x10000
     cld                                         ; Ensure correct direction
 
     rep stosb                                   ; Move zeroes in (AL is already 0)
+
+    mov word [gs:buffer_pointer], 0x0000        ; Reset buffer pointer
+    mov word [gs:buffer_endpoint], 0x0000       ; Reset buffer endpoint
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -53,7 +95,7 @@ move_file_bin:                                  ; Load the file buffer as a bina
 
 ; GET ADDRESS OF LINE: Gets the memory address of a certain line in the input (file) buffer
 ; IN: CX = Line number
-; OUT: SI = Address of start of line, CF = Set on error
+; OUT: SI = Address of start of line; CF = Set on error
 
 get_line_addr:                                  ; Get address of specific line from file buffer
     pusha                                       ; Save register states to stack
@@ -97,7 +139,7 @@ get_line_addr:                                  ; Get address of specific line f
 
 ; GET LENGTH OF LINE: Gets the number of characters up to an including the next newline character
 ; IN: DS:SI = Start of line
-; OUT: CX = Number of characters, CF = Set if zero
+; OUT: CX = Number of characters; CF = Set if zero
 
 get_line_length:                                ; Get the number of characters up to the next newline (inclusive)
     pusha                                       ; Save register states to stack
@@ -180,7 +222,7 @@ addr_line_col:                                  ; Convert address to line/col
 
 
 ; WRITE LINE: Writes a line into the file buffer
-; IN: CX = Line number, DS:SI = Input buffer
+; IN: CX = Line number; DS:SI = Input buffer
 ; OUT: CF = Set on error
 
 write_line:                                     ; Write line to file buffer
@@ -229,7 +271,7 @@ write_line:                                     ; Write line to file buffer
 
 
 ; SHIFT FILE BUFFER: Shift everything past one point in the file buffer by a certain number of bytes
-; IN: CX = Number of bytes by which to offset right, SI = Starting index
+; IN: CX = Number of bytes by which to offset right; SI = Starting index
 ; OUT: None
 
 shift:                                          ; Shift everything from one point on by a certain number of chars
@@ -280,6 +322,28 @@ shift:                                          ; Shift everything from one poin
 
 
 ; ========================================================================
+; BUFFER SUBROUTINES
+; ========================================================================
+
+; UPDATE OUTPUT ENDPOINT: Update the pointer for the end of the output
+; IN: [buffer_pointer] = Current pointer value
+; OUT: [buffer_endpoint] = New total
+
+update_endpoint:                                ; Update the buffer total
+    pusha                                       ; Save register states to stack
+
+    mov ax, word [gs:buffer_pointer]            ; Our current buffer pointer
+    cmp ax, word [gs:buffer_endpoint]           ; Is our current pointer higher than the current endpoint?
+    jna .done                                   ; If not, we're done
+
+    mov word [gs:buffer_endpoint], ax           ; Otherwise, the new endpoint becomes our current pointer
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; ========================================================================
 ; SEGMENTATION SUBROUTINES
 ; ========================================================================
 
@@ -313,6 +377,26 @@ data_kernseg:                                   ; Sets the data segment to the k
     ret                                         ; Return to caller
 
 
+data_memseg:                                    ; Sets the data segment to the secondary buffer segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x5000
+    mov ds, ax                                  ; Segment the secondary buffer is at
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+extra_fileseg:                                  ; Sets the extra segment to the file buffer segment
+    push ax                                     ; Save register state to stack
+
+    mov ax, 0x1000
+    mov es, ax                                  ; Segment the file buffer is at
+
+    pop ax                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
 extra_binseg:                                   ; Sets the extra segment to the binary segment
     push ax                                     ; Save register state to stack
 
@@ -333,11 +417,11 @@ extra_kernseg:                                  ; Sets the extra segment to the 
     ret                                         ; Return to caller
 
 
-extra_fileseg:                                  ; Sets the extra segment to the file buffer segment
+extra_memseg:                                   ; Sets the extra segment to the secondary buffer segment
     push ax                                     ; Save register state to stack
 
-    mov ax, 0x1000
-    mov es, ax                                  ; Segment the file buffer is at
+    mov ax, 0x5000
+    mov es, ax                                  ; Segment the secondary buffer is at
 
     pop ax                                      ; Restore register state
     ret                                         ; Return to caller
@@ -348,6 +432,10 @@ extra_fileseg:                                  ; Sets the extra segment to the 
 ; ========================================================================
 
 mem_data:
+
+buffer_pointer      dw 0x0000                   ; Output buffer pointer
+buffer_endpoint     dw 0x0000                   ; Output endpoint
+mem_buffer_endpoint dw 0x0000                   ; Output endpoint (secondary buffer)
 
 iface_mem_clear     db "Clearing file buffer...", 0x00
 iface_mem_bin       db "Loading file into binary buffer...", 0x00

@@ -121,7 +121,7 @@ get_file_info:                                  ; Get an item (AL=offset) from a
 
 
 ; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
-; IN: [cluster] = Starting cluster number, [bytes_to_load] = File size (run get_file_cluster to set these up), [buffer_pointer] = Offset to load to
+; IN: [cluster] = Starting cluster number, [bytes_to_load] = File size (run get_file_cluster to set these up), [file_buffer_pointer] = Offset to load to
 ; OUT: CF = Set on error
 
 load_file:                                      ; Load file starting at cluster into buffer
@@ -159,7 +159,7 @@ load_file:                                      ; Load file starting at cluster 
 
 .copy:
     call extra_fileseg                          ; Copy into the file buffer
-    mov di, word [buffer_pointer]               ; At our pointer
+    mov di, word [file_buffer_pointer]          ; At our pointer
 
     mov ax, 0x3C00
     mov ds, ax                                  ; The segment where we just loaded the cluster
@@ -173,7 +173,7 @@ load_file:                                      ; Load file starting at cluster 
     pop cx                                      ; Restore our counter
     call data_kernseg                           ; We need to access kernel variables
 
-    mov word [buffer_pointer], di               ; Update our buffer pointer
+    mov word [file_buffer_pointer], di          ; Update our buffer pointer
     sub word [bytes_to_load], cx                ; Update the number of bytes to copy
     jz .done                                    ; If no more bytes, we're done
 
@@ -242,7 +242,7 @@ write_file:                                     ; Write file buffer to disk as f
 
     call data_kernseg                           ; The segment we are loaded at
 
-    mov word [buffer_pointer], 0x0000           ; Start reading from offset 0
+    mov word [file_buffer_pointer], 0x0000      ; Start reading from offset 0
 
 .pre_apply:
     mov si, iface_disk_applyw
@@ -377,7 +377,7 @@ write_file:                                     ; Write file buffer to disk as f
 
     mov ax, 0x1000
     mov es, ax                                  ; File buffer is in this segment
-    mov bx, word [buffer_pointer]               ; Read at this offset
+    mov bx, word [file_buffer_pointer]          ; Read at this offset
 
     mov ah, 0x03                                ; Write disk sectors
     mov al, byte [sectors_cluster]              ; 1 cluster
@@ -388,7 +388,7 @@ write_file:                                     ; Write file buffer to disk as f
 .next_cluster:
     mov ax, word [bytes_sector]
     mul word [sectors_cluster]
-    add word [buffer_pointer], ax               ; Advance pointer by one cluster
+    add word [file_buffer_pointer], ax          ; Advance pointer by one cluster
 
     mov ax, 0x3000
     mov es, ax                                  ; The segment in which the FAT is loaded
@@ -397,7 +397,7 @@ write_file:                                     ; Write file buffer to disk as f
     shl di, 0x1                                 ; There are 2 bytes per entry in FAT16
     mov bx, word [es:di]                        ; The FAT entry for this cluster
 
-    cmp word [buffer_pointer], cx               ; Have we finished writing the entire file?
+    cmp word [file_buffer_pointer], cx          ; Have we finished writing the entire file?
     jae .end_file                               ; If so, we need to do a few things
 
     cmp bx, 0x0000                              ; Was this cluster previously free?
@@ -1344,7 +1344,7 @@ hob_extension       db "HOB"
 drive_num           db 0x00
 cluster             dw 0x0000
 root_entry          dw 0x0000
-buffer_pointer      dw 0x0000
+file_buffer_pointer dw 0x0000
 buffer_segment      dw 0x0000
 bytes_to_load       dw 0x0000
 

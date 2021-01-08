@@ -85,7 +85,98 @@ II. Basic Functions
         Retrieves the CPU branding string.
 
 
-III. Object/Data Functions
+III. I/O Functions
+
+    AH = 0x40: BASIC OUTPUT
+
+        These system calls utilize a kernel variable for a pointer. Addresses need not be
+        provided as whatever output is provided will be written to the address contained in that
+        pointer; the pointer will then be advanced past that output. Only what has been written
+        to the buffer (and null characters between) will be output; any null characters after the
+        rightmost output will not be part of the ultimate output.
+
+        OUT_STRING
+            AL = 0x00
+            SI = String Location
+
+            Outputs a string.
+
+        OUT_STRING_LINE
+            AL = 0x01
+            SI = String Location
+
+            Outputs a string and a line break.
+
+        OUT_LINE_BREAK
+            AL = 0x02
+
+            Outputs a line break.
+
+        OUT_BYTES
+            AL = 0x10
+            SI = Source
+            CX = Number of Bytes
+
+            Outputs specified number of characters from source.
+
+        OUT_FILE
+            AL = 0x20
+
+            Return:
+            CF = Set on error
+
+            Outputs the last verified file.
+
+
+    AH = 0x41: BUFFER FUNCTIONS
+
+        CLEAR_BUFFER
+            AL = 0x00
+
+            Clears the I/O buffer.
+
+        SET_POINTER
+            AL = 0x10
+            DI = New pointer value
+
+            Sets the output buffer pointer.
+
+        SET_ENDPOINT
+            AL = 0x11
+            CX = New total value
+
+            Sets the output endpoint within the buffer.
+
+        GET_POINTER
+            AL = 0x12
+
+            Return:
+            DI = Current pointer value
+
+            Retrieves the current output buffer pointer.
+
+        GET_ENDPOINT
+            AL = 0x13
+
+            Return:
+            CX = Current endpoint
+
+            Retrieves the current output endpoint.
+
+    OUT_BYTE
+        AH = 0x42
+        AL = Byte to output
+
+        Outputs a certain byte.
+
+    SET_DEFAULT_DEV
+        AH = 0x43
+        AL = New device (0 = NUL, 1 = TTY, 2 = MEM)
+
+        Sets a new default device to write output to at the end of the command.
+
+
+IV. Object/Data Functions
 
     AH = 0x80: STRING OPERATIONS
 
@@ -230,7 +321,7 @@ III. Object/Data Functions
             Prints UNIX timestamp as ASCII HH:MM:SS timestamp.
 
 
-IV. Logic Functions
+V. Logic Functions
 
     INT_HEX_MEM
         AH = 0xF0
@@ -333,7 +424,7 @@ IV. Logic Functions
         Stores the current date in YYYY-MM-DD form in the buffer pointed to by DI.
 
 
-V. Interface Functions
+VI. Interface Functions
 
     PRINT
         AH = 0x01
@@ -602,7 +693,7 @@ V. Interface Functions
         Prints a string as a WARN message, then asks for confirmation.
 
 
-VI. Disk Functions
+VII. Disk Functions
 
     VERIFY
         AH = 0x60
@@ -754,7 +845,7 @@ VI. Disk Functions
 
         INSERTS a line from the source buffer into the file buffer at the given line number.
 
-    CLEAR_BUFFER
+    CLEAR_FILE_BUFFER
         AH = 0x6E
 
         Overwrites everything in the file buffer with zeroes.
@@ -877,7 +968,7 @@ VI. Disk Functions
         renames and deletions.
 
 
-VII. Miscellaneous Functions
+VIII. Miscellaneous Functions
 
     GEN_RANDOM_NUMBER
         AH = 0xA0

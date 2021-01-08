@@ -83,10 +83,13 @@ main:                                           ; Main code for House-DOS kernel
 
     mov byte [break_byte], 0x00                 ; Make sure break byte is off
 
+.output:
+    call default_out                            ; Output to default device
+
 
 command:                                        ; Main loop: Retrieve command from user
     popf                                        ; Get this out of the stack
-    call setup_segments                         ; We're going to be using and writing to kernel variables
+    call setup_segments                         ; Ensure segments are all ready
 
     mov byte [header_offset], 0x00              ; Reset header offset
 
@@ -261,14 +264,14 @@ command:                                        ; Main loop: Retrieve command fr
     jc .bad_command                             ; If error, bad command
 
     call get_file_cluster                       ; Get the starting cluster for our file
-    call clear_file_buffer                      ; Clear the file buffer
-    mov word [buffer_pointer], 0x0000           ; Load into the beginning of the buffer
+    call clear_buffer                           ; Clear the buffer
+    mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
 
     call load_file                              ; Load file into our file buffer
     jc command                                  ; If error, stop here
 
     call move_file_bin                          ; Move the contents into the binary buffer
-    call clear_file_buffer                      ; Clear the file buffer again
+    call clear_buffer                           ; Clear the buffer again
 
     call data_kernseg                           ; We're about to use some kernel variables
 
@@ -339,6 +342,7 @@ divide_zero:                                    ; Routine for if a DIVIDE_ZERO e
 ; ========================================================================
 
     %INCLUDE "sys/MEM.ASM"
+    %INCLUDE "sys/DEV.ASM"
     %INCLUDE "sys/DATA.ASM"
     %INCLUDE "sys/LOGIC.ASM"
     %INCLUDE "sys/IFACE.ASM"
@@ -426,6 +430,7 @@ setup_segments:                                 ; Setup DS and ES to the kernel 
     mov ax, 0x2000
     mov ds, ax
     mov es, ax                                  ; The segment we're loaded in
+    mov gs, ax                                  ; For use in immediately accessing kernel variables
 
     pop ax                                      ; Restore register state
     ret                                         ; Return to caller
@@ -742,6 +747,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x30                                ; Interface functions
     jb .iface_funcs
 
+    cmp ah, 0x60                                ; I/O Functions
+    jb .io_funcs
+
     cmp ah, 0x80                                ; Disk/FS functions
     jb .disk_funcs
 
@@ -855,6 +863,43 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x31
     je iface_routines.warn_msg                  ; WARN message
+
+.io_funcs:                                      ; I/O functions
+    cmp ax, 0x4000
+    je io_routines.string                       ; Output string
+
+    cmp ax, 0x4001
+    je io_routines.string_ln                    ; Output string with line break
+
+    cmp ax, 0x4002
+    je io_routines.line_break                   ; Output line break
+
+    cmp ax, 0x4010
+    je io_routines.bytes                        ; Output bytes
+
+    cmp ax, 0x4020
+    je io_routines.file                         ; Output file
+
+    cmp ax, 0x4100
+    je io_routines.clear                        ; Clear buffer
+
+    cmp ax, 0x4110
+    je io_routines.set_pointer                  ; Set pointer
+
+    cmp ax, 0x4111
+    je io_routines.set_endpoint                 ; Set endpoint
+
+    cmp ax, 0x4112
+    je io_routines.get_pointer                  ; Get pointer
+
+    cmp ax, 0x4113
+    je io_routines.get_endpoint                 ; Get endpoint
+
+    cmp ah, 0x42
+    je io_routines.byte                         ; Output byte
+
+    cmp ah, 0x43
+    je io_routines.dev                          ; Set default device ID
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -1073,6 +1118,98 @@ syscall_handler:                                ; System call handler
 ; SYSTEM CALL ROUTINES
 ; ========================================================================
 
+io_routines:                                    ; I/O functions
+
+.string:
+    push cx                                     ; Save register state to stack
+
+    call data_binseg                            ; Read data from the program
+
+    clc                                         ; Use DS:SI
+    call str_len                                ; Get string length
+    inc cx                                      ; Output the NULL character as well
+
+    call out_bytes                              ; Output bytes
+
+    pop cx                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
+.string_ln:
+    pusha                                       ; Save register states to stack
+
+    call data_binseg                            ; Read data from the program
+
+    clc                                         ; Use DS:SI
+    call str_len                                ; Get string length
+
+    call out_bytes                              ; Output bytes
+
+    mov al, 0x0A                                ; Newline character
+    call out_byte                               ; Output byte
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.line_break:
+    push ax                                     ; Save register state to stack
+
+    mov al, 0x0A                                ; Newline character
+    call out_byte                               ; Output byte
+
+    pop ax                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
+.bytes:
+    call data_binseg                            ; Read data from the program
+    call out_bytes                              ; Output bytes
+    jmp int_ret                                 ; We're done!
+
+.file:
+    pusha                                       ; Save register states to stack
+
+    call get_file_cluster                       ; Get file starting cluster
+
+    mov ax, word [buffer_pointer]               ; The buffer pointer
+    mov word [file_buffer_pointer], ax          ; Load the file there
+    call load_file                              ; Load file
+
+    mov ah, 0x1C                                ; File size
+    call get_file_info                          ; Retrieve from directory entry
+    add word [buffer_pointer], ax               ; Advance buffer pointer past the file
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.clear:
+    call clear_buffer                           ; Clear I/O buffer
+    jmp int_ret                                 ; We're done!
+
+.set_pointer:
+    mov word [buffer_pointer], di               ; Set output buffer pointer
+    call update_endpoint                        ; Update output endpoint
+    jmp int_ret                                 ; We're done!
+
+.set_endpoint:
+    mov word [buffer_endpoint], cx              ; Set output endpoint
+    jmp int_ret                                 ; We're done!
+
+.get_pointer:
+    mov di, word [buffer_pointer]               ; Get output buffer pointer
+    jmp int_ret                                 ; We're done!
+
+.get_endpoint:
+    mov cx, word [buffer_endpoint]              ; Get output endpoint
+    jmp int_ret                                 ; We're done!
+
+.byte:
+    call out_byte                               ; Output byte
+    jmp int_ret                                 ; We're done!
+
+.dev:
+    mov byte [default_dev], al                  ; Set default device ID
+    jmp int_ret                                 ; We're done!
+
+
 iface_routines:                                 ; Interface functions
 
 .print:
@@ -1271,7 +1408,7 @@ iface_routines:                                 ; Interface functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .param_file:
-    call clear_file_buffer                      ; Clear the file buffer
+    call clear_buffer                           ; Clear the buffer
 
     mov cx, 0x0000                              ; First parameter
     call verify_file_param                      ; Verify file from parameter
@@ -1280,7 +1417,7 @@ iface_routines:                                 ; Interface functions
 
     call get_file_cluster                       ; Get file starting cluster
 
-    mov word [buffer_pointer], 0x0000           ; Load into the beginning of the buffer
+    mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
     call load_file                              ; Load file
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1291,7 +1428,7 @@ iface_routines:                                 ; Interface functions
 
     call get_file_cluster                       ; Get file starting cluster
 
-    mov word [buffer_pointer], di               ; Our offset goes here in memory
+    mov word [file_buffer_pointer], di          ; Our offset goes here in memory
     call load_file                              ; Load file
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1600,8 +1737,8 @@ disk_routines:                                  ; Disk functions
 
 .load:
     call get_file_cluster                       ; Get the starting cluster of the verified file
-    call clear_file_buffer                      ; Clear the file buffer
-    mov word [buffer_pointer], 0x0000           ; Load into the beginning of the buffer
+    call clear_buffer                           ; Clear the buffer
+    mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
 
     call load_file                              ; Load the file into the file buffer
 
@@ -1668,7 +1805,7 @@ disk_routines:                                  ; Disk functions
 .load_offset:
     call get_file_cluster                       ; Get the starting cluster of the verified file
 
-    mov word [buffer_pointer], di               ; Put our offset in the correct place
+    mov word [file_buffer_pointer], di          ; Put our offset in the correct place
     call load_file                              ; Load the file into the file buffer
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1780,8 +1917,7 @@ disk_routines:                                  ; Disk functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .clear_buffer:
-    call clear_file_buffer                      ; Clear the file buffer
-
+    call clear_buffer                           ; Clear the file buffer
     jmp int_ret                                 ; We're done!
 
 .write:
@@ -2017,7 +2153,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2800 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2A00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2026,7 +2162,7 @@ times 0x2800 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022800
+input_buffer        dq 0x0000000000000000       ; 0x00022A00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2035,7 +2171,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022800
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022840
+params              dq 0x0000000000000000       ; 0x00022A40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2044,7 +2180,7 @@ params              dq 0x0000000000000000       ; 0x00022840
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022880
+misc_buffer         dq 0x0000000000000000       ; 0x00022A80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2053,7 +2189,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022880
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000228C0
+param_flags         dq 0x0000000000000000       ; 0x00022AC0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2076,12 +2212,13 @@ date_buffer         dq 0x0000000000000000
 
 time_buffer         dq 0x0000000000000000
 
-init_byte           db 0x00
-break_byte          db 0x00
-header_offset       db 0x00
+init_byte           db 0x00                     ; Have we been initialized?
+break_byte          db 0x00                     ; Are we supposed to interrupt the program?
+header_offset       db 0x00                     ; Which part of the header are we looking at?
 
-config_iface        db 0b00000000
-config_sys_iface    db 0b00000010
+config_iface        db 0b00000000               ; Temporary interface configuration
+config_sys_iface    db 0b00000010               ; Default interface configuration
+default_dev         db 0x01                     ; Default device to send output to (0 = NUL, 1 = TTY, 2 = MEM)
 
 null                db 0x00
 
@@ -2095,7 +2232,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1 NATE, Build 42; Compiled 2021-01-04", 0x00
+info_os             db "House-DOS v0.1 NATE, Build 43; Compiled 2021-01-08", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

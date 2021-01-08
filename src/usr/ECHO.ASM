@@ -1,5 +1,5 @@
 ; ========================================================================
-; House-DOS CAT COMMAND
+; House-DOS ECHO COMMAND
 ; 
 ; Written by Jacob Bates
 ; ========================================================================
@@ -26,33 +26,24 @@ main:
     mov ah, 0x21                        ; Get total parameters
     int 0x7E
 
-    mov word [files], cx                ; Save in memory
+    mov word [words], cx                ; Save in memory
     jcxz .done                          ; If zero, we're done
 
-.file:
+.word:
     push cx                             ; Preserve our counter
 
-    mov ah, 0x29                        ; Load file from parameter to offset
-    sub cx, word [files]                ; Subtract the total files
-    neg cx                              ; Negate to get the files in order
-    mov di, word [buffer_pointer]       ; Our pointer is our offset
+    mov ah, 0x20                        ; Get parameter
+    sub cx, word [words]                ; Subtract the total number of words
+    neg cx                              ; Negate to get the words in order
+    mov di, dest_buffer                 ; Our buffer
     int 0x7E
 
-    jc .done                            ; If error, we're done
-
-    mov ah, 0x70                        ; Get size of file
+    mov ax, 0x4000                      ; Output string
+    mov si, dest_buffer                 ; Our buffer
     int 0x7E
 
-    add word [buffer_pointer], ax       ; Add size to overall pointer/counter
-
-.next:
     pop cx                              ; Restore our counter
-    loop .file                          ; Repeat with next file
-
-.total:
-    mov ax, 0x4111                      ; Set endpoint
-    mov cx, word [buffer_pointer]       ; Our pointer
-    int 0x7E
+    loop .word                          ; Repeat with next file
 
 .done:
     mov ah, 0xFF                        ; We're done!
@@ -61,16 +52,11 @@ main:
 
 data:
 
-buffer_pointer  dw 0x0000
-files           dw 0x0000
-
-fname           dq 0x0000000000000000
-                dd 0x00000000
-                db 0x00
+words           dw 0x0000
 
 creator         db "House-DOS Developers", 0x00
-desc            db "Utility for concatenating and displaying file contents.", 0x00
-usage           db "CAT <FILENAME> *<FILENAME>* ...", 0x0A
+desc            db "Utility for echoing text to a device.", 0x00
+usage           db "ECHO *WORD* *WORD* ...", 0x0A
                 db "Flags: none", 0x00
 
 
