@@ -2232,7 +2232,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1 NATE, Build 43; Compiled 2021-01-08", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 43; Compiled 2021-01-08", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
