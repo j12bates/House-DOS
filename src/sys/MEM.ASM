@@ -325,9 +325,9 @@ shift:                                          ; Shift everything from one poin
 ; BUFFER SUBROUTINES
 ; ========================================================================
 
-; UPDATE BUFFER TOTAL: Update the counter for total bytes in the buffer
+; UPDATE OUTPUT ENDPOINT: Update the pointer for the end of the output
 ; IN: [buffer_pointer] = Current pointer value
-; OUT: [total_bytes] = New total
+; OUT: [buffer_endpoint] = New total
 
 update_endpoint:                                ; Update the buffer total
     pusha                                       ; Save register states to stack

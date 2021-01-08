@@ -1344,7 +1344,7 @@ hob_extension       db "HOB"
 drive_num           db 0x00
 cluster             dw 0x0000
 root_entry          dw 0x0000
-file_buffer_pointer      dw 0x0000
+file_buffer_pointer dw 0x0000
 buffer_segment      dw 0x0000
 bytes_to_load       dw 0x0000
 

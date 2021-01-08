@@ -279,8 +279,6 @@ command:                                        ; Main loop: Retrieve command fr
     cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
     jne .header                                 ; If so, don't execute
 
-    mov word [buffer_pointer], 0x0000           ; Reset I/O Buffer Pointer
-
     call segments_binary                        ; Set segments to the binary segment
     jmp 0x4000:0x0000                           ; Jump to our loaded binary
 
@@ -878,6 +876,9 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x4010
     je io_routines.bytes                        ; Output bytes
+
+    cmp ax, 0x4020
+    je io_routines.file                         ; Output file
 
     cmp ax, 0x4100
     je io_routines.clear                        ; Clear buffer
