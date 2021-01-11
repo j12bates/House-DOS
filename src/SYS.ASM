@@ -747,8 +747,11 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x30                                ; Interface functions
     jb .iface_funcs
 
-    cmp ah, 0x60                                ; I/O Functions
-    jb .io_funcs
+    cmp ah, 0x50                                ; Output Functions
+    jb .out_funcs
+
+    cmp ah, 0x60                                ; Input functions
+    jb .in_funcs
 
     cmp ah, 0x80                                ; Disk/FS functions
     jb .disk_funcs
@@ -864,42 +867,58 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x31
     je iface_routines.warn_msg                  ; WARN message
 
-.io_funcs:                                      ; I/O functions
+.out_funcs:                                     ; Output functions
     cmp ax, 0x4000
-    je io_routines.string                       ; Output string
+    je out_routines.string                      ; Output string
 
     cmp ax, 0x4001
-    je io_routines.string_ln                    ; Output string with line break
+    je out_routines.string_ln                   ; Output string with line break
 
     cmp ax, 0x4002
-    je io_routines.line_break                   ; Output line break
+    je out_routines.line_break                  ; Output line break
 
     cmp ax, 0x4010
-    je io_routines.bytes                        ; Output bytes
+    je out_routines.bytes                       ; Output bytes
 
     cmp ax, 0x4020
-    je io_routines.file                         ; Output file
+    je out_routines.file                        ; Output file
 
     cmp ax, 0x4100
-    je io_routines.clear                        ; Clear buffer
+    je out_routines.clear                       ; Clear buffer
 
     cmp ax, 0x4110
-    je io_routines.set_pointer                  ; Set pointer
+    je out_routines.set_pointer                 ; Set pointer
 
     cmp ax, 0x4111
-    je io_routines.set_endpoint                 ; Set endpoint
+    je out_routines.set_endpoint                ; Set endpoint
 
     cmp ax, 0x4112
-    je io_routines.get_pointer                  ; Get pointer
+    je out_routines.get_pointer                 ; Get pointer
 
     cmp ax, 0x4113
-    je io_routines.get_endpoint                 ; Get endpoint
+    je out_routines.get_endpoint                ; Get endpoint
 
     cmp ah, 0x42
-    je io_routines.byte                         ; Output byte
+    je out_routines.byte                        ; Output byte
 
     cmp ah, 0x43
-    je io_routines.dev                          ; Set default device ID
+    je out_routines.dev                         ; Set default device ID
+
+.in_funcs:                                      ; Input functions
+    cmp ax, 0x5000
+    je in_routines.string                       ; Retrieve string
+
+    cmp ax, 0x5010
+    je in_routines.bytes                        ; Retrieve bytes
+
+    cmp ax, 0x5100
+    je in_routines.set_pointer                  ; Set pointer
+
+    cmp ax, 0x5101
+    je in_routines.get_pointer                  ; Get pointer
+
+    cmp ah, 0x52
+    je in_routines.byte                         ; Retrieve byte
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -1118,7 +1137,7 @@ syscall_handler:                                ; System call handler
 ; SYSTEM CALL ROUTINES
 ; ========================================================================
 
-io_routines:                                    ; I/O functions
+out_routines:                                   ; Output functions
 
 .string:
     push cx                                     ; Save register state to stack
@@ -1208,6 +1227,41 @@ io_routines:                                    ; I/O functions
 .dev:
     mov byte [default_dev], al                  ; Set default device ID
     jmp int_ret                                 ; We're done!
+
+
+in_routines:                                    ; Input functions
+
+.string:
+    push cx                                     ; Save register state to stack
+
+    call data_fileseg                           ; Read data from the buffer
+    mov si, word [buffer_in_pointer]            ; At our pointer
+
+    clc                                         ; Use DS:SI
+    call str_len                                ; Get string length
+    inc cx                                      ; Retrieve the NULL character as well
+
+    call in_bytes                               ; Retrieve bytes
+
+    pop cx                                      ; Restore register state
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.bytes:
+    call extra_binseg                           ; Write data to the program
+    call in_bytes                               ; Retrieve bytes
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.set_pointer:
+    mov word [buffer_in_pointer], si            ; Set input buffer pointer
+    jmp int_ret                                 ; We're done!
+
+.get_pointer:
+    mov si, word [buffer_in_pointer]            ; Get input buffer pointer
+    jmp int_ret                                 ; We're done!
+
+.byte:
+    call in_byte                                ; Retrieve byte
+    jmp int_ret.preserve_flags                  ; We're done!
 
 
 iface_routines:                                 ; Interface functions
@@ -2232,7 +2286,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 43; Compiled 2021-01-08", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 44; Compiled 2021-01-11", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
