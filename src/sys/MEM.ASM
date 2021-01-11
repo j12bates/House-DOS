@@ -38,7 +38,7 @@ out_byte:                                       ; Output byte to the I/O buffer
     pusha                                       ; Save register states to stack
 
     call extra_fileseg                          ; Write to the I/O buffer
-    mov di, word [gs:buffer_pointer]            ; Write starting at our pointer
+    mov di, word [gs:buffer_pointer]            ; Write at our pointer
 
     stosb                                       ; Write byte
 
@@ -49,7 +49,46 @@ out_byte:                                       ; Output byte to the I/O buffer
     ret                                         ; Return to caller
 
 
-; CLEAR I/O BUFFER: Overwrites everything in the file buffer with zeroes
+; INPUT BYTES: Copies a byte from the I/O buffer at the pointer location to an address
+; IN: [buffer_in_pointer] = Source index; CX = Number of bytes; ES:DI = Destination index
+; OUT: [buffer_in_pointer] = Initial value + bytes copied
+
+in_bytes:                                       ; Copy bytes from the I/O buffer
+    pusha                                       ; Save register states to stack
+
+    call data_fileseg                           ; Read from the I/O buffer
+    mov si, word [gs:buffer_in_pointer]         ; Read starting at our pointer
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes
+
+    mov word [gs:buffer_in_pointer], si         ; Update buffer pointer
+    cmp si, word [gs:buffer_endpoint]           ; Check against endpoint
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; INPUT BYTE: Loads a byte from the I/O buffer at the pointer location
+; IN: [buffer_in_pointer] = Source index
+; OUT: AL = Byte at that location; [buffer_in_pointer] = Initial value + bytes copied
+
+in_byte:                                        ; Load byte from the I/O buffer
+    push si                                     ; Save register state to stack
+
+    call data_fileseg                           ; Read from the I/O buffer
+    mov si, word [gs:buffer_in_pointer]         ; Read at our pointer
+
+    lodsb                                       ; Load byte
+
+    inc word [gs:buffer_in_pointer]             ; Increment buffer pointer
+    cmp si, word [gs:buffer_endpoint]           ; Check against endpoint
+
+    pop si                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; CLEAR I/O BUFFER: Overwrites everything in the file buffer with zeroes and resets pointers/endpoint
 ; IN: None
 ; OUT: None (segments)
 
@@ -66,6 +105,8 @@ clear_buffer:                                   ; Clear the I/O buffer (0x10000-
     rep stosb                                   ; Move zeroes in (AL is already 0)
 
     mov word [gs:buffer_pointer], 0x0000        ; Reset buffer pointer
+    mov word [gs:buffer_in_pointer], 0x0000     ; Reset input buffer pointer
+
     mov word [gs:buffer_endpoint], 0x0000       ; Reset buffer endpoint
 
     popa                                        ; Restore register states
@@ -436,6 +477,8 @@ mem_data:
 buffer_pointer      dw 0x0000                   ; Output buffer pointer
 buffer_endpoint     dw 0x0000                   ; Output endpoint
 mem_buffer_endpoint dw 0x0000                   ; Output endpoint (secondary buffer)
+
+buffer_in_pointer   dw 0x0000                   ; Input buffer pointer
 
 iface_mem_clear     db "Clearing file buffer...", 0x00
 iface_mem_bin       db "Loading file into binary buffer...", 0x00
