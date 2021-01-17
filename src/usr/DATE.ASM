@@ -26,20 +26,18 @@ main:
     mov ah, 0xD0                        ; Get UNIX timestamp
     int 0x7E
 
-    mov ax, 0x8300                      ; Print UNIX timestamp as datestamp
+    mov ax, 0x4050                      ; Output UNIX timestamp as datestamp
     int 0x7E
 
-    mov ah, 0x14                        ; Advance cursor
+    mov ax, 0x4120                      ; Advance pointer
     int 0x7E
 
-    mov ax, 0x8301                      ; Print UNIX timestamp as timestamp
-    int 0x7E
-
-    mov ah, 0x05                        ; Line break
+    mov ax, 0x4051                      ; Output UNIX timestamp as timestamp
     int 0x7E
 
     mov ah, 0xFF                        ; We're done
     int 0x7E
+
 
 data:
 

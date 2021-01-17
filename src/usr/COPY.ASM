@@ -44,6 +44,9 @@ main:
     mov si, fname                       ; Filename
     int 0x7E
 
+    mov ax, 0x4100                      ; Clear buffer
+    int 0x7E
+
 .done:
     mov ah, 0xFF                        ; We're done!
     int 0x7E

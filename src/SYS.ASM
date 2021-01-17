@@ -883,6 +883,24 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x4020
     je out_routines.file                        ; Output file
 
+    cmp ax, 0x4040
+    je out_routines.num_word_dec                ; Output integer as decimal
+
+    cmp ax, 0x4041
+    je out_routines.num_byte_dec                ; Output byte as decimal
+
+    cmp ax, 0x4042
+    je out_routines.num_word_hex                ; Output integer as hex
+
+    cmp ax, 0x4043
+    je out_routines.num_byte_hex                ; Output byte as hex
+
+    cmp ax, 0x4050
+    je out_routines.date_dstamp                 ; Output UNIX time as datestamp
+
+    cmp ax, 0x4051
+    je out_routines.date_tstamp                 ; Output UNIX time as timestamp
+
     cmp ax, 0x4100
     je out_routines.clear                       ; Clear buffer
 
@@ -897,6 +915,18 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x4113
     je out_routines.get_endpoint                ; Get endpoint
+
+    cmp ax, 0x4114
+    je out_routines.pointer_line_col            ; Get line/col of pointer
+
+    cmp ax, 0x4120
+    je out_routines.inc                         ; Increment pointer
+
+    cmp ax, 0x4121
+    je out_routines.advance                     ; Advance pointer
+
+    cmp ax, 0x4122
+    je out_routines.indent                      ; Indent pointer
 
     cmp ah, 0x42
     je out_routines.byte                        ; Output byte
@@ -1140,33 +1170,17 @@ syscall_handler:                                ; System call handler
 out_routines:                                   ; Output functions
 
 .string:
-    push cx                                     ; Save register state to stack
-
     call data_binseg                            ; Read data from the program
-
-    clc                                         ; Use DS:SI
-    call str_len                                ; Get string length
-    inc cx                                      ; Output the NULL character as well
-
-    call out_bytes                              ; Output bytes
-
-    pop cx                                      ; Restore register state
+    call out_str                                ; Output string
     jmp int_ret                                 ; We're done!
 
 .string_ln:
-    pusha                                       ; Save register states to stack
-
     call data_binseg                            ; Read data from the program
-
-    clc                                         ; Use DS:SI
-    call str_len                                ; Get string length
-
-    call out_bytes                              ; Output bytes
+    call out_str                                ; Output string
 
     mov al, 0x0A                                ; Newline character
     call out_byte                               ; Output byte
 
-    popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
 
 .line_break:
@@ -1188,13 +1202,101 @@ out_routines:                                   ; Output functions
 
     call get_file_cluster                       ; Get file starting cluster
 
-    mov ax, word [buffer_pointer]               ; The buffer pointer
+    mov ax, word [buffer_out_pointer]           ; The buffer pointer
     mov word [file_buffer_pointer], ax          ; Load the file there
     call load_file                              ; Load file
 
     mov ah, 0x1C                                ; File size
     call get_file_info                          ; Retrieve from directory entry
-    add word [buffer_pointer], ax               ; Advance buffer pointer past the file
+    add word [buffer_out_pointer], ax           ; Advance buffer pointer past the file
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_word_dec:
+    pusha                                       ; Save register states to stack
+
+    mov ax, dx                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_word_dec_unsigned                 ; Convert to decimal
+
+    mov si, di                                  ; Print from our buffer
+    call out_str                                ; Output string
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_byte_dec:
+    pusha                                       ; Save register states to stack
+
+    mov al, dl                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_byte_dec_unsigned                 ; Convert to decimal
+
+    mov si, di                                  ; Print from our buffer
+    call out_str                                ; Output string
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_word_hex:
+    pusha                                       ; Save register states to stack
+
+    mov ax, dx                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_word_hex                          ; Convert to hex
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x0004                              ; 4 nibbles in a word
+    call out_bytes                              ; Output bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.num_byte_hex:
+    pusha                                       ; Save register states to stack
+
+    mov al, dl                                  ; Use correct register
+    mov di, num_buffer                          ; Our buffer
+    call conv_byte_hex                          ; Convert to hex
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x0002                              ; 2 nibbles in a byte
+    call out_bytes                              ; Output bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.date_dstamp:
+    pusha                                       ; Save register states to stack
+
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in DX:BX
+    mov di, date_buffer                         ; Our buffer
+
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+    call conv_days_rtcdate                      ; Convert to RTC date
+    call conv_rtcdate_stamp                     ; Convert to datestamp
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x000A                              ; 10 bytes in a datestamp
+    call out_bytes                              ; Output bytes
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.date_tstamp:
+    pusha                                       ; Save register states to stack
+
+    mov ax, bx                                  ; Programs deal with UNIX timestamps in DX:BX
+    mov di, time_buffer                         ; Our buffer
+
+    call dis_unix_timestamp                     ; Disassemble UNIX timestamp
+    call conv_seconds_rtctime                   ; Convert to RTC time
+    call conv_rtctime_stamp                     ; Convert to timestamp
+
+    mov si, di                                  ; Print from our buffer
+    mov cx, 0x0008                              ; 8 bytes in a timestamp
+    call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
@@ -1204,7 +1306,7 @@ out_routines:                                   ; Output functions
     jmp int_ret                                 ; We're done!
 
 .set_pointer:
-    mov word [buffer_pointer], di               ; Set output buffer pointer
+    mov word [buffer_out_pointer], di           ; Set output buffer pointer
     call update_endpoint                        ; Update output endpoint
     jmp int_ret                                 ; We're done!
 
@@ -1213,11 +1315,32 @@ out_routines:                                   ; Output functions
     jmp int_ret                                 ; We're done!
 
 .get_pointer:
-    mov di, word [buffer_pointer]               ; Get output buffer pointer
+    mov di, word [buffer_out_pointer]           ; Get output buffer pointer
     jmp int_ret                                 ; We're done!
 
 .get_endpoint:
     mov cx, word [buffer_endpoint]              ; Get output endpoint
+    jmp int_ret                                 ; We're done!
+
+.pointer_line_col:
+    push si                                     ; Save register state to stack
+
+    mov si, word [buffer_out_pointer]           ; Get output buffer pointer
+    call addr_line_col                          ; Convert to line/col numbers
+
+    pop si                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
+.inc:
+    inc word [buffer_out_pointer]               ; Increment output buffer pointer
+    jmp int_ret                                 ; We're done!
+
+.advance:
+    add word [buffer_out_pointer], cx           ; Advance output buffer pointer
+    jmp int_ret                                 ; We're done!
+
+.indent:
+    call indent_out_pointer                     ; Indent output buffer pointer
     jmp int_ret                                 ; We're done!
 
 .byte:
@@ -2207,7 +2330,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2A00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2C00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2216,7 +2339,7 @@ times 0x2A00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022A00
+input_buffer        dq 0x0000000000000000       ; 0x00022C00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2225,7 +2348,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022A00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022A40
+params              dq 0x0000000000000000       ; 0x00022C40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2234,7 +2357,7 @@ params              dq 0x0000000000000000       ; 0x00022A40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022A80
+misc_buffer         dq 0x0000000000000000       ; 0x00022C80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2243,7 +2366,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022A80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00022AC0
+param_flags         dq 0x0000000000000000       ; 0x00022CC0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2286,7 +2409,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 44; Compiled 2021-01-11", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 44; Compiled 2021-01-16", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

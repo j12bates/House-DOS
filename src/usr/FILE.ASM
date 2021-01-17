@@ -101,25 +101,25 @@ main:
 ; Subroutines
 ; ========================================================================
 
-print_indent:                           ; Print the message and then indent to the correct col
-    mov ah, 0x01                        ; Print string
+print_indent:                           ; Output the message and then indent to the correct col
+    mov ax, 0x4000                      ; Output string
     int 0x7E
 
-    mov ah, 0x13                        ; Indent cursor
-    mov dl, 0x18                        ; Col 24
+    mov ax, 0x4122                      ; Indent pointer
+    mov dx, 0x0018                      ; Col 24
     int 0x7E
 
     ret                                 ; Return to caller
 
 
 date_time:                              ; Print out the UNIX timestamp as date/time
-    mov ax, 0x8300                      ; Print UNIX timestamp as datestamp
+    mov ax, 0x4050                      ; Output UNIX timestamp as datestamp
     int 0x7E
 
-    mov ah, 0x14                        ; Advance cursor
+    mov ax, 0x4120                      ; Increment cursor
     int 0x7E
 
-    mov ax, 0x8301                      ; Print UNIX timestamp as timestamp
+    mov ax, 0x4051                      ; Output UNIX timestamp as timestamp
     int 0x7E
 
     call line_break                     ; Line break
@@ -128,7 +128,7 @@ date_time:                              ; Print out the UNIX timestamp as date/t
 
 
 line_break:                             ; Use the LINE BREAK system call
-    mov ah, 0x05                        ; Line break
+    mov ax, 0x4002                      ; Output line break
     int 0x7E
 
     ret                                 ; Return to caller
@@ -144,7 +144,7 @@ property:                               ; Routines to get and print certain prop
     int 0x7E
 
     mov dx, ax                          ; Move file size into DX
-    mov ax, 0x8202                      ; Print as decimal
+    mov ax, 0x4040                      ; Output as decimal
     int 0x7E
 
     call line_break                     ; Line break
@@ -158,7 +158,7 @@ property:                               ; Routines to get and print certain prop
     mov ah, 0x71                        ; Get creation date/time
     int 0x7E
 
-    call date_time                      ; Print date/time
+    call date_time                      ; Output date/time
 
     ret                                 ; Return to caller
 
@@ -169,7 +169,7 @@ property:                               ; Routines to get and print certain prop
     mov ah, 0x72                        ; Get access date
     int 0x7E
 
-    mov ax, 0x8300                      ; Print UNIX timestamp as date
+    mov ax, 0x4050                      ; Output UNIX timestamp as datestamp
     int 0x7E
 
     call line_break                     ; Line break
@@ -183,7 +183,7 @@ property:                               ; Routines to get and print certain prop
     mov ah, 0x73                        ; Get last write date/time
     int 0x7E
 
-    call date_time                      ; Print date/time
+    call date_time                      ; Output date/time
 
     ret                                 ; Return to caller
 
@@ -196,7 +196,7 @@ permissions:                            ; Routine to get the file permissions
 
     jnc .hidden                         ; If not, proceed
 
-    mov ah, 0x02                        ; Otherwise, print line
+    mov ax, 0x4001                      ; Otherwise, output as line
     mov si, message_ronly               ; Our message
     int 0x7E
 
@@ -206,7 +206,7 @@ permissions:                            ; Routine to get the file permissions
 
     jnc .system                         ; If not, proceed
 
-    mov ah, 0x02                        ; Otherwise, print line
+    mov ax, 0x4001                      ; Otherwise, output as line
     mov si, message_hidden              ; Our message
     int 0x7E
 
@@ -216,7 +216,7 @@ permissions:                            ; Routine to get the file permissions
 
     jnc .done                           ; If not, proceed
 
-    mov ah, 0x02                        ; Otherwise, print line
+    mov ax, 0x4001                      ; Otherwise, output as line
     mov si, message_system              ; Our message
     int 0x7E
 

@@ -127,6 +127,41 @@ III. I/O Functions
 
             Outputs the last verified file.
 
+        OUT_INT_DEC
+            AL = 0x40
+            DX = Number to output
+
+            Outputs integer in decimal notation.
+
+        OUT_BYTE_DEC
+            AL = 0x41
+            DL = Number to output
+
+            Outputs byte in decimal notation.
+
+        OUT_INT_HEX
+            AL = 0x42
+            DX = Number to output
+
+            Outputs integer in hexadecimal notation.
+
+        OUT_BYTE_HEX
+            AL = 0x43
+            DX = Number to output
+
+            Outputs byte in hexadecimal notation.
+
+        OUT_UNIXTIME_DATESTAMP
+            AL = 0x50
+            DX:BX = UNIX timestamp
+
+            Outputs UNIX timestamp as ASCII YYYY-MM-DD datestamp.
+
+        OUT_UNIXTIME_TIMESTAMP
+            AL = 0x51
+            DX:BX = UNIX timestamp
+
+            Outputs UNIX timestamp as ASCII HH:MM:SS timestamp.
 
     AH = 0x41: BUFFER FUNCTIONS (OUTPUT)
 
@@ -162,6 +197,32 @@ III. I/O Functions
             CX = Current endpoint
 
             Retrieves the current endpoint.
+
+        POINTER_ROW_COL
+            AL = 0x14
+
+            Return:
+            CX = Line number
+            DX = Col number
+
+            Retrieves the line and col values of the current output buffer pointer.
+
+        INC_POINTER
+            AL = 0x20
+
+            Increments the output buffer pointer.
+
+        ADVANCE_POINTER
+            AL = 0x21
+            CX = Number to bytes to advance
+
+            Advances the output buffer pointer the specified number of bytes.
+
+        INDENT_POINTER
+            AL = 0x22
+            DX = Col number
+
+            Advances the output buffer pointer to the specified column in the current line.
 
     OUT_BYTE
         AH = 0x42
