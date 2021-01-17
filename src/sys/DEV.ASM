@@ -20,11 +20,18 @@ tty_out:                                        ; Output to teletype
     call data_fileseg                           ; Read from I/O buffer
     mov si, 0x0000                              ; Starting at the beginning
     mov cx, word [gs:buffer_endpoint]           ; The total number of bytes
+    jcxz .done                                  ; If zero, don't do anything
     clc                                         ; Newlines should act as newlines
 
     call print_bytes                            ; Print bytes
+
+    mov si, cx                                  ; Use the counter as an address
+    cmp byte [si-0x01], 0x0A                    ; Is the last byte a newline?
+    je .done                                    ; If so, omit the line break
+
     call line_break                             ; Line break
 
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 

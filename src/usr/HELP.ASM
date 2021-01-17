@@ -23,7 +23,7 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x02                        ; Print line
+    mov ax, 0x4000                      ; Output string
     mov si, msg                         ; Help lines
     int 0x7E
 

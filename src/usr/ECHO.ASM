@@ -42,6 +42,9 @@ main:
     mov si, dest_buffer                 ; Our buffer
     int 0x7E
 
+    mov ax, 0x4220                      ; Output space
+    int 0x7E
+
     pop cx                              ; Restore our counter
     loop .word                          ; Repeat with next file
 

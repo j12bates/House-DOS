@@ -26,10 +26,6 @@ main:
     mov ah, 0x06                        ; Clear screen
     int 0x7E
 
-    mov ah, 0x43                        ; Change default device
-    mov al, 0x00                        ; NUL
-    int 0x7E
-
     mov ah, 0xFF                        ; We're done
     int 0x7E
 

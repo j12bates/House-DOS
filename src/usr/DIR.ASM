@@ -42,11 +42,11 @@ main:
     mov si, list_buffer                 ; Our list
     int 0x7E
 
-    mov ax, 0x8202                      ; Print word as decimal
+    mov ax, 0x4040                      ; Output word as decimal
     mov dx, cx                          ; Our list length
     int 0x7E
 
-    mov ah, 0x02                        ; Print line
+    mov ax, 0x4001                      ; Output string and line break
     mov si, msg                         ; Our message
     int 0x7E
 
@@ -61,25 +61,25 @@ main:
 
     inc cx                              ; Restore counter
 
-    mov ah, 0x01                        ; Print string
+    mov ax, 0x4000                      ; Output string
     mov si, fname                       ; Our filename
     int 0x7E
 
-    cmp dl, 0x40                        ; Are we out of space in this row?
+    cmp dx, 0x0040                      ; Are we out of space in this row?
     jae .newline                        ; If so, new line
 
-    mov ah, 0x13                        ; Otherwise, indent
-    add dl, 0x10                        ; Move ahead 16
+    mov ax, 0x4122                      ; Otherwise, indent pointer
+    add dx, 0x0010                      ; Move ahead 16
     int 0x7E
 
     loop .entry                         ; Repeat
     inc cx                              ; If we're done, increment counter to do that last line break
 
 .newline:
-    mov ah, 0x05                        ; Line break
+    mov ax, 0x4002                      ; Output line break
     int 0x7E
 
-    mov dl, 0x00                        ; Start cursor at col 0
+    mov dx, 0x0000                      ; Start cursor at col 0
     loop .entry                         ; Repeat
 
 .done:

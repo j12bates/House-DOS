@@ -11,19 +11,19 @@
 ; ========================================================================
 
 ; OUTPUT BYTES: Outputs a certain nummber of bytes to the I/O buffer at the pointer location
-; IN: DS:SI = Source buffer; CX = Number of bytes; [buffer_pointer] = Destination index
-; OUT: [buffer_pointer] = Initial value + bytes copied
+; IN: DS:SI = Source buffer; CX = Number of bytes; [buffer_out_pointer] = Destination index
+; OUT: [buffer_out_pointer] = Initial value + bytes copied
 
 out_bytes:                                      ; Output bytes to the I/O buffer
     pusha                                       ; Save register states to stack
 
     call extra_fileseg                          ; Write to the I/O buffer
-    mov di, word [gs:buffer_pointer]            ; Write starting at our pointer
+    mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Copy bytes over
 
-    mov word [gs:buffer_pointer], di            ; Update buffer pointer
+    mov word [gs:buffer_out_pointer], di        ; Update buffer pointer
     call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
@@ -31,18 +31,46 @@ out_bytes:                                      ; Output bytes to the I/O buffer
 
 
 ; OUTPUT BYTE: Outputs a byte to the I/O buffer at the pointer location
-; IN: AL = Byte to output; [buffer_pointer] = Destination index
-; OUT: [buffer_pointer] = Initial value + bytes copied
+; IN: AL = Byte to output; [buffer_out_pointer] = Destination index
+; OUT: [buffer_out_pointer] = Initial value + bytes copied
 
 out_byte:                                       ; Output byte to the I/O buffer
     pusha                                       ; Save register states to stack
 
     call extra_fileseg                          ; Write to the I/O buffer
-    mov di, word [gs:buffer_pointer]            ; Write at our pointer
+    mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
 
     stosb                                       ; Write byte
 
-    inc word [gs:buffer_pointer]                ; Increment buffer pointer
+    inc word [gs:buffer_out_pointer]            ; Increment buffer pointer
+    call update_endpoint                        ; Update buffer endpoint
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; OUTPUT STRING: Outputs a string to the I/O buffer at the pointer location
+; IN: DS:SI = String location; [buffer_out_pointer] = Destination index
+; OUT: [buffer_out_pointer] = Initial value + bytes copied
+
+out_str:                                        ; Output string to the I/O buffer
+    pusha                                       ; Save register states to stack
+
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
+    cld                                         ; Ensure correct direction
+
+.char:
+    lodsb                                       ; Load next character
+
+    cmp al, 0x00                                ; Is it a NULL character?
+    je .done                                    ; If so, we're done!
+
+    stosb                                       ; Otherwise, write byte
+    jmp .char                                   ; And repeat
+
+.done:
+    mov word [gs:buffer_out_pointer], di        ; This is our new pointer
     call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
@@ -104,7 +132,7 @@ clear_buffer:                                   ; Clear the I/O buffer (0x10000-
 
     rep stosb                                   ; Move zeroes in (AL is already 0)
 
-    mov word [gs:buffer_pointer], 0x0000        ; Reset buffer pointer
+    mov word [gs:buffer_out_pointer], 0x0000    ; Reset buffer pointer
     mov word [gs:buffer_in_pointer], 0x0000     ; Reset input buffer pointer
 
     mov word [gs:buffer_endpoint], 0x0000       ; Reset buffer endpoint
@@ -362,18 +390,55 @@ shift:                                          ; Shift everything from one poin
     ret                                         ; Return to caller
 
 
+; INDENT OUTPUT BUFFER POINTER: Positions the output buffer relative to the start of the current line
+; IN: DX = Offset from start of line (col)
+; OUT: None
+
+indent_out_pointer:
+    pusha                                       ; Save register states to stack
+    push dx                                     ; Preserve offset
+
+    call data_fileseg                           ; Read from the I/O buffer
+    mov si, word [gs:buffer_out_pointer]        ; At our output buffer pointer
+    std                                         ; Look in reverse
+
+.newline:
+    lodsb                                       ; Look at next byte
+
+    cmp al, 0x0A                                ; Is it a newline?
+    je .sum                                     ; If so, proceed
+
+    cmp si, 0xFFFE                              ; Have we reached the beginning of the buffer?
+    je .sum                                     ; If so, proceed
+
+    jmp .newline                                ; Otherwise, repeat
+
+.sum:
+    pop dx                                      ; Restore offset
+
+    inc si                                      ; Avoid an O.B.O.E
+    add si, dx                                  ; Add our offset
+    mov word [gs:buffer_out_pointer], si        ; This is our new output buffer pointer
+
+    call update_endpoint                        ; Update buffer endpoint
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; ========================================================================
 ; BUFFER SUBROUTINES
 ; ========================================================================
 
 ; UPDATE OUTPUT ENDPOINT: Update the pointer for the end of the output
-; IN: [buffer_pointer] = Current pointer value
+; IN: [buffer_out_pointer] = Current pointer value
 ; OUT: [buffer_endpoint] = New total
 
 update_endpoint:                                ; Update the buffer total
     pusha                                       ; Save register states to stack
 
-    mov ax, word [gs:buffer_pointer]            ; Our current buffer pointer
+    mov ax, word [gs:buffer_out_pointer]        ; Our current buffer pointer
     cmp ax, word [gs:buffer_endpoint]           ; Is our current pointer higher than the current endpoint?
     jna .done                                   ; If not, we're done
 
@@ -474,11 +539,11 @@ extra_memseg:                                   ; Sets the extra segment to the 
 
 mem_data:
 
-buffer_pointer      dw 0x0000                   ; Output buffer pointer
+buffer_out_pointer  dw 0x0000                   ; Output buffer pointer
+buffer_in_pointer   dw 0x0000                   ; Input buffer pointer
+
 buffer_endpoint     dw 0x0000                   ; Output endpoint
 mem_buffer_endpoint dw 0x0000                   ; Output endpoint (secondary buffer)
-
-buffer_in_pointer   dw 0x0000                   ; Input buffer pointer
 
 iface_mem_clear     db "Clearing file buffer...", 0x00
 iface_mem_bin       db "Loading file into binary buffer...", 0x00
