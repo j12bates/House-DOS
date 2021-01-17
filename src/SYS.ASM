@@ -916,6 +916,9 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x4113
     je out_routines.get_endpoint                ; Get endpoint
 
+    cmp ax, 0x4114
+    je out_routines.pointer_line_col            ; Get line/col of pointer
+
     cmp ax, 0x4120
     je out_routines.inc                         ; Increment pointer
 
@@ -1326,7 +1329,7 @@ out_routines:                                   ; Output functions
     call addr_line_col                          ; Convert to line/col numbers
 
     pop si                                      ; Restore register state
-    jmp int_ret                                 ; We're done!8
+    jmp int_ret                                 ; We're done!
 
 .inc:
     inc word [buffer_out_pointer]               ; Increment output buffer pointer
