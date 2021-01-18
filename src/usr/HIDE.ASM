@@ -36,6 +36,8 @@ main:
     mov ah, 0x21                        ; Get total parameters
     int 0x7E
 
+    jcxz .apply                         ; If none, skip
+
 .file:
     mov ah, 0x2A                        ; Verify file from parameter
     dec cx                              ; Our parameter number (avoid an O.B.O.E)

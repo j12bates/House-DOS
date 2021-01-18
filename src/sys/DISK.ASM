@@ -233,7 +233,7 @@ load_file:                                      ; Load file starting at cluster 
 
 
 ; WRITE FILE TO DISK: Writes contents of file buffer to a file on the disk and applies any filesystem changes
-; IN: [filename] = Valid filename (run conv_x3_83 to set this up)
+; IN: [filename] = Valid filename (run conv_x3_83 to set this up), CX = File size
 ; OUT: CF = Set on error
 
 write_file:                                     ; Write file buffer to disk as file
@@ -1020,7 +1020,6 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     je .dot                                     ; If so, move on
 
     loop .name_char                             ; Otherwise, repeat
-
     jmp .error_filename                         ; If there hasn't been a dot, error
 
 .dot:

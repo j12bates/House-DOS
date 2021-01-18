@@ -50,6 +50,7 @@ main:
     mov si, msg                         ; Our message
     int 0x7E
 
+    jcxz .done                          ; If none, we're done
     mov dl, 0x00                        ; Start cursor at col 0
 
 .entry:
