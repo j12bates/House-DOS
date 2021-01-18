@@ -84,6 +84,18 @@ main:                                           ; Main code for House-DOS kernel
     mov byte [break_byte], 0x00                 ; Make sure break byte is off
 
 .output:
+    cmp byte [redir_enabled], 0x00              ; Is output redirection enabled?
+    je .default                                 ; If not, use default procedure
+
+    mov si, redir_fname                         ; Our redirection filename
+    call conv_x3_83                             ; Convert to usable format
+
+    mov cx, word [buffer_endpoint]              ; The endpoint is the number of bytes to write
+    call write_file                             ; Write to disk
+
+    jmp command                                 ; Skip default procedure
+
+.default:
     call default_out                            ; Output to default device
 
 
@@ -92,6 +104,7 @@ command:                                        ; Main loop: Retrieve command fr
     call setup_segments                         ; Ensure segments are all ready
 
     mov byte [header_offset], 0x00              ; Reset header offset
+    mov byte [redir_enabled], 0x00              ; Reset output redirection
 
     mov al, byte [config_sys_iface]             ; The system interface configuration
     mov byte [config_iface], al                 ; Move it into the default interface configuration
@@ -152,10 +165,11 @@ command:                                        ; Main loop: Retrieve command fr
 
     rep stosb                                   ; Clear parameter list
 
-    mov di, params                              ; Now, write into our parameter list
     mov bx, 0x0000                              ; We are not currently reading a parameter or escaping spaces
+    push params                                 ; Push our parameter list
 
 .param_char:
+    pop di                                      ; Restore destination index
     lodsb                                       ; Load next byte from command
 
     cmp al, 0x22                                ; Is this a quotation?
@@ -179,10 +193,14 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x25                                ; Is this a percent-sign?
     je .metadata                                ; If so, we're getting metadata
 
+    cmp al, 0x3E                                ; Is this a forward-facing angle-bracket?
+    je .redir                                   ; If so, set up file redirection
+
 .write:
     stosb                                       ; Otherwise, store byte in list
 
     mov bh, 0xFF                                ; We're currently reading a parameter
+    push di                                     ; Push new destination index
     jmp .param_char                             ; And repeat
 
 .quotation:
@@ -209,7 +227,7 @@ command:                                        ; Main loop: Retrieve command fr
     je .overwrite_comma                         ; If so, no more parameters
 
     cmp al, 0x20                                ; Is this a space?
-    je .end_flags                               ; If so, prepare for next parameter
+    je .param_char                              ; If so, read next parameter
 
     call check_flag                             ; Has this flag already been set, or is it invalid?
     je .flag_char                               ; If so, skip this one
@@ -218,39 +236,73 @@ command:                                        ; Main loop: Retrieve command fr
     stosb                                       ; Otherwise, write to our flags
     jmp .flag_char                              ; Read the next character
 
-.end_flags:
-    pop di                                      ; Restore pointer
-    jmp .param_char                             ; Start reading next parameter
-
 .next_param:
     mov al, 0x2C                                ; Comma (items are separated by commas)
     stosb                                       ; Write byte
 
     mov bh, 0x00                                ; We're done writing that parameter
+    push di                                     ; Push new destination index
     jmp .param_char                             ; And repeat
 
 .metadata:
+    push di                                     ; Preserve destination index
+
     lodsb                                       ; Read the next character
     call capitalize_char                        ; Capitalize
 
     add byte [header_offset], 0x02              ; Move our offset ahead a word
     cmp al, 0x43                                ; Is this a C?
-    je .load_file                               ; If so, proceed
+    je .param_char                              ; If so, proceed
 
     add byte [header_offset], 0x02              ; Otherwise, move our offset ahead again
     cmp al, 0x44                                ; Is this a D?
-    je .load_file                               ; If so, proceed
+    je .param_char                              ; If so, proceed
 
     add byte [header_offset], 0x02              ; Otherwise, move our offset ahead again
     cmp al, 0x55                                ; Is this a U?
-    je .load_file                               ; If so, proceed
+    je .param_char                              ; If so, proceed
 
     cmp al, 0x48                                ; Or H?
-    je .load_file                               ; If so, proceed
+    je .param_char                              ; If so, proceed
 
     mov ax, 0x0003                              ; Otherwise, invalid header field
     call error                                  ; Handle this error
     jmp command                                 ; Get a new command
+
+.redir:
+    push di                                     ; Preserve destination index
+    mov byte [redir_enabled], 0xFF              ; Enable output redirection
+
+    mov di, redir_fname                         ; Write into output redirection filename
+    mov cx, 0x000D                              ; Up to 12 characters in the filename
+    mov al, 0x00                                ; Write NULL characters
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Overwrite with zeroes
+
+    mov di, redir_fname                         ; Write into output redirection filename
+    mov cx, 0x000D                              ; Up to 12 characters in the filename
+    cld                                         ; Ensure correct direction
+
+    cmp byte [si], 0x20                         ; Is the next byte a space?
+    jne .redir_fname_char                       ; If not, proceed
+
+    inc si                                      ; Otherwise, ignore space
+
+.redir_fname_char:
+    lodsb                                       ; Load next byte
+
+    cmp al, 0x00                                ; Is this a NULL character?
+    je .overwrite_comma                         ; If so, no more parameters
+
+    cmp al, 0x20                                ; Is this a space?
+    je .param_char                              ; If so, next parameter
+
+    call capitalize_char                        ; Otherwise, capitalize character
+    stosb                                       ; Write byte to filename
+
+    loop .redir_fname_char                      ; Repeat with next character
+    jmp .bad_command                            ; If we've reached this point, bad filename
 
 .overwrite_comma:
     pop di                                      ; Restore pointer
@@ -293,7 +345,7 @@ command:                                        ; Main loop: Retrieve command fr
     mov si, ax                                  ; This is the index within the header
     mov si, word [si]                           ; The location contained at that point is our string
 
-    call println                                ; Print line
+    call out_str                                ; Output string
     jmp main.handback                           ; Simulate a handback and get a new command
 
 .error_header:
@@ -2384,10 +2436,11 @@ flags_image         dw 0x0000
 num_buffer          dd 0x00000000
                     dw 0x0000
 
-date_buffer         dq 0x0000000000000000
-                    dw 0x0000
+date_buffer         db "YYYY-MM-DD"
+time_buffer         db "HH:MM:SS"
 
-time_buffer         dq 0x0000000000000000
+redir_fname         db "XXXXXXXX.XXX", 0x00, 0x00
+redir_enabled       db 0x00
 
 init_byte           db 0x00                     ; Have we been initialized?
 break_byte          db 0x00                     ; Are we supposed to interrupt the program?
@@ -2409,7 +2462,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 44; Compiled 2021-01-16", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 45; Compiled 2021-01-18", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

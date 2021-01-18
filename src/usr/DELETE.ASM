@@ -26,6 +26,8 @@ main:
     mov ah, 0x21                        ; Get total parameters
     int 0x7E
 
+    jcxz .apply                         ; If none, skip
+
 .file:
     push cx                             ; Preserve counter
 
