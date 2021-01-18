@@ -90,6 +90,8 @@ main:                                           ; Main code for House-DOS kernel
     mov si, redir_fname                         ; Our redirection filename
     call conv_x3_83                             ; Convert to usable format
 
+    jc command                                  ; If error, don't attempt to write to disk
+
     mov cx, word [buffer_endpoint]              ; The endpoint is the number of bytes to write
     call write_file                             ; Write to disk
 
@@ -166,7 +168,7 @@ command:                                        ; Main loop: Retrieve command fr
     rep stosb                                   ; Clear parameter list
 
     mov bx, 0x0000                              ; We are not currently reading a parameter or escaping spaces
-    push params                                 ; Push our parameter list
+    push params                                 ; Push the index of our parameter list
 
 .param_char:
     pop di                                      ; Restore destination index
