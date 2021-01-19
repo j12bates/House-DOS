@@ -23,9 +23,12 @@ out_bytes:                                      ; Output bytes to the I/O buffer
 
     rep movsb                                   ; Copy bytes over
 
-    mov word [gs:buffer_out_pointer], di        ; Update buffer pointer
+    add word [gs:buffer_out_pointer], cx        ; Update buffer pointer
+    jc error_oflow                              ; If there was a carry, buffer overflow
+
     call update_endpoint                        ; Update buffer endpoint
 
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -43,6 +46,8 @@ out_byte:                                       ; Output byte to the I/O buffer
     stosb                                       ; Write byte
 
     inc word [gs:buffer_out_pointer]            ; Increment buffer pointer
+    jc error_oflow                              ; If there was a carry, buffer overflow
+
     call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
@@ -58,6 +63,7 @@ out_str:                                        ; Output string to the I/O buffe
 
     call extra_fileseg                          ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
+    mov cx, 0x0000                              ; Count the iterations
     cld                                         ; Ensure correct direction
 
 .char:
@@ -67,10 +73,13 @@ out_str:                                        ; Output string to the I/O buffe
     je .done                                    ; If so, we're done!
 
     stosb                                       ; Otherwise, write byte
-    jmp .char                                   ; And repeat
+    loop .char                                  ; Repeat
 
 .done:
-    mov word [gs:buffer_out_pointer], di        ; This is our new pointer
+    neg cx                                      ; Negate to get positive number of iterations
+    add word [gs:buffer_out_pointer], cx        ; This is our new pointer
+    jc error_oflow                              ; If there was a carry, buffer overflow
+
     call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
@@ -316,6 +325,8 @@ write_line:                                     ; Write line to file buffer
 .subtract:
     sub cx, ax                                  ; Subtract to get the offset
     neg cx                                      ; Negate it (positive values shift right)
+    clc                                         ; Ensure signed integer is used
+
     call shift                                  ; Shift the file buffer to make room/constrict
 
     pop di                                      ; Restore the address of the line as the destination
@@ -340,7 +351,7 @@ write_line:                                     ; Write line to file buffer
 
 
 ; SHIFT FILE BUFFER: Shift everything past one point in the file buffer by a certain number of bytes
-; IN: CX = Number of bytes by which to offset right; SI = Starting index
+; IN: CX = Number of bytes by which to offset right; SI = Starting index; CF = Set for unsigned integer; DF = Set to shift left (if unsigned)
 ; OUT: None
 
 shift:                                          ; Shift everything from one point on by a certain number of chars
@@ -349,6 +360,16 @@ shift:                                          ; Shift everything from one poin
     call data_fileseg
     call extra_fileseg                          ; We're going to be doing memory operations in the file segment
 
+    jnc .sign                                   ; If signed, proceed
+
+    pushf                                       ; Otherwise, push FLAGS register
+    pop ax                                      ; Pop into AX
+
+    test ax, 0x0400                             ; Is the direction flag set?
+    jz .right                                   ; If not, shift right
+    jmp .left                                   ; Otherwise, shift left
+
+.sign:
     cmp cx, 0x0000                              ; Are we positive or negative?
     jl .left                                    ; If negative, shift left
 

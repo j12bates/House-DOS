@@ -81,6 +81,9 @@ main:                                           ; Main code for House-DOS kernel
 
     call speaker_off                            ; Turn off speaker
 
+    mov al, byte [config_sys_iface]             ; The system interface configuration
+    mov byte [config_iface], al                 ; Move it into the default interface configuration
+
     mov byte [break_byte], 0x00                 ; Make sure break byte is off
 
 .output:
@@ -92,10 +95,53 @@ main:                                           ; Main code for House-DOS kernel
 
     jc command                                  ; If error, don't attempt to write to disk
 
-    mov cx, word [buffer_endpoint]              ; The endpoint is the number of bytes to write
+    cmp byte [redir_enabled], 0x01              ; Is append mode enabled?
+    jbe .write                                  ; If not, proceed
+
+    call verify                                 ; Verify file exists
+    jc .write                                   ; If it doesn't, proceed
+
+    mov al, 0x1C                                ; File size
+    call get_file_info                          ; Retrieve property from directory entry
+    mov cx, ax                                  ; Move into counter
+
+    add ax, word [buffer_endpoint]              ; Add the number of bytes in output to the file size
+    jc .error_oflow                             ; If carry, there will be a buffer overflow
+
+    mov si, 0x0000                              ; Start from the beginning of the buffer
+    stc                                         ; Unsigned integer
+    cld                                         ; Shift right
+    call shift                                  ; Shift output to make way for the file
+
+    call setup_segments                         ; Ensure segments are set correctly
+
+    call get_file_cluster                       ; Get starting cluster for file
+    mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
+
+    call load_file                              ; Load the file
+    jc command                                  ; If error, proceed to get a new command
+
+    mov cx, ax                                  ; Our output plus the file size
     call write_file                             ; Write to disk
 
-    jmp command                                 ; Skip default procedure
+    mov si, cx                                  ; Start from the end of the file
+    stc                                         ; Unsigned integer
+    std                                         ; Shift left
+    call shift                                  ; Shift output back where it was
+
+    jmp command                                 ; Proceed to get a new command
+
+.write:
+    mov cx, word [buffer_endpoint]              ; The endpoint is the number of bytes in the output
+    call write_file                             ; Write to disk
+
+    jmp command                                 ; Proceed to get a new command
+
+.error_oflow:
+    mov ax, 0x0400                              ; Buffer overflow
+    call error                                  ; Handle this error
+
+    jmp command                                 ; Proceed to get a new command
 
 .default:
     call default_out                            ; Output to default device
@@ -107,9 +153,6 @@ command:                                        ; Main loop: Retrieve command fr
 
     mov byte [header_offset], 0x00              ; Reset header offset
     mov byte [redir_enabled], 0x00              ; Reset output redirection
-
-    mov al, byte [config_sys_iface]             ; The system interface configuration
-    mov byte [config_iface], al                 ; Move it into the default interface configuration
 
     call line_break                             ; Line break
     call prompt                                 ; Setup prompt
@@ -273,7 +316,25 @@ command:                                        ; Main loop: Retrieve command fr
 
 .redir:
     push di                                     ; Preserve destination index
-    mov byte [redir_enabled], 0xFF              ; Enable output redirection
+    inc byte [redir_enabled]                    ; Enable output redirection
+
+    cmp byte [si], 0x3E                         ; Is the next character another forward-facing angle-bracket?
+    je .append                                  ; If so, enable append-mode
+
+    cmp byte [si], 0x20                         ; Is the next byte a space?
+    jne .bad_command                            ; If not, bad command
+
+    jmp .clear_redir_fname                      ; And proceed
+
+.append:
+    inc byte [redir_enabled]                    ; Enable append-mode
+    inc si                                      ; We don't care about the angle-bracket anymore
+
+    cmp byte [si], 0x20                         ; Is the next byte a space?
+    jne .bad_command                            ; If not, bad command
+
+.clear_redir_fname:
+    inc si                                      ; Ignore space
 
     mov di, redir_fname                         ; Write into output redirection filename
     mov cx, 0x000D                              ; Up to 12 characters in the filename
@@ -285,11 +346,6 @@ command:                                        ; Main loop: Retrieve command fr
     mov di, redir_fname                         ; Write into output redirection filename
     mov cx, 0x000D                              ; Up to 12 characters in the filename
     cld                                         ; Ensure correct direction
-
-    cmp byte [si], 0x20                         ; Is the next byte a space?
-    jne .redir_fname_char                       ; If not, proceed
-
-    inc si                                      ; Otherwise, ignore space
 
 .redir_fname_char:
     lodsb                                       ; Load next byte
@@ -371,6 +427,14 @@ handback_manual:                                ; Routine to manually perform ha
 
     pop ds                                      ; Restore segment
     iret                                        ; Do an interrupt return
+
+
+error_oflow:                                    ; Routine for BUFFER_OVERFLOW error (don't call, jump)
+    mov ax, 0x0400                              ; Buffer overflow
+    call error                                  ; Handle this error
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
 
 
 divide_zero:                                    ; Routine for if a DIVIDE_ZERO error happens
@@ -2084,6 +2148,7 @@ disk_routines:                                  ; Disk functions
 
 .insert_bytes_qty:
     xchg si, di                                 ; The destination is the source for shifting
+    clc                                         ; Ensure signed integer
     call shift                                  ; Shift everything in the file buffer over
     xchg si, di                                 ; Restore destination and source
 
@@ -2102,6 +2167,7 @@ disk_routines:                                  ; Disk functions
 
 .insert_bytes_indices:
     xchg si, di                                 ; The destination is the source for shifting
+    clc                                         ; Ensure signed integer
     call shift                                  ; Shift everything in the file buffer over to make room
     xchg si, di                                 ; Restore destination and source
 
@@ -2133,7 +2199,11 @@ disk_routines:                                  ; Disk functions
     push cx                                     ; Preserve this (this will be our return value)
 
     xchg si, di                                 ; The destination is the source for shifting
+
+    stc                                         ; Ensure unsigned integer
+    cld                                         ; Shift right
     call shift                                  ; Shift everything in the file buffer over to make room
+
     xchg si, di                                 ; Restore destination and source
 
     call data_binseg                            ; Access data from the command
@@ -2448,7 +2518,7 @@ init_byte           db 0x00                     ; Have we been initialized?
 break_byte          db 0x00                     ; Are we supposed to interrupt the program?
 header_offset       db 0x00                     ; Which part of the header are we looking at?
 
-config_iface        db 0b00000000               ; Temporary interface configuration
+config_iface        db 0b00000010               ; Temporary interface configuration
 config_sys_iface    db 0b00000010               ; Default interface configuration
 default_dev         db 0x01                     ; Default device to send output to (0 = NUL, 1 = TTY, 2 = MEM)
 
