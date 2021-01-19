@@ -20,6 +20,7 @@ out_bytes:                                      ; Output bytes to the I/O buffer
 
     call extra_fileseg                          ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
+    jcxz .done                                  ; If counter is zero, skip
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Copy bytes over
