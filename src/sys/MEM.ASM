@@ -16,6 +16,7 @@
 
 out_bytes:                                      ; Output bytes to the I/O buffer
     pusha                                       ; Save register states to stack
+    push cx                                     ; Preserve counter
 
     call extra_fileseg                          ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
@@ -23,6 +24,7 @@ out_bytes:                                      ; Output bytes to the I/O buffer
 
     rep movsb                                   ; Copy bytes over
 
+    pop cx                                      ; Restore counter
     add word [gs:buffer_out_pointer], cx        ; Update buffer pointer
     jc error_oflow                              ; If there was a carry, buffer overflow
 

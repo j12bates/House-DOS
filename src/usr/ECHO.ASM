@@ -49,6 +49,9 @@ main:
     loop .word                          ; Repeat with next file
 
 .done:
+    mov ax, 0x4002                      ; Output line break
+    int 0x7E
+
     mov ah, 0xFF                        ; We're done!
     int 0x7E
 
