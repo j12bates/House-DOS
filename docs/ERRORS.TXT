@@ -85,4 +85,5 @@ V. Filesystem Errors
 
 VI. Buffer Errors
 
+    0x0400: BUFFER OVERFLOW
     0x0500: INVALID LINE NUMBER

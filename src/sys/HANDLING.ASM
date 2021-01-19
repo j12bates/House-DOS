@@ -162,6 +162,9 @@ error:                                          ; The error handler
     je fs_errors.nf                             ; File not found
 
 .mem:
+    cmp ax, 0x0400
+    je mem_errors.oflow                         ; Buffer overflow
+
     cmp ax, 0x0500
     je mem_errors.line                          ; Invalid line number
 
@@ -347,6 +350,10 @@ fs_errors:                                      ; Filesystem error strings
 
 mem_errors:                                     ; Buffer error strings
 
+.oflow:
+    push error_mem_oflow                        ; Buffer overflow
+    jmp error_print
+
 .line:
     push error_mem_line                         ; Invalid line number
     jmp error_print
@@ -431,6 +438,7 @@ error_fs_full       db "Disk is full", 0x00
 error_fs_dirfull    db "No directory entries available", 0x00
 error_fs_nf         db "File not found", 0x00
 
+error_mem_oflow     db "Buffer overflow", 0x00
 error_mem_line      db "Invalid line number", 0x00
 
 
