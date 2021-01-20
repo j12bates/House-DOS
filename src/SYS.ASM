@@ -144,6 +144,9 @@ main:                                           ; Main code for House-DOS kernel
     jmp command                                 ; Proceed to get a new command
 
 .default:
+    cmp word [pipe_offset], 0x0000              ; Is our pipe offset set?
+    jne command                                 ; If so, don't output right now
+
     call default_out                            ; Output to default device
 
 
@@ -153,6 +156,13 @@ command:                                        ; Main loop: Retrieve command fr
 
     mov byte [header_offset], 0x00              ; Reset header offset
     mov byte [redir_enabled], 0x00              ; Reset output redirection
+
+    cmp word [pipe_offset], 0x0000              ; Is our pipe offset set?
+    jne .init_parse                             ; If so, skip ahead
+
+    call clear_buffer                           ; Otherwise, clear out I/O buffer
+    call setup_segments                         ; Reset segments again
+    mov byte [default_dev], 0x01                ; Reset default output device
 
     call line_break                             ; Line break
     call prompt                                 ; Setup prompt
@@ -164,7 +174,9 @@ command:                                        ; Main loop: Retrieve command fr
     call line_break                             ; Line break
     call line_break                             ; Another line break
 
+.init_parse:
     mov si, input_buffer                        ; Read from the input buffer
+    add si, word [pipe_offset]                  ; Starting after the last pipeline
     mov di, filename                            ; Into the filename
     mov cx, 0x0009                              ; Up to 8 chars in a filename
     cld                                         ; Ensure correct direction
@@ -221,7 +233,10 @@ command:                                        ; Main loop: Retrieve command fr
     je .quotation                               ; If so, toggle space-escape
 
     cmp al, 0x00                                ; Is this the end of the input?
-    je .load_file                               ; If so, no more parameters
+    je .end_command                             ; If so, the command is finished
+
+    cmp al, 0x7C                                ; Is this a vertical bar?
+    je .pipe                                    ; If so, set up pipe
 
     cmp bl, 0xFF                                ; Are spaces being escaped?
     je .write                                   ; If so, skip spaces
@@ -269,7 +284,7 @@ command:                                        ; Main loop: Retrieve command fr
     call capitalize_char                        ; Capitalize
 
     cmp al, 0x00                                ; Is this a null character?
-    je .overwrite_comma                         ; If so, no more parameters
+    je .end_command_owrite                      ; If so, the command is finished
 
     cmp al, 0x20                                ; Is this a space?
     je .param_char                              ; If so, read next parameter
@@ -351,7 +366,7 @@ command:                                        ; Main loop: Retrieve command fr
     lodsb                                       ; Load next byte
 
     cmp al, 0x00                                ; Is this a NULL character?
-    je .overwrite_comma                         ; If so, no more parameters
+    je .end_command_owrite                      ; If so, the command is finished
 
     cmp al, 0x20                                ; Is this a space?
     je .param_char                              ; If so, next parameter
@@ -361,6 +376,26 @@ command:                                        ; Main loop: Retrieve command fr
 
     loop .redir_fname_char                      ; Repeat with next character
     jmp .bad_command                            ; If we've reached this point, bad filename
+
+.pipe:
+    push di                                     ; Preserve pointer
+
+    cmp byte [si], 0x20                         ; Is the next byte a space?
+    jne .bad_command                            ; If not, bad command
+
+    inc si                                      ; Otherwise, increment pointer to the next command
+    mov ax, si                                  ; Move into AX
+    sub ax, input_buffer                        ; Subtract the starting index of the command input buffer
+    mov word [pipe_offset], ax                  ; This is our offset to look from next
+
+    jmp .overwrite_comma                        ; We are done with this part of the command
+
+.end_command:
+    mov word [pipe_offset], 0x0000              ; Clear out our offset
+    jmp .load_file                              ; Proceed to load the file
+
+.end_command_owrite:
+    mov word [pipe_offset], 0x0000              ; Clear out our offset
 
 .overwrite_comma:
     pop di                                      ; Restore pointer
@@ -374,16 +409,18 @@ command:                                        ; Main loop: Retrieve command fr
     jc .bad_command                             ; If error, bad command
 
     call get_file_cluster                       ; Get the starting cluster for our file
-    call clear_buffer                           ; Clear the buffer
-    mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
+    mov word [file_buffer_segment], 0x4000      ; Load into the execution buffer
+    mov word [file_buffer_pointer], 0x0000      ; At the beginning
 
     call load_file                              ; Load file into our file buffer
+
+    mov word [file_buffer_segment], 0x1000      ; Reset file buffer segment to I/O buffer
+    mov word [buffer_out_pointer], 0x0000       ; Reset output buffer pointer
+    mov word [buffer_in_pointer], 0x0000        ; Reset input buffer pointer
+
     jc command                                  ; If error, stop here
 
-    call move_file_bin                          ; Move the contents into the binary buffer
-    call clear_buffer                           ; Clear the buffer again
-
-    call data_kernseg                           ; We're about to use some kernel variables
+    call data_kernseg                           ; Otherwise, we're about to use some kernel variables
 
 .jump:
     cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
@@ -1324,9 +1361,10 @@ out_routines:                                   ; Output functions
     mov word [file_buffer_pointer], ax          ; Load the file there
     call load_file                              ; Load file
 
-    mov ah, 0x1C                                ; File size
+    mov al, 0x1C                                ; File size
     call get_file_info                          ; Retrieve from directory entry
     add word [buffer_out_pointer], ax           ; Advance buffer pointer past the file
+    call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
     jmp int_ret                                 ; We're done!
@@ -2518,6 +2556,8 @@ init_byte           db 0x00                     ; Have we been initialized?
 break_byte          db 0x00                     ; Are we supposed to interrupt the program?
 header_offset       db 0x00                     ; Which part of the header are we looking at?
 
+pipe_offset         dw 0x0000                   ; What offset within the full command are we at?
+
 config_iface        db 0b00000010               ; Temporary interface configuration
 config_sys_iface    db 0b00000010               ; Default interface configuration
 default_dev         db 0x01                     ; Default device to send output to (0 = NUL, 1 = TTY, 2 = MEM)
@@ -2534,7 +2574,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 45; Compiled 2021-01-18", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 46; Compiled 2021-01-19", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

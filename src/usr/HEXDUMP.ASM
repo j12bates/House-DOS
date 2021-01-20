@@ -23,15 +23,28 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x28                        ; Load file from first parameter
+    mov ax, 0x4300                      ; Set default output device to NUL
+    int 0x7E
+
+    mov ah, 0x21                        ; Get total parameters
+    int 0x7E
+
+    jcxz .size                          ; If no parameter, skip
+
+    mov ah, 0x2A                        ; Verify file from parameter
+    mov cx, 0x0000                      ; The first parameter
+    int 0x7E
+
+    mov ax, 0x4020                      ; Output file
     int 0x7E
 
     jc .done                            ; If error, we're done
 
-    mov ah, 0x70                        ; Get size of file
+.size:
+    mov ax, 0x4113                      ; Get buffer endpoint
     int 0x7E
 
-    mov word [eof], ax                  ; This is the number of bytes to print
+    mov word [eof], cx                  ; This is the number of bytes to print
 
 .next_16:
     mov ax, 0x8200                      ; Print word as hex
@@ -118,7 +131,8 @@ fname           dq 0x0000000000000000
 space           db " ", 0x00
 
 creator         db "House-DOS Developers", 0x00
-desc            db "Utility to dump a file as hex/plaintext.", 0x00
-usage           db "HEXDUMP <FILENAME>", 0x00
+desc            db "Utility to dump a file/input as hex/plaintext.", 0x00
+usage           db "HEXDUMP *<FILENAME>*", 0x0A
+                db "Flags: none", 0x00
 
 dest_buffer:
