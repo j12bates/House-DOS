@@ -158,7 +158,8 @@ load_file:                                      ; Load file starting at cluster 
     mov cx, word [bytes_cluster]                ; If it is, only copy the one cluster we just read from
 
 .copy:
-    call extra_fileseg                          ; Copy into the file buffer
+    mov ax, word [file_buffer_segment]          ; The segment of our file buffer
+    mov es, ax                                  ; Load file here
     mov di, word [file_buffer_pointer]          ; At our pointer
 
     mov ax, 0x3C00
@@ -1344,7 +1345,7 @@ drive_num           db 0x00
 cluster             dw 0x0000
 root_entry          dw 0x0000
 file_buffer_pointer dw 0x0000
-buffer_segment      dw 0x0000
+file_buffer_segment dw 0x1000
 bytes_to_load       dw 0x0000
 
 bytes_sector        dw 0x0000
