@@ -541,48 +541,26 @@ block:                                          ; Draws a block of char AL size 
 
 ; SET ATTRIBUTE OF ENTIRE SCREEN: Sets the foreground/background colors of all characters on the screen
 ; IN: BL = Attribute (Bit 7 = Blink; Bits 6-4 = Background; Bits 3-0 = Foreground)
-; OUT: None
+; OUT: None (segments)
 
 screen_attribute:                               ; Set the attribute of all characters on screen
     pusha                                       ; Save register states to stack
 
-.cursor:
-    mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
-    int 0x10                                    ; BIOS VGA interrupt
+    mov ax, 0xB800
+    mov es, ax                                  ; Write to the VRAM segment
+    mov di, 0x0000                              ; Starting from the beginning?
 
-    push dx                                     ; Preserve cursor position
-
-    mov dx, 0x0000                              ; 0, 0
-    call move_cursor                            ; Set cursor position
-
+    mov al, bl                                  ; Move attribute into AL
     mov cx, 0x07D0                              ; There are 2000 characters total
+    cld                                         ; Ensure correct direction
 
 .char:
-    mov ah, 0x08                                ; Read char
-    int 0x10                                    ; BIOS VGA interrupt
+    inc di                                      ; The second byte of each word is for attributes
+    stosb                                       ; Write attribute byte
 
-    push cx                                     ; Save our loop counter
-
-    mov ah, 0x09                                ; Write char
-    mov cx, 0x0001                              ; Only print once
-    int 0x10                                    ; BIOS VGA interrupt
-
-    pop cx                                      ; Restore our loop counter
-    loop .next_char                             ; Set up for the next character
-
-    jmp .done                                   ; Otherwise, we're done!
-
-.next_char:
-    mov ah, 0x0E                                ; Teletype output (we want to move the cursor forward)
-    int 0x10                                    ; BIOS VGA interrupt
-
-    jmp .char                                   ; Repeat
+    loop .char                                  ; Repeat
 
 .done:
-    pop dx                                      ; Restore cursor position
-    call move_cursor                            ; Set cursor position
-
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 

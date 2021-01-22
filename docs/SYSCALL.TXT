@@ -240,12 +240,16 @@ III. I/O Functions
     AH = 0x50: BASIC INPUT
 
         These system calls utilize a similar pointer for retrieving input. Any input retrieved
-        will move the input buffer pointer ahead. Both CF and ZF are cleader whenever the input
-        pointer exceeds the buffer endpoint (i.e. use JA for exiting the loop).
+        will move the input buffer pointer ahead. Both CF and ZF are cleared whenever the input
+        pointer exceeds the buffer endpoint (i.e. use JA for exiting the loop). No more bytes
+        will be copied when this happens.
 
         IN_STRING
             AL = 0x00
             DI = Destination buffer
+
+            Return:
+            CX = Number of bytes copied
 
             Retrieves a string from the buffer.
 
@@ -253,6 +257,9 @@ III. I/O Functions
             AL = 0x10
             DI = Destination buffer
             CX = Number of bytes
+
+            Return:
+            CX = Number of bytes copied
 
             Retrieves a certain number of bytes from the buffer.
 
