@@ -177,7 +177,7 @@ command:                                        ; Main loop: Retrieve command fr
 .init_parse:
     mov si, input_buffer                        ; Read from the input buffer
     add si, word [pipe_offset]                  ; Starting after the last pipeline
-    mov di, filename                            ; Into the filename
+    mov di, program_fname                       ; Into the filename
     mov cx, 0x0009                              ; Up to 8 chars in a filename
     cld                                         ; Ensure correct direction
 
@@ -185,10 +185,10 @@ command:                                        ; Main loop: Retrieve command fr
     lodsb                                       ; Load next char and advance
 
     cmp al, 0x00                                ; Is this the end of the input?
-    je .spaces                                  ; If so, that's the end of the filename
+    je .extension                               ; If so, that's the end of the filename
 
     cmp al, 0x20                                ; Is this a SPACE?
-    je .spaces                                  ; If so, that's also the end of the filename
+    je .extension                               ; If so, that's also the end of the filename
 
     call capitalize_char                        ; Otherwise, capitalize this character
 
@@ -197,16 +197,11 @@ command:                                        ; Main loop: Retrieve command fr
 
     jmp .bad_command                            ; There should have been a null/space by now
 
-.spaces:
-    mov al, 0x20                                ; Write spaces
-    rep stosb                                   ; Pad remainder of 8-byte filename
-
 .extension:
     push si                                     ; Preserve pointer
 
     mov si, bin_extension                       ; The extension for a Binary file
-    mov di, filename_extension                  ; The extension of the filename
-    mov cx, 0x0003                              ; Extension is 3 chars
+    mov cx, 0x0005                              ; 5 chars, including dot and null
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Move into our file extension
@@ -253,8 +248,11 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x25                                ; Is this a percent-sign?
     je .metadata                                ; If so, we're getting metadata
 
+    cmp al, 0x3C                                ; Is this a backward-facing angle-bracket?
+    je .input                                   ; If so, set up input redirection
+
     cmp al, 0x3E                                ; Is this a forward-facing angle-bracket?
-    je .redir                                   ; If so, set up file redirection
+    je .redir                                   ; If so, set up output redirection
 
 .write:
     stosb                                       ; Otherwise, store byte in list
@@ -328,6 +326,69 @@ command:                                        ; Main loop: Retrieve command fr
     mov ax, 0x0003                              ; Otherwise, invalid header field
     call error                                  ; Handle this error
     jmp command                                 ; Get a new command
+
+.input:
+    push di                                     ; Preserve destination index
+
+    cmp byte [si], 0x20                         ; Is the byte a space?
+    jne .bad_command                            ; If not, bad command
+
+    inc si                                      ; Otherwise, ignore space
+
+    mov di, input_fname                         ; Write into input redirection filename
+    mov cx, 0x000D                              ; Up to 12 characters in the filename
+    mov al, 0x00                                ; Write NULL characters
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Overwrite with zeroes
+
+    mov di, input_fname                         ; Write into input redirection filename
+    mov cx, 0x000D                              ; Up to 12 characters in the filename
+    cld                                         ; Ensure correct direction
+
+.input_fname_char:
+    lodsb                                       ; Load next byte
+
+    cmp al, 0x00                                ; Is this a NULL character?
+    je .load_input                              ; If so, load the file
+
+    cmp al, 0x20                                ; Is this a space?
+    je .load_input                              ; If so, also load the file
+
+    call capitalize_char                        ; Otherwise, capitalize character
+    stosb                                       ; Write byte to filename
+
+    loop .input_fname_char                      ; Repeat with next character
+    jmp .bad_command                            ; If we've reached this point, bad filename
+
+.load_input:
+    push ax                                     ; Preserve last character
+    push si                                     ; Preserve pointer
+
+    mov si, input_fname                         ; Read from our input redirection filename
+    call conv_x3_83                             ; Convert to usable format
+
+    call verify                                 ; Verify the file exists
+    jc .bad_command                             ; If error, bad command
+
+    call get_file_cluster                       ; Get the starting cluster for our file
+    mov word [file_buffer_pointer], 0x0000      ; At the beginning
+
+    call load_file                              ; Load file into our file buffer
+
+    mov al, 0x1C                                ; File size
+    call get_file_info                          ; Retrieve from directory entry
+    mov word [buffer_endpoint], ax              ; This is the number of bytes of input
+
+    call setup_segments                         ; Reset segments
+
+    pop si                                      ; Restore pointer
+    pop ax                                      ; Restore last character
+
+    cmp al, 0x00                                ; Is this a NULL character?
+    je .end_command_owrite                      ; If so, the command is finished
+
+    jmp .param_char                             ; Otherwise, continue reading parameters
 
 .redir:
     push di                                     ; Preserve destination index
@@ -405,6 +466,9 @@ command:                                        ; Main loop: Retrieve command fr
     mov byte [di-0x01], 0x00                    ; Otherwise, overwrite last comma
 
 .load_file:
+    mov si, program_fname                       ; Our program filename
+    call conv_x3_83                             ; Convert to usable format
+
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
 
@@ -1511,14 +1575,14 @@ out_routines:                                   ; Output functions
 in_routines:                                    ; Input functions
 
 .string:
-    push cx                                     ; Save register state to stack
-
     call data_fileseg                           ; Read data from the buffer
     mov si, word [buffer_in_pointer]            ; At our pointer
 
     clc                                         ; Use DS:SI
     call str_len                                ; Get string length
     inc cx                                      ; Retrieve the NULL character as well
+
+    push cx                                     ; Preserve number of bytes
 
     call in_bytes                               ; Retrieve bytes
 
@@ -2492,7 +2556,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2C00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple of 256 (to make debugging easier)
+times 0x2E00 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2501,7 +2565,7 @@ times 0x2C00 - ($-$$)   db 0xFF                 ; Pad up to the nearest multiple
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022C00
+input_buffer        dq 0x0000000000000000       ; 0x00022E00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2510,7 +2574,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022C00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022C40
+params              dq 0x0000000000000000       ; 0x00022E40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2519,7 +2583,7 @@ params              dq 0x0000000000000000       ; 0x00022C40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022C80
+misc_buffer         dq 0x0000000000000000       ; 0x00022E80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2528,7 +2592,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022C80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00022CC0
+param_flags         dq 0x0000000000000000       ; 0x00022EC0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2549,6 +2613,10 @@ num_buffer          dd 0x00000000
 date_buffer         db "YYYY-MM-DD"
 time_buffer         db "HH:MM:SS"
 
+program_fname       db "XXXXXXXX.XXX", 0x00
+bin_extension       db ".BIN", 0x00
+
+input_fname         db "XXXXXXXX.XXX", 0x00, 0x00
 redir_fname         db "XXXXXXXX.XXX", 0x00, 0x00
 redir_enabled       db 0x00
 
@@ -2574,7 +2642,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 46; Compiled 2021-01-19", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 47; Compiled 2021-01-21", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

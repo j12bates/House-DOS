@@ -1338,9 +1338,6 @@ disk_data:
 filename            db "        "
 filename_extension  db "   "
 
-bin_extension       db "BIN"
-hob_extension       db "HOB"
-
 drive_num           db 0x00
 cluster             dw 0x0000
 root_entry          dw 0x0000

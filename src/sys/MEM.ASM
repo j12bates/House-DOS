@@ -91,7 +91,7 @@ out_str:                                        ; Output string to the I/O buffe
 
 ; INPUT BYTES: Copies a byte from the I/O buffer at the pointer location to an address
 ; IN: [buffer_in_pointer] = Source index; CX = Number of bytes; ES:DI = Destination index
-; OUT: [buffer_in_pointer] = Initial value + bytes copied
+; OUT: [buffer_in_pointer] = Initial value + bytes copied; CX = Number of bytes copied
 
 in_bytes:                                       ; Copy bytes from the I/O buffer
     pusha                                       ; Save register states to stack
@@ -100,12 +100,25 @@ in_bytes:                                       ; Copy bytes from the I/O buffer
     mov si, word [gs:buffer_in_pointer]         ; Read starting at our pointer
     cld                                         ; Ensure correct direction
 
-    rep movsb                                   ; Copy bytes
+.byte:
+    cmp si, word [gs:buffer_endpoint]           ; Check pointer against endpoint
+    ja .done                                    ; If we've gone through everything, we're done!
+
+    movsb                                       ; Otherwise, copy byte
+    loop .byte                                  ; Repeat
+
+.done:
+    mov cx, si                                  ; Our current position in the buffer
+    sub cx, word [gs:buffer_in_pointer]         ; Subtract former position to get bytes copied
 
     mov word [gs:buffer_in_pointer], si         ; Update buffer pointer
     cmp si, word [gs:buffer_endpoint]           ; Check against endpoint
 
+    mov word [gs:register_bckp_a], cx           ; Preserve counter
+
     popa                                        ; Restore register states
+    mov cx, word [gs:register_bckp_a]           ; Restore counter
+
     ret                                         ; Return to caller
 
 

@@ -47,34 +47,27 @@ main:
     mov word [eof], cx                  ; This is the number of bytes to print
 
 .next_16:
+    mov ax, 0x5101                      ; Get input buffer pointer
+    int 0x7E
+
     mov ax, 0x8200                      ; Print word as hex
-    mov dx, word [buffer_pointer]       ; Our buffer pointer
+    mov dx, si                          ; Our input buffer pointer
     int 0x7E
 
     mov ah, 0x13                        ; Indent cursor
     mov dl, 0x06                        ; Col 7
     int 0x7E
 
-    mov si, word [buffer_pointer]       ; Start reading at our pointer
-    mov cx, si                          ; Read up until that same point
-    add cx, 0x0010                      ; Plus 16
-
-    cmp cx, word [eof]                  ; Will this take us past the end of the file?
-    jb .get_bytes                       ; If not, proceed
-
-    mov cx, word [eof]                  ; Otherwise, read until the end of the file
-
 .get_bytes:
-    mov ah, 0x63                        ; Get bytes (index-index)
+    mov ax, 0x5010                      ; Input bytes
     mov di, dest_buffer                 ; Copy into our buffer
+    mov cx, 0x0010                      ; 16 bytes
     int 0x7E
 
-    sub cx, word [buffer_pointer]       ; Subtract to get the number of bytes copied
+    pushf                               ; Preserve flags
     push cx                             ; Preserve number of characters
 
     jcxz .chars_ascii                   ; If counter is zero, avoid an endless loop
-
-    mov word [buffer_pointer], si       ; Update the buffer pointer
     mov si, dest_buffer                 ; Read from our buffer
     cld                                 ; Ensure correct direction
 
@@ -109,9 +102,8 @@ main:
     mov ah, 0x05                        ; Line break
     int 0x7E
 
-    mov si, word [buffer_pointer]       ; Load our buffer pointer
-    cmp si, word [eof]                  ; Are we at the end yet?
-    jb .next_16                         ; If not, repeat
+    popf                                ; Restore flags
+    jbe .next_16                        ; If there's more, repeat
 
 .done:
     mov ah, 0xFF                        ; Otherwise, we're done!
