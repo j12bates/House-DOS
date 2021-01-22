@@ -365,6 +365,8 @@ command:                                        ; Main loop: Retrieve command fr
     push ax                                     ; Preserve last character
     push si                                     ; Preserve pointer
 
+    call clear_buffer                           ; Clear I/O buffer
+
     mov si, input_fname                         ; Read from our input redirection filename
     call conv_x3_83                             ; Convert to usable format
 
