@@ -49,6 +49,7 @@ input:                                          ; Get input from user, store in 
     pop ax                                      ; Restore character
 
     test al, 0b00100000                         ; Is NUM-LOCK active?
+    jz .special_handler                         ; If not, skip all this
 
     cmp al, 0x00                                ; Does it have an ASCII code?
     je .special_handler                         ; If not, it's not a num key
