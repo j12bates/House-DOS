@@ -129,8 +129,7 @@ load_file:                                      ; Load file starting at cluster 
 
     call get_file_cluster                       ; Get file starting cluster and size
 
-    call is_device                              ; Check for device file
-    call data_kernseg                           ; Segment in which we are loaded
+    call is_device                              ; Is this a device file
     jnc .load_cluster                           ; If not a device file, proceed
 
     call load_dev                               ; Otherwise, load device file
@@ -246,13 +245,19 @@ load_file:                                      ; Load file starting at cluster 
 
 write_file:                                     ; Write file buffer to disk as file
     pusha                                       ; Push register states to stack
-    push cx                                     ; Save our file size
 
-    call data_kernseg                           ; The segment we are loaded at
+    call is_device                              ; Is this a device file?
+    jnc .pre_apply                              ; If not, proceed
+
+    call write_dev                              ; Otherwise, write to device file
+    clc                                         ; No error
+    jmp .end                                    ; We're done!
+
+.pre_apply:
+    push cx                                     ; Save our file size
 
     mov word [file_buffer_pointer], 0x0000      ; Start reading from offset 0
 
-.pre_apply:
     mov si, iface_disk_applyw
     call comment_line                           ; Comment message
 
@@ -450,6 +455,8 @@ write_file:                                     ; Write file buffer to disk as f
     jc .end                                     ; If error, we're done
 
 .done:
+    call setup_segments                         ; Ensure segments are set properly
+
     mov si, iface_disk_saved
     call msg_info                               ; Info message
 
@@ -1131,19 +1138,14 @@ get_file_cluster:                               ; Get the starting cluster for a
 
 
 ; CHECK DEVICE FILE: Check if the file is a device file
-; IN: [root_entry] = Root entry number of the file
+; IN: [filename_extension] = 8.3 filename extension
 ; OUT: CF = Set if device file
 
 is_device:                                      ; Check if a file is a device file
     pusha                                       ; Save register states to stack
 
-    mov si, word [root_entry]                   ; Read from the root entry of the file we've verified
-    shl si, 0x5                                 ; There are 32 bytes per entry
-    add si, 0x0008                              ; Look at the file extension
-    mov bx, 0x3800
-    mov ds, bx                                  ; The segment the root directory is loaded in
-
-    call extra_kernseg                          ; The segment we're loaded in
+    call setup_segments                         ; Ensure segments are set properly
+    mov si, filename_extension                  ; Look at our filename extension
     mov di, device_extension                    ; Compare against device file extension
     mov cx, 0x0003                              ; Extension is 3 chars long
     cld                                         ; Ensure correct direction
