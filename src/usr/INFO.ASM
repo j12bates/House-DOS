@@ -37,7 +37,7 @@ main:
     mov ah, 0xB2                        ; Get CPU brand string
     int 0x7E
 
-    mov ax, 0x4001                      ; Output string as line
+    mov ax, 0x4000                      ; Output string
     mov si, data_buffer                 ; Our buffer
     int 0x7E
 

@@ -36,15 +36,23 @@ input:                                          ; Get input from user, store in 
     mov ah, 0x00                                ; Get keyboard input
     int 0x16                                    ; BIOS keyboard interrupt
 
+    cmp byte [break_byte], 0x00                 ; Was CTRL+BREAK pressed?
+    jne .terminate                              ; If so, we're done getting input
+
 .num_lock_handler:
     push ax                                     ; Preserve character
 
     mov ah, 0x02                                ; Read keyboard flags
     int 0x16                                    ; BIOS keyboard interrupt
 
-    test al, 0b00100000                         ; Is NUM-LOCK active?
+    mov bx, ax                                  ; Place result into BX
     pop ax                                      ; Restore character
+
+    test al, 0b00100000                         ; Is NUM-LOCK active?
     jz .special_handler                         ; If not, skip all this
+
+    ;test al, 0b00000100                         ; Is CTRL active?
+    ;jnz .ctrl_handler                           ; If so, go to a separate handler
 
     cmp al, 0x00                                ; Does it have an ASCII code?
     je .special_handler                         ; If not, it's not a num key
@@ -54,9 +62,6 @@ input:                                          ; Get input from user, store in 
 
     cmp ah, 0x0E                                ; Was the BACKSPACE key pressed?
     je .backspace                               ; If so, erase last char and move cursor left
-
-    cmp byte [break_byte], 0x00                 ; Was CTRL+BREAK pressed?
-    jne .terminate                              ; If so, we're done getting input
 
     mov ah, 0x00                                ; Otherwise, get rid of the scan code and proceed
 
@@ -90,6 +95,10 @@ input:                                          ; Get input from user, store in 
 
     stosb                                       ; Store this char in our buffer
     jmp .key                                    ; Get more input
+
+.ctrl_handler:
+    cmp ah, 0x7A                                ; Is it a lowercase Z?
+    je .terminate                               ; If so,
 
 .backspace:
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?

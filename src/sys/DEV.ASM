@@ -11,7 +11,7 @@
 ; ========================================================================
 
 ; OUTPUT TO TELETYPE: Outputs the contents of the buffer in teletype mode
-; IN: [buffer_endpoint] = Total number of bytes to write
+; IN: CX = Total number of bytes to write
 ; OUT: None
 
 tty_out:                                        ; Output to teletype
@@ -19,8 +19,9 @@ tty_out:                                        ; Output to teletype
 
     call data_fileseg                           ; Read from I/O buffer
     mov si, 0x0000                              ; Starting at the beginning
-    mov cx, word [gs:buffer_endpoint]           ; The total number of bytes
-    jcxz .done                                  ; If zero, don't do anything
+
+    cmp cx, 0x0001                              ; Are we just a newline?
+    jbe .done                                   ; If so, do nothing
     clc                                         ; Newlines should act as newlines
 
     call print_bytes                            ; Print bytes
@@ -31,7 +32,7 @@ tty_out:                                        ; Output to teletype
 
 
 ; OUTPUT TO USER BUFFER: Outputs the contents of the buffer to the user buffer
-; IN: [buffer_endpoint] = Total number of bytes to write
+; IN: CX = Total number of bytes to write
 ; OUT: None
 
 mem_out:                                        ; Output to user buffer
@@ -43,8 +44,7 @@ mem_out:                                        ; Output to user buffer
     call extra_memseg                           ; Write to user buffer
     mov di, 0x0000                              ; Starting at the beginning
 
-    mov cx, word [gs:buffer_endpoint]           ; The total number of bytes
-    mov word [gs:mem_buffer_endpoint], cx       ; This will also be the length of the user buffer
+    mov word [gs:mem_buffer_endpoint], cx       ; This will be the length of the user buffer
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Copy bytes
@@ -54,7 +54,7 @@ mem_out:                                        ; Output to user buffer
 
 
 ; OUTPUT TO NULL: Outputs the contents of the buffer to null
-; IN: [buffer_endpoint] = Total number of bytes to write
+; IN: CX = Total number of bytes to write
 ; OUT: None
 
 nul_out:                                        ; Output to null
@@ -77,12 +77,15 @@ tty_in:                                         ; Input from teletype
     dec cx                                      ; Avoid an O.B.O.E
 
     call input                                  ; Get teletype input
-    jc .done                                    ; If CTRL+BREAK used, we're done
+    pushf                                       ; Preserve flags
 
-    call line_break                             ; Otherwise, line break
+    call line_break                             ; Line break
 
     mov al, 0x0A                                ; Newline character
     stosb                                       ; Output byte
+
+    popf                                        ; Restore flags
+    jc .done                                    ; If CTRL+BREAK used, we're done
 
     jmp .input                                  ; Repeat
 
@@ -135,6 +138,7 @@ default_out:                                    ; Output to default
     pusha                                       ; Save register states to stack
 
     mov al, byte [default_dev]                  ; Default device ID
+    mov cx, word [buffer_endpoint]              ; Number of bytes in the buffer
 
     cmp al, 0x00
     je .nul                                     ; NUL
@@ -211,6 +215,65 @@ load_dev:                                       ; Load contents of a device file
 .nul:
     call nul_in                                 ; Get input from null
     jmp .done                                   ; We're done!
+
+
+; WRITE TO DEVICE FILE: Writes to a device file
+; IN: [filename] = 8.3 filename; CX = Number of bytes to write
+; OUT: None
+
+write_dev:                                      ; Write to a device file
+    pusha                                       ; Save register states to stack
+
+    call setup_segments                         ; Ensure segments are set correctly
+    push cx                                     ; Preserve number of bytes
+
+    mov si, filename                            ; Read from the filename
+    mov di, tty_name                            ; TTY filename
+    mov cx, 0x0004                              ; TTY is 3 chars
+
+    repe cmpsb                                  ; Compare filenames
+    je .tty                                     ; If they are equal, write to teletype
+
+    mov si, filename                            ; Otherwise, read from the filename
+    mov di, mem_name                            ; MEM filename
+    mov cx, 0x0004                              ; MEM is 3 chars
+
+    repe cmpsb                                  ; Compare filenames
+    je .mem                                     ; If they are equal, write to user buffer
+
+    mov si, filename                            ; Otherwise, read from the filename
+    mov di, nul_name                            ; NUL filename
+    mov cx, 0x0004                              ; NUL is 3 chars
+
+    repe cmpsb                                  ; Compare filenames
+    je .nul                                     ; If they are equal, write to null
+
+.error_dev:
+    mov ax, 0x0800                              ; Otherwise, invalid device
+    call error                                  ; Handle this error
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.tty:
+    pop cx                                      ; Restore number of bytes
+    call tty_out                                ; Write to teletype
+
+    jmp .done                                   ; We're done!
+
+.mem:
+    pop cx                                      ; Restore number of bytes
+    call mem_out                                ; Write to buffer
+
+    jmp .done                                   ; We're done!
+
+.nul:
+    pop cx                                      ; Restore number of bytes
+    call nul_out                                ; Write to null
+
+    jmp .done                                   ; We're done!
+
 
 
 ; ========================================================================
