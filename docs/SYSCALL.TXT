@@ -725,7 +725,7 @@ VI. Interface Functions
 
         Similar to PRINT BYTES except newline (0x0A) is printed as a char.
 
-    PRINT_CHARACTER
+    PRINT_CHAR
         AH = 0x19
         AL = ASCII code
 
