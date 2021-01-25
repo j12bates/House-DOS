@@ -49,10 +49,6 @@ input:                                          ; Get input from user, store in 
     pop ax                                      ; Restore character
 
     test al, 0b00100000                         ; Is NUM-LOCK active?
-    jz .special_handler                         ; If not, skip all this
-
-    ;test al, 0b00000100                         ; Is CTRL active?
-    ;jnz .ctrl_handler                           ; If so, go to a separate handler
 
     cmp al, 0x00                                ; Does it have an ASCII code?
     je .special_handler                         ; If not, it's not a num key
@@ -95,10 +91,6 @@ input:                                          ; Get input from user, store in 
 
     stosb                                       ; Store this char in our buffer
     jmp .key                                    ; Get more input
-
-.ctrl_handler:
-    cmp ah, 0x7A                                ; Is it a lowercase Z?
-    je .terminate                               ; If so,
 
 .backspace:
     cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?

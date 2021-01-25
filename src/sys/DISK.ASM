@@ -129,7 +129,7 @@ load_file:                                      ; Load file starting at cluster 
 
     call get_file_cluster                       ; Get file starting cluster and size
 
-    call is_device                              ; Is this a device file
+    call is_device                              ; Is this a device file?
     jnc .load_cluster                           ; If not a device file, proceed
 
     call load_dev                               ; Otherwise, load device file
