@@ -121,13 +121,20 @@ get_file_info:                                  ; Get an item (AL=offset) from a
 
 
 ; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
-; IN: [cluster] = Starting cluster number, [bytes_to_load] = File size (run get_file_cluster to set these up), [file_buffer_pointer] = Offset to load to
-; OUT: CF = Set on error
+; IN: [root_entry] = Root entry number of the file; [file_buffer_pointer] = Offset to load to
+; OUT: [file_buffer_pointer] = Initial value + bytes copied; CF = Set on error
 
 load_file:                                      ; Load file starting at cluster into buffer
     pusha                                       ; Push register states to stack
 
+    call get_file_cluster                       ; Get file starting cluster and size
+
+    call is_device                              ; Check for device file
     call data_kernseg                           ; Segment in which we are loaded
+    jnc .load_cluster                           ; If not a device file, proceed
+
+    call load_dev                               ; Otherwise, load device file
+    jmp .done                                   ; We're done!
 
 .load_cluster:
     mov si, iface_disk_cluster
@@ -1123,6 +1130,35 @@ get_file_cluster:                               ; Get the starting cluster for a
     ret                                         ; Return to caller
 
 
+; CHECK DEVICE FILE: Check if the file is a device file
+; IN: [root_entry] = Root entry number of the file
+; OUT: CF = Set if device file
+
+is_device:                                      ; Check if a file is a device file
+    pusha                                       ; Save register states to stack
+
+    mov si, word [root_entry]                   ; Read from the root entry of the file we've verified
+    shl si, 0x5                                 ; There are 32 bytes per entry
+    add si, 0x0008                              ; Look at the file extension
+    mov bx, 0x3800
+    mov ds, bx                                  ; The segment the root directory is loaded in
+
+    call extra_kernseg                          ; The segment we're loaded in
+    mov di, device_extension                    ; Compare against device file extension
+    mov cx, 0x0003                              ; Extension is 3 chars long
+    cld                                         ; Ensure correct direction
+
+    repe cmpsb                                  ; Compare bytes
+    clc                                         ; Clear carry-flag by default
+    jne .done                                   ; If there was a break, we're done
+
+    stc                                         ; Otherwise, set the carry flag
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; CHECK READ-ONLY FILE: Check if the file is read-only
 ; IN: [root_entry] = Root entry number of the file
 ; OUT: CF = Set if read-only
@@ -1337,6 +1373,7 @@ disk_data:
 
 filename            db "        "
 filename_extension  db "   "
+device_extension    db "DEV"
 
 drive_num           db 0x00
 cluster             dw 0x0000

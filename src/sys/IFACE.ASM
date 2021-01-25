@@ -11,8 +11,8 @@
 ; ========================================================================
 
 ; GET KEYBOARD INPUT: Get user input from the keyboard, and store in the buffer provided
-; IN: CX = Buffer size, ES:DI = Location of buffer
-; OUT: DI = Initial value + number of characters input
+; IN: CX = Buffer size; ES:DI = Location of buffer
+; OUT: DI = Initial value + number of characters input; CF = Set if CTRL+BREAK
 
 input:                                          ; Get input from user, store in ES:DI
     pusha                                       ; Push register states to stack
@@ -55,6 +55,9 @@ input:                                          ; Get input from user, store in 
     cmp ah, 0x0E                                ; Was the BACKSPACE key pressed?
     je .backspace                               ; If so, erase last char and move cursor left
 
+    cmp byte [break_byte], 0x00                 ; Was CTRL+BREAK pressed?
+    jne .terminate                              ; If so, we're done getting input
+
     mov ah, 0x00                                ; Otherwise, get rid of the scan code and proceed
 
 .special_handler:
@@ -80,7 +83,7 @@ input:                                          ; Get input from user, store in 
     jl .key                                     ; If not, we can't print this character
 
     cmp di, word [input_buffer_limit]           ; Have we exhausted our buffer?
-    jge .key                                    ; If so, don't continue
+    jae .key                                    ; If so, don't continue
 
 .record:
     call teletype_output                        ; Write character
@@ -169,14 +172,21 @@ input:                                          ; Get input from user, store in 
 
 .terminate:
     cmp byte [es:di], 0x00                      ; Are we at the end of our input?
-    je .done                                    ; If so, we're done
+    je .break                                   ; If so, proceed
 
     inc di                                      ; Otherwise, advance pointer
 
     cmp di, word [input_buffer_limit]           ; Are we at the end of our buffer?
-    je .done                                    ; If so, we're done
+    je .break                                   ; If so, proceed
 
     jmp .terminate                              ; Otherwise, repeat
+
+.break:
+    cmp byte [break_byte], 0x00                 ; Was CTRL+BREAK pressed?
+    je .done                                    ; If not, proceed
+
+    stc                                         ; Otherwise, set carry-flag
+    mov byte [break_byte], 0x00                 ; And clear break byte
 
 .done:
     mov word [register_bckp_a], di              ; Preserve our return value
@@ -282,9 +292,14 @@ printf:                                         ; Prints string in DS:SI with co
     cmp al, 0x00                                ; Is this a null character?
     je .done                                    ; If so, we're done!
 
+    push ax                                     ; Preserve character
+
     mov ah, 0x09                                ; Otherwise, write character and attribute
+    mov al, 0x20                                ; Space for now
     mov cx, 0x0001                              ; Write once
     int 0x10                                    ; BIOS VGA interrupt
+
+    pop ax                                      ; Restore character
 
     call teletype_output                        ; Write char
     jmp .char                                   ; Repeat

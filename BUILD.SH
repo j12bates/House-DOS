@@ -47,6 +47,11 @@ fatattr +s tmp/SYS.BIN
 echo "Copying commands & programs..."
 cp bin/usr/*.BIN tmp/
 
+echo "Creating device files..."
+cat /dev/null > tmp/NUL.DEV
+cat /dev/null > tmp/TTY.DEV
+cat /dev/null > tmp/MEM.DEV
+
 echo "Unmounting image..."
 umount tmp
 rm -rf tmp

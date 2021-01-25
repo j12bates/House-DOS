@@ -53,7 +53,7 @@ main:                                           ; Main code for House-DOS kernel
     je .exit_error                              ; If so, display the error message
 
     cmp byte [break_byte], 0xFF                 ; Are we supposed to break the command?
-    je .handback                                ; If so, prepare to get a command
+    je .new_command                             ; If so, prepare to get a new command
 
     jmp syscall_handler                         ; Otherwise, a system function was called
 
@@ -69,7 +69,12 @@ main:                                           ; Main code for House-DOS kernel
 
     call data_kernseg                           ; Reset segment
 
+.new_command:
+    mov word [gs:pipe_offset], 0x0000           ; Reset command offset
+
 .handback:
+    call check_newline                          ; Check for a newline at the end of the buffer
+
     call setup_segments                         ; Ensure segments are all ready
     mov sp, 0x3FFE                              ; Reset stack pointer (we're going to pop something in a bit)
 
@@ -115,7 +120,6 @@ main:                                           ; Main code for House-DOS kernel
 
     call setup_segments                         ; Ensure segments are set correctly
 
-    call get_file_cluster                       ; Get starting cluster for file
     mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
 
     call load_file                              ; Load the file
@@ -373,13 +377,10 @@ command:                                        ; Main loop: Retrieve command fr
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
 
-    call get_file_cluster                       ; Get the starting cluster for our file
     mov word [file_buffer_pointer], 0x0000      ; At the beginning
-
     call load_file                              ; Load file into our file buffer
 
-    mov al, 0x1C                                ; File size
-    call get_file_info                          ; Retrieve from directory entry
+    mov ax, word [file_buffer_pointer]          ; Read from our new buffer pointer
     mov word [buffer_endpoint], ax              ; This is the number of bytes of input
 
     call setup_segments                         ; Reset segments
@@ -474,7 +475,6 @@ command:                                        ; Main loop: Retrieve command fr
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
 
-    call get_file_cluster                       ; Get the starting cluster for our file
     mov word [file_buffer_segment], 0x4000      ; Load into the execution buffer
     mov word [file_buffer_pointer], 0x0000      ; At the beginning
 
@@ -519,7 +519,8 @@ command:                                        ; Main loop: Retrieve command fr
     mov si, iface_command_bad
     call println                                ; Display an error message
 
-    jmp command                                 ; Try again
+    mov word [pipe_offset], 0x0000              ; Reset command offset
+    jmp command                                 ; Get new command
 
 
 handback_manual:                                ; Routine to manually perform handback
@@ -1052,6 +1053,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x18
     je iface_routines.print_bytes_literal       ; Print literal bytes
 
+    cmp ah, 0x19
+    je iface_routines.print_char                ; Print character
+
     cmp ah, 0x20
     je iface_routines.parameter                 ; Get parameter
 
@@ -1266,6 +1270,9 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x8001
     je data_routines.str_find                   ; Find substring
 
+    cmp ax, 0x8002
+    je data_routines.str_copy                   ; Copy string
+
     cmp ax, 0x8010
     je data_routines.str_upcase                 ; Make uppercase
 
@@ -1307,6 +1314,9 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x8301
     je data_routines.date_tstamp                ; Print UNIX time as timestamp
+
+    cmp ah, 0x88
+    je data_routines.str_find_char              ; Find character
 
 .general_funcs:                                 ; General functions
     cmp ah, 0xA0
@@ -1421,15 +1431,12 @@ out_routines:                                   ; Output functions
 .file:
     pusha                                       ; Save register states to stack
 
-    call get_file_cluster                       ; Get file starting cluster
-
     mov ax, word [buffer_out_pointer]           ; The buffer pointer
     mov word [file_buffer_pointer], ax          ; Load the file there
     call load_file                              ; Load file
 
-    mov al, 0x1C                                ; File size
-    call get_file_info                          ; Retrieve from directory entry
-    add word [buffer_out_pointer], ax           ; Advance buffer pointer past the file
+    mov ax, word [file_buffer_pointer]          ; The immediate position after the loaded file
+    mov word [buffer_out_pointer], ax           ; Advance buffer pointer past the file
     call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
@@ -1634,7 +1641,7 @@ iface_routines:                                 ; Interface functions
     call input                                  ; Get input
     call line_break                             ; Line Break
 
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .line:
     call line_break                             ; Line break
@@ -1726,6 +1733,10 @@ iface_routines:                                 ; Interface functions
 
     jmp int_ret                                 ; We're done!
 
+.print_char:
+    call teletype_output                        ; Output this character
+    jmp int_ret                                 ; We're done!
+
 .parameter:
     call extra_binseg                           ; We want to give data to the command
     call get_parameter                          ; Get parameter
@@ -1814,8 +1825,6 @@ iface_routines:                                 ; Interface functions
 
     jc int_ret.preserve_flags                   ; If error, we're done
 
-    call get_file_cluster                       ; Get file starting cluster
-
     mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
     call load_file                              ; Load file
 
@@ -1824,8 +1833,6 @@ iface_routines:                                 ; Interface functions
 .param_file_offset:
     call verify_file_param                      ; Verify file from parameter
     jc int_ret.preserve_flags                   ; If error, we're done
-
-    call get_file_cluster                       ; Get file starting cluster
 
     mov word [file_buffer_pointer], di          ; Our offset goes here in memory
     call load_file                              ; Load file
@@ -1858,6 +1865,11 @@ data_routines:                                  ; Data functions
     call segments_binary                        ; We're working with stuff in the command
     call find_substr                            ; Find substring
     jmp int_ret.preserve_flags                  ; We're done!
+
+.str_copy:
+    call segments_binary                        ; We're working with sruff in the command
+    call copy_str                               ; Copy string
+    jmp int_ret                                 ; We're done!
 
 .str_upcase:
     call segments_binary                        ; We're working with stuff in the command
@@ -1900,6 +1912,11 @@ data_routines:                                  ; Data functions
     call str_len                                ; Get string length
 
     jmp int_ret                                 ; We're done!
+
+.str_find_char:
+    call data_binseg                            ; We want to access data from the command
+    call find_char                              ; Find character
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .list_get_item:
     call segments_binary                        ; We're working with stuff in the command
@@ -2135,7 +2152,6 @@ disk_routines:                                  ; Disk functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .load:
-    call get_file_cluster                       ; Get the starting cluster of the verified file
     call clear_buffer                           ; Clear the buffer
     mov word [file_buffer_pointer], 0x0000      ; Load into the beginning of the buffer
 
@@ -2202,8 +2218,6 @@ disk_routines:                                  ; Disk functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .load_offset:
-    call get_file_cluster                       ; Get the starting cluster of the verified file
-
     mov word [file_buffer_pointer], di          ; Put our offset in the correct place
     call load_file                              ; Load the file into the file buffer
 
@@ -2558,7 +2572,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x2E00 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
+times 0x3000 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2567,7 +2581,7 @@ times 0x2E00 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (t
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00022E00
+input_buffer        dq 0x0000000000000000       ; 0x00023000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2576,7 +2590,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00022E00
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00022E40
+params              dq 0x0000000000000000       ; 0x00023040
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2585,7 +2599,7 @@ params              dq 0x0000000000000000       ; 0x00022E40
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00022E80
+misc_buffer         dq 0x0000000000000000       ; 0x00023080
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2594,7 +2608,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00022E80
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x00022EC0
+param_flags         dq 0x0000000000000000       ; 0x000230C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2644,7 +2658,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 47; Compiled 2021-01-21", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 48; Compiled 2021-01-25", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
