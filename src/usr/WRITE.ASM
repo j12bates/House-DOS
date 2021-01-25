@@ -23,6 +23,9 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
+    mov ax, 0x4300                      ; Set default output device to NUL
+    int 0x7E
+
     mov ah, 0x02                        ; Print line
     mov si, help                        ; Our instructions
     int 0x7E
@@ -31,14 +34,15 @@ main:
     int 0x7E
 
 .input:
-    mov ah, 0xF0                        ; Convert word to hex
-    mov dx, word [buffer_pointer]       ; Our pointer
-    mov di, byte_num                    ; Save chars here
+    mov ax, 0x4112                      ; Get output buffer pointer
     int 0x7E
 
-    mov ah, 0x10                        ; Print string
-    mov si, byte_num                    ; Print our our current byte hex value
-    mov cx, 0x0006                      ; 6 bytes
+    mov ax, 0x8200                      ; Print int as hex
+    mov dx, di                          ; Our pointer
+    int 0x7E
+
+    mov ah, 0x13                        ; Indent cursor
+    mov dl, 0x06                        ; Col 6
     int 0x7E
 
     mov ah, 0x04                        ; Get input
@@ -55,12 +59,9 @@ main:
     cmp cx, 0x0001                      ; Did they immediately press RETURN?
     je .save                            ; If so, save the file
 
-    mov ah, 0x68                        ; Otherwise, write bytes to file buffer
+    mov ax, 0x4010                      ; Otherwise, output bytes to file buffer
     mov si, src_buffer                  ; The beginning of the source buffer
-    mov di, word [buffer_pointer]       ; Write to our file buffer pointer
     int 0x7E
-
-    add word [buffer_pointer], cx       ; Account for these new bytes
     
     jmp .input                          ; Repeat
 
@@ -95,15 +96,17 @@ main:
     int 0x7E
 
 .write:
-    mov ah, 0x6F                        ; Write file to disk
+    mov ax, 0x4113                      ; Get buffer endpoint
+    int 0x7E
+
+    mov ah, 0x6F                        ; Write file to disk (size already set)
     mov si, fname                       ; Our filename
-    mov cx, word [buffer_pointer]       ; The number of bytes we've written to the file buffer
     int 0x7E
 
 .done:
     mov ah, 0xFF                        ; We're done!
     int 0x7E
-    
+
 
 data:
 
@@ -116,13 +119,7 @@ help            db "Enter text line by line, pressing", 0x0A
 save            db "Save this file?", 0x00
 prompt          db "Enter a filename: ", 0x00
 
-byte_num        dq 0x00000000
-                db ": "
-
 fname           db "XXXXXXXX.XXX"
-ellipse         db "...", 0x00
-
-buffer_pointer  dw 0x0000
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for writing a new text file.", 0x00

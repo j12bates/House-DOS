@@ -320,9 +320,17 @@ IV. Object/Data Functions
             DI = Substring Location
 
             Return:
-            BX = Index of first instance found
+            BX = Index of first instance found, -1 if not found
+            CF = Set if not found/error
 
             Finds the first instance of a substring within a string, given certain bounds.
+
+        STRING_COPY
+            AL = 0x02
+            SI = String Location
+            DI = Destination buffer
+
+            Copies a string.
 
         STRING_UPCASE
             AL = 0x10
@@ -362,7 +370,7 @@ IV. Object/Data Functions
 
             Gets a substring from a string.
 
-        STRING_CHOMP_LEASING_SPACES
+        STRING_CHOMP_LEADING_SPACES
             AL = 0x18
             SI = String Location
             DI = Destination buffer
@@ -442,6 +450,18 @@ IV. Object/Data Functions
 
             Prints UNIX timestamp as ASCII HH:MM:SS timestamp.
 
+    STRING_FIND_CHAR
+        AH = 0x88
+        AL = Character to search for (key)
+        SI = String Location
+        BX = Starting index for search (0 = start of string)
+        CX = Number of bytes to search (0 = until end of string)
+
+        Return:
+        BX = Index of first instance found, -1 if not found
+        CF = Set if not found/error
+
+        Finds the first instance of a character within a string, given certain bounds.
 
 V. Logic Functions
 
@@ -576,9 +596,11 @@ VI. Interface Functions
 
         Return:
         DI = Initial value + Number of chars input
+        CF = Set if CTRL+BREAK used
 
         Retrieves user input through the keyboard. Any input will be printed out in teletype
-        mode, and the input will be stored in the buffer pointed to by DI.
+        mode, and the input will be stored in the buffer pointed to by DI. Terminates upon RETURN
+        or CTRL+BREAK.
 
     LINE_BREAK
         AH = 0x05
@@ -702,6 +724,12 @@ VI. Interface Functions
         CX = Number of characters
 
         Similar to PRINT BYTES except newline (0x0A) is printed as a char.
+
+    PRINT_CHARACTER
+        AH = 0x19
+        AL = ASCII code
+
+        Prints a single character.
 
     GET_PARAM
         AH = 0x20

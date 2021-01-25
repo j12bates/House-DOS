@@ -55,10 +55,28 @@ cmp_strs:                                       ; Compare two strings
 
     clc                                         ; Use source operand
     call str_len                                ; Get length of string
-    inc cx                                      ; Check the null character at the end too
+    inc cx                                      ; Check the NULL character at the end too
     cld                                         ; Ensure correct direction
 
     repe cmpsb                                  ; Loop through each of the bytes in the source and destination
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; COPY STRING: Copies a string
+; IN: DS:SI = String location; ES:DI = Destination buffer
+; OUT: none
+
+copy_str:                                       ; Copy a string
+    pusha                                       ; Save register states to stack
+
+    clc                                         ; Use source operand
+    call str_len                                ; Get length of string
+    inc cx                                      ; Copy the NULL character at the end too
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -132,8 +150,8 @@ substr:                                         ; Get substring
 
 
 ; FIND SUBSTRING: Find first instance of substring within a string
-; IN: DS:SI = String location; ES:DI = Substring (key) location; BX = Starting index to search; CX = Number of bytes to search (0 for remainder of string)
-; OUT: BX = Index of first instance; CF = Set on error
+; IN: DS:SI = String location; ES:DI = Substring (key) location; BX = Starting index to search; CX = Number of bytes to search (0 for entire remainder)
+; OUT: BX = Index of first instance; CF = Set if not found/error
 
 find_substr:                                    ; Find instance of substring
     push ds                                     ; Save segment to stack
@@ -153,6 +171,7 @@ find_substr:                                    ; Find instance of substring
     jmp .substr                                 ; Skip over this calculation
 
 .to_eos:
+    clc                                         ; Use source operand
     call str_len                                ; Get length of string
     add cx, si                                  ; Add string address to get absolute ending index
     push cx                                     ; Push absolute ending index
@@ -197,7 +216,7 @@ find_substr:                                    ; Find instance of substring
     mov bx, si                                  ; Move string pointer into BX
 
     pop si                                      ; Restore string location
-    sub bx, si                                  ; Subtract string location to get relative index
+    sub bx, si                                  ; Subtract to get relative index
 
 .done:
     call data_kernseg                           ; We're about to use kernel variables
@@ -215,6 +234,66 @@ find_substr:                                    ; Find instance of substring
     mov ax, 0x0160                              ; Substring not found
     call error                                  ; Handle this error
 
+    mov bx, 0xFFFF                              ; Negative one
+    jmp .done                                   ; We're done
+
+
+; FIND CHARACTER: Find first instance of a character within a substring
+; DS:SI = String location; AL = Character (key); BX = Starting index to search; CX = Number of bytes to search (0 for entire remainder)
+; OUT: BX = Index of first instance; CF = Set if not found/error
+
+find_char:                                      ; Find instance of character
+    push ds                                     ; Save segment to stack
+    pusha                                       ; Save register states to stack
+
+    call check_string_indices                   ; Check if indices are valid
+    jc .done                                    ; If error, we're done
+
+    push si                                     ; Preserve string location
+    add si, bx                                  ; Start searching at this index
+
+    cmp cx, 0x0000                              ; Are we searching until the end of the string
+    jne .scan                                   ; If not, proceed
+
+    clc                                         ; Use source operand
+    call str_len                                ; Get string length
+    sub cx, bx                                  ; Subtract starting index to get number of bytes to search
+
+.scan:
+    mov di, si                                  ; Use destination to scan
+    mov dx, ds
+    mov es, dx                                  ; Do same with segments
+    cld                                         ; Ensure correct direction
+
+    repne scasb                                 ; Scan for character
+
+    je .match                                   ; If equal, we found a match
+    jmp .error_char                             ; If not found, error
+
+.match:
+    dec di                                      ; Avoid an O.B.O.E
+    mov bx, di                                  ; Move pointer into BX
+
+    pop si                                      ; Restore string location
+    sub bx, si                                  ; Subtract to get relative index
+
+.done:
+    call data_kernseg                           ; We're about to use kernel variables
+    mov word [register_bckp_a], bx              ; Save our value
+
+    popa                                        ; Restore register states
+    mov bx, word [register_bckp_a]              ; Restore our value
+
+    pop ds                                      ; Restore segment
+    ret                                         ; Return to caller
+
+.error_char:
+    add sp, 0x0002                              ; Clear a word out of the stack
+
+    mov ax, 0x0161                              ; Character not found
+    call error                                  ; Handle this error
+
+    mov bx, 0xFFFF                              ; Negative one
     jmp .done                                   ; We're done
 
 

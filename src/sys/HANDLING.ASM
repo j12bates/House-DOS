@@ -78,6 +78,9 @@ error:                                          ; The error handler
     cmp ax, 0x0160
     je data_errors.string_find                  ; Substring not found
 
+    cmp ax, 0x0161
+    je data_errors.string_cfind                 ; Character not found
+
 .disk:
     cmp ax, 0x0201
     je disk_errors.command                      ; Bad driver command
@@ -168,6 +171,10 @@ error:                                          ; The error handler
     cmp ax, 0x0500
     je mem_errors.line                          ; Invalid line number
 
+.dev:
+    cmp ax, 0x0800
+    je dev_errors.invalid                       ; Invalid device
+
 
 sys_errors:                                     ; Kernel error string setup
 
@@ -231,6 +238,10 @@ data_errors:                                    ; Data error string setup
 
 .string_find:
     push error_data_sfind                       ; Substring not found
+    jmp error_print
+
+.string_cfind:
+    push error_data_scfind                      ; Character not found
     jmp error_print
 
 
@@ -359,6 +370,13 @@ mem_errors:                                     ; Buffer error strings
     jmp error_print
 
 
+dev_errors:                                     ; Device error strings
+
+.invalid:
+    push error_dev_invalid                      ; Invalid device
+    jmp error_print
+
+
 error_print:                                    ; Display the error message
     mov di, hex_buffer                          ; Our buffer
     call conv_word_hex                          ; Convert error code to hexadecimal
@@ -408,6 +426,7 @@ error_data_oflow8   db "8-bit overflow", 0x00
 error_data_lindex   db "Invalid list index", 0x00
 error_data_sindex   db "Invalid string index", 0x00
 error_data_sfind    db "Substring not found", 0x00
+error_data_scfind   db "Character not found", 0x00
 
 error_disk_command  db "Bad driver command", 0x00
 error_disk_bsect    db "Bad sector", 0x00
@@ -440,6 +459,8 @@ error_fs_nf         db "File not found", 0x00
 
 error_mem_oflow     db "Buffer overflow", 0x00
 error_mem_line      db "Invalid line number", 0x00
+
+error_dev_invalid   db "Invalid device", 0x00
 
 
 data_handling:

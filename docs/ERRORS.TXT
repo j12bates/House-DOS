@@ -46,6 +46,7 @@ III. Data Errors
     STRINGS
     0x0140: INVALID INDEX
     0x0160: SUBSTRING NOT FOUND
+    0x0161: CHARACTER NOT FOUND
 
 
 IV. Disk Errors
@@ -87,3 +88,8 @@ VI. Buffer Errors
 
     0x0400: BUFFER OVERFLOW
     0x0500: INVALID LINE NUMBER
+
+
+VII. Device/Hardware Error
+
+    0x0800: INVALID DEVICE

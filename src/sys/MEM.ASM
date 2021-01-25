@@ -486,6 +486,27 @@ update_endpoint:                                ; Update the buffer total
     ret                                         ; Return to caller
 
 
+; CHECK NEWLINE: Check if the end of the buffer contains a newline, and output one if there isn't
+; IN: [buffer_endpoint] = End of buffer
+; OUT: [buffer_endpoint] = End of buffer
+
+check_newline:                                  ; Check for newline at the end of the buffer
+    pusha                                       ; Save register states to stack
+
+    call data_fileseg                           ; Read from I/O buffer
+    mov si, word [gs:buffer_endpoint]           ; At the endpoint
+
+    cmp byte [si-0x01], 0x0A                    ; Is the last byte in the buffer a newline?
+    je .done                                    ; If so, proceed
+
+    mov byte [si], 0x0A                         ; Otherwise, place a newline character
+    inc word [gs:buffer_endpoint]               ; Increment the endpoint
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; ========================================================================
 ; SEGMENTATION SUBROUTINES
 ; ========================================================================

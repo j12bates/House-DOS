@@ -32,27 +32,21 @@ main:
 .file:
     push cx                             ; Preserve our counter
 
-    mov ah, 0x29                        ; Load file from parameter to offset
+    mov ah, 0x2A                        ; Verify file from parameter
     sub cx, word [files]                ; Subtract the total files
     neg cx                              ; Negate to get the files in order
-    mov di, word [buffer_pointer]       ; Our pointer is our offset
     int 0x7E
 
     jc .done                            ; If error, we're done
 
-    mov ah, 0x70                        ; Get size of file
+    mov ax, 0x4020                      ; Output file
     int 0x7E
 
-    add word [buffer_pointer], ax       ; Add size to overall pointer/counter
+    jc .done                            ; If error, we're done
 
 .next:
     pop cx                              ; Restore our counter
     loop .file                          ; Repeat with next file
-
-.total:
-    mov ax, 0x4111                      ; Set endpoint
-    mov cx, word [buffer_pointer]       ; Our pointer
-    int 0x7E
 
 .done:
     mov ah, 0xFF                        ; We're done!
@@ -61,12 +55,7 @@ main:
 
 data:
 
-buffer_pointer  dw 0x0000
 files           dw 0x0000
-
-fname           dq 0x0000000000000000
-                dd 0x00000000
-                db 0x00
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for concatenating and displaying file contents.", 0x00
