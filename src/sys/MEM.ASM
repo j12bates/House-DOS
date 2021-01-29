@@ -166,27 +166,6 @@ clear_buffer:                                   ; Clear the I/O buffer (0x10000-
     ret                                         ; Return to caller
 
 
-; LOAD AS BINARY: Moves everything in the I/O buffer to the binary segment for execution
-; IN: None
-; OUT: None (segments)
-
-move_file_bin:                                  ; Load the file buffer as a binary
-    pusha                                       ; Save register states to stack
-
-    call data_fileseg                           ; Read from the file segment
-    call extra_binseg                           ; Load into the binary segment
-
-    mov si, 0x0000
-    mov di, 0x0000                              ; Start at offset 0
-    mov cx, 0xFFFF                              ; Load 64K
-    cld                                         ; Ensure correct direction
-
-    rep movsb                                   ; Copy all bytes over
-
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
 ; GET ADDRESS OF LINE: Gets the memory address of a certain line in the input (file) buffer
 ; IN: CX = Line number
 ; OUT: SI = Address of start of line; CF = Set on error
@@ -216,11 +195,10 @@ get_line_addr:                                  ; Get address of specific line f
     clc                                         ; If we're done, no error
 
 .done:
-    call data_kernseg                           ; We're about to use kernel variables
-    mov word [register_bckp_a], si              ; Preserve our output
+    mov word [gs:register_bckp_a], si           ; Preserve our output
 
     popa                                        ; Restore register states
-    mov si, word [register_bckp_a]              ; Restore our output
+    mov si, word [gs:register_bckp_a]           ; Restore our output
 
     ret                                         ; Return to caller
 
@@ -254,10 +232,10 @@ get_line_length:                                ; Get the number of characters u
     jmp .byte                                   ; And repeat
 
 .done:
-    mov word [register_bckp_a], cx              ; Preserve our output
+    mov word [gs:register_bckp_a], cx           ; Preserve our output
 
     popa                                        ; Restore register states
-    mov cx, word [register_bckp_a]              ; Restore our output
+    mov cx, word [gs:register_bckp_a]           ; Restore our output
 
     ret                                         ; Return to caller
 
@@ -303,14 +281,13 @@ addr_line_col:                                  ; Convert address to line/col
     loop .char                                  ; Repeat with next character
 
 .done:
-    call data_kernseg                           ; Use kernel variables
-    mov word [register_bckp_a], bx              ; Preserve the row
-    mov word [register_bckp_b], dx              ; Preserve the col
+    mov word [gs:register_bckp_a], bx           ; Preserve the row
+    mov word [gs:register_bckp_b], dx           ; Preserve the col
 
     popa                                        ; Restore register states
 
-    mov cx, word [register_bckp_a]              ; Restore the row into CX
-    mov dx, word [register_bckp_b]              ; Restore the col
+    mov cx, word [gs:register_bckp_a]           ; Restore the row into CX
+    mov dx, word [gs:register_bckp_b]           ; Restore the col
 
     ret                                         ; Return to caller
 
@@ -358,10 +335,10 @@ write_line:                                     ; Write line to file buffer
     pop cx                                      ; Restore offset
 
 .done:
-    mov word [register_bckp_a], cx              ; Preserve output
+    mov word [gs:register_bckp_a], cx           ; Preserve output
 
     popa                                        ; Restore register states
-    mov cx, word [register_bckp_a]              ; Restore output
+    mov cx, word [gs:register_bckp_a]           ; Restore output
 
     ret                                         ; Return to caller
 
@@ -374,7 +351,7 @@ shift:                                          ; Shift everything from one poin
     pusha                                       ; Save register states to stack
 
     call data_fileseg
-    call extra_fileseg                          ; We're going to be doing memory operations in the file segment
+    call extra_fileseg                          ; We're going to be working in the I/O buffer
 
     jnc .sign                                   ; If signed, proceed
 
@@ -512,82 +489,58 @@ check_newline:                                  ; Check for newline at the end o
 ; ========================================================================
 
 data_fileseg:                                   ; Sets the data segment to the file buffer segment
-    push ax                                     ; Save register state to stack
+    push 0x1000                                 ; I/O buffer
+    pop ds                                      ; Set segment register
 
-    mov ax, 0x1000
-    mov ds, ax                                  ; Segment the file buffer is at
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
 data_binseg:                                    ; Sets the data segment to the binary segment
-    push ax                                     ; Save register state to stack
+    push 0x4000                                 ; Command execution space
+    pop ds                                      ; Set segment register
 
-    mov ax, 0x4000
-    mov ds, ax                                  ; Segment the binary command is loaded in
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
 data_kernseg:                                   ; Sets the data segment to the kernel segment
-    push ax                                     ; Save register state to stack
+    push 0x2000                                 ; Kernel
+    pop ds                                      ; Set segment register
 
-    mov ax, 0x2000
-    mov ds, ax                                  ; Segment we are loaded in
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
-data_memseg:                                    ; Sets the data segment to the secondary buffer segment
-    push ax                                     ; Save register state to stack
+data_memseg:                                    ; Sets the data segment to the user buffer segment
+    push 0x5000                                 ; User buffer
+    pop ds                                      ; Set segment register
 
-    mov ax, 0x5000
-    mov ds, ax                                  ; Segment the secondary buffer is at
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
 extra_fileseg:                                  ; Sets the extra segment to the file buffer segment
-    push ax                                     ; Save register state to stack
+    push 0x1000                                 ; I/O buffer
+    pop es                                      ; Set segment register
 
-    mov ax, 0x1000
-    mov es, ax                                  ; Segment the file buffer is at
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
 extra_binseg:                                   ; Sets the extra segment to the binary segment
-    push ax                                     ; Save register state to stack
+    push 0x4000                                 ; Command execution space
+    pop es                                      ; Set segment register
 
-    mov ax, 0x4000
-    mov es, ax                                  ; Segment the binary command is loaded in
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
 extra_kernseg:                                  ; Sets the extra segment to the kernel segment
-    push ax                                     ; Save register state to stack
+    push 0x2000                                 ; Kernel
+    pop es                                      ; Set segment register
 
-    mov ax, 0x2000
-    mov es, ax                                  ; Segment we are loaded in
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 
-extra_memseg:                                   ; Sets the extra segment to the secondary buffer segment
-    push ax                                     ; Save register state to stack
+extra_memseg:                                   ; Sets the extra segment to the user buffer
+    push 0x5000                                 ; User buffer
+    pop es                                      ; Set segment register
 
-    mov ax, 0x5000
-    mov es, ax                                  ; Segment the secondary buffer is at
-
-    pop ax                                      ; Restore register state
     ret                                         ; Return to caller
 
 

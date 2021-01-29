@@ -34,6 +34,7 @@ chmod 777 House-DOS.IMG
 
 echo "Writing bootloader..."
 dd if=bin/BOOT.BIN of=House-DOS.IMG conv=notrunc
+fatlabel House-DOS.IMG HDOSNATE
 
 echo "Mounting image..."
 rm -rf tmp
@@ -46,11 +47,6 @@ fatattr +s tmp/SYS.BIN
 
 echo "Copying commands & programs..."
 cp bin/usr/*.BIN tmp/
-
-echo "Creating device files..."
-cat /dev/null > tmp/NUL.DEV
-cat /dev/null > tmp/TTY.DEV
-cat /dev/null > tmp/MEM.DEV
 
 echo "Unmounting image..."
 umount tmp

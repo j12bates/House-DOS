@@ -17,17 +17,15 @@
 random:                                         ; Return a random number of size word in DX
     pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; We will be using kernel variables
-
-    mov ax, word [random_num]                   ; Load our last random number
+    mov ax, word [gs:random_num]                ; Load our last random number
     mov dx, 0xB827                              ; Random prime number
     mul dx                                      ; Multiply
 
     add ax, 0x2FAB                              ; Add a random prime number to the lower word
-    mov word [random_num], ax                   ; Store in our memory location
+    mov word [gs:random_num], ax                ; Store in our memory location
     
     popa                                        ; Restore register states
-    mov dx, word [random_num]                   ; Restore our random number
+    mov dx, word [gs:random_num]                ; Restore our random number
 
     ret                                         ; Return to caller
 
@@ -43,7 +41,7 @@ random_seed:                                    ; Generate a random number seed 
     int 0x1A                                    ; BIOS RTC interrupt
 
     mov dl, cl                                  ; Move the number of seconds into this register
-    mov word [random_num], dx                   ; Move our new seed into our memory location
+    mov word [gs:random_num], dx                ; Move our new seed into our memory location
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller

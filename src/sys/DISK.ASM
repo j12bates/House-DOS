@@ -12,12 +12,18 @@
 
 ; VERIFY FILE: Verifies that a file with a given filename exists
 ; IN: [filename] = 8.3 filename
-; OUT: CF = Set if no such file, [root_entry] = Number of the file's root entry
+; OUT: CF = Set if no such file, [root_entry] = File's root entry
 
 verify:                                         ; Verify that a file exists
     pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; We're going to use kernel variables
+    mov byte [gs:dev], 0xFF                     ; Not a device file by default
+
+    call is_device                              ; Is this a device file?
+    jnc .search_init                            ; If not, proceed
+
+    call verify_dev                             ; Otherwise, verify device file
+    jmp .done                                   ; We're done!
 
 .search_init:
     mov si, iface_disk_search
@@ -33,6 +39,9 @@ verify:                                         ; Verify that a file exists
     cmp byte [es:di], 0x00                      ; Is this a null character?
     je .not_found                               ; If so, there are no more entries
 
+    test byte [es:di+0x0B], 0b00001000          ; Is this the volume label?
+    jnz .next_entry                             ; If so, skip
+
     push cx                                     ; Otherwise, save the number of remaining entries
 
     mov cx, 0x000B                              ; Otherwise, compare the first 11 bytes
@@ -47,6 +56,7 @@ verify:                                         ; Verify that a file exists
 
     je .found_entry                             ; If equal, we found the entry
 
+.next_entry:
     add di, 0x0020                              ; Otherwise, advance to the next entry
     loop .check_entry                           ; And repeat
 
@@ -74,16 +84,16 @@ verify:                                         ; Verify that a file exists
 
 
 ; GET FILE INFO: Retrieves value from the directory entry of a certain file
-; IN: AL = Offset from start of entry, [root_entry] = Root entry number of the file (run verify to set this up)
+; IN: AL = Offset from start of entry; [root_entry] = Root entry of the file (verify to set this up)
 ; OUT: AL/AX/DX:AX = Return value (size is automatically detected from offset)
 
 get_file_info:                                  ; Get an item (AL=offset) from a file's root directory entry
     pusha                                       ; Save register states to stack
 
-    mov si, word [root_entry]                   ; Read from the root entry of the file we've verified
+    mov si, word [gs:root_entry]                ; Read from the root entry of the file we've verified
     shl si, 0x5                                 ; There are 32 bytes per entry
     mov bx, 0x3800
-    mov ds, bx                                  ; The segment to root directory is loaded in
+    mov es, bx                                  ; The segment to root directory is loaded in
 
     mov ah, 0x00                                ; Clear upper byte of offset
 
@@ -94,50 +104,50 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     cmp al, 0x1C                                ; Items between here and there are word-sized
     jb .word
 
-    mov ax, word [si+0x1C]
-    mov dx, word [si+0x1E]                      ; Otherwise, return the file size in DX:AX
+    mov ax, word [es:si+0x1C]
+    mov dx, word [es:si+0x1E]                   ; Otherwise, return the file size in DX:AX
     jmp .done                                   ; We're finished
 
 .byte:
     add si, ax                                  ; Add our offset
-    mov al, byte [si]                           ; Return the byte in AL
+    mov al, byte [es:si]                        ; Return the byte in AL
     jmp .done                                   ; We're finished
 
 .word:
     add si, ax                                  ; Add our offset
-    mov ax, word [si]                           ; Return the word in AX
+    mov ax, word [es:si]                        ; Return the word in AX
 
 .done:
-    call data_kernseg                           ; We're about to use kernel variables
-    mov word [register_bckp_a], ax              ; Preserve our return value
-    mov word [register_bckp_b], dx              ; And the upper half if applicable
+    mov word [gs:register_bckp_a], ax           ; Preserve our return value
+    mov word [gs:register_bckp_b], dx           ; And the upper half if applicable
 
     popa                                        ; Restore register states
 
-    mov ax, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our return value
+    mov ax, word [gs:register_bckp_a]
+    mov dx, word [gs:register_bckp_b]           ; Restore our return value
 
     ret                                         ; Return to caller
 
 
 ; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
-; IN: [root_entry] = Root entry number of the file; [file_buffer_pointer] = Offset to load to
+; IN: [root_entry] = Root entry number of the file; [file_buffer_pointer] = Offset to load to; [dev] = Device ID
 ; OUT: [file_buffer_pointer] = Initial value + bytes copied; CF = Set on error
 
 load_file:                                      ; Load file starting at cluster into buffer
     pusha                                       ; Push register states to stack
 
-    call get_file_cluster                       ; Get file starting cluster and size
+    cmp byte [gs:dev], 0xFF                     ; Is this a device file?
+    je .load_cluster                            ; If not, proceed
 
-    call is_device                              ; Is this a device file?
-    jnc .load_cluster                           ; If not a device file, proceed
-
-    call load_dev                               ; Otherwise, load device file
+    mov al, byte [gs:dev]                       ; Otherwise, our device ID
+    call load_dev                               ; Load device file
     jmp .done                                   ; We're done!
 
 .load_cluster:
     mov si, iface_disk_cluster
     call comment                                ; Comment message
+
+    call get_file_cluster                       ; Get file starting cluster and size
 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
@@ -249,7 +259,11 @@ write_file:                                     ; Write file buffer to disk as f
     call is_device                              ; Is this a device file?
     jnc .pre_apply                              ; If not, proceed
 
-    call write_dev                              ; Otherwise, write to device file
+    call verify_dev                             ; Otherwise, verify device file
+    jc .end                                     ; If invalid, we're done
+
+    mov al, byte [gs:dev]                       ; Otherwise, our device ID
+    call write_dev                              ; Write to device file
     clc                                         ; No error
     jmp .end                                    ; We're done!
 
@@ -493,6 +507,8 @@ write_file:                                     ; Write file buffer to disk as f
 apply:                                          ; Apply filesystem changes to disk
     pusha                                       ; Push register states to stack
 
+    call data_kernseg                           ; Access kernel variables
+
     mov si, iface_disk_apply
     call comment_line                           ; Comment message
 
@@ -568,7 +584,7 @@ apply:                                          ; Apply filesystem changes to di
 rollback:                                       ; Rollback filesystem
     pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; Get data from the segment we're loaded in
+    call data_kernseg                           ; User kernel variables
 
     mov si, iface_disk_rback
     call comment_line                           ; Comment message
@@ -645,6 +661,9 @@ list_files:                                     ; Retrieve a list of all filenam
 
     cmp byte [si], 0xE5                         ; Is this the deleted character?
     je .next_entry                              ; If so, skip this one
+
+    test byte [si+0x0B], 0b00001000             ; Is this the volume label?
+    jnz .next_entry                             ; If so, skip this one
 
     test byte [si+0x0B], bl                     ; Test the visibility flag with the configuration
     jnz .next_entry                             ; If hidden & don't show hidden files, skip this one
@@ -989,6 +1008,9 @@ conv_ls_chs:                                    ; Setup Cylinder-Head-Sector fro
 check_attributes:
     pusha                                       ; Save register states to stack
 
+    call is_real                                ; Check if real file
+    jc .error_real                              ; If it isn't, error
+
     call is_read_only                           ; Check if read-only
     jc .error_readonly                          ; If it is, error
 
@@ -1008,6 +1030,12 @@ check_attributes:
 
 .error_readonly:
     mov ax, 0x0300                              ; Read-only
+    call error                                  ; Handle this error
+
+    jmp .end                                    ; We're done
+
+.error_real:
+    mov ax, 0x0320                              ; Not a real file
     call error                                  ; Handle this error
 
     jmp .end                                    ; We're done
@@ -1171,8 +1199,6 @@ is_read_only:                                   ; Check if a file is read-only
     mov al, 0x0B                                ; Read the attribute byte
     call get_file_info                          ; Get from the root entry
 
-    clc                                         ; Unset for now
-
     test al, 0x01                               ; Bit 0 contains the read-only attribute
     jz .done                                    ; If unset, we're done
 
@@ -1192,8 +1218,6 @@ is_hidden:                                      ; Check if a file is hidden
 
     mov al, 0x0B                                ; Read the attribute byte
     call get_file_info                          ; Get from the root entry
-
-    clc                                         ; Unset for now
 
     test al, 0x02                               ; Bit 1 contains the visibility attribute
     jz .done                                    ; If unset, we're done
@@ -1215,9 +1239,27 @@ is_system:                                      ; Check if a file is a system fi
     mov al, 0x0B                                ; Read the attribute byte
     call get_file_info                          ; Get from the root entry
 
-    clc                                         ; Unset for now
-
     test al, 0x04                               ; Bit 2 contains the system attribute
+    jz .done                                    ; If unset, we're done
+
+    stc                                         ; Otherwise, set the carry flag
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CHECK IF FILE IS REAL: Check if the file is a real file
+; IN: [root_entry] = Root entry number of the file
+; OUT: CF = Set if not real
+
+is_real:                                        ; Check if a file is really a file
+    pusha                                       ; Save register states to stack
+
+    mov al, 0x0B                                ; Read the attribute byte
+    call get_file_info                          ; Get from the root entry
+
+    test al, 0b00001000                         ; Is this entry for a volume label?
     jz .done                                    ; If unset, we're done
 
     stc                                         ; Otherwise, set the carry flag

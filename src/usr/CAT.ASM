@@ -23,6 +23,9 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
+    mov ax, 0x4301                      ; Output to teletype by default
+    int 0x7E
+
     mov ah, 0x21                        ; Get total parameters
     int 0x7E
 

@@ -35,11 +35,11 @@ str_len:                                        ; Get length of a string
     neg cx                                      ; Negate counter to get the number of characters
     sub cx, 0x0002                              ; Avoid two O.B.O.Es
 
-    call data_kernseg                           ; We're about to access kernel variables
-    mov word [register_bckp_a], cx              ; Save our value
+.done:
+    mov word [gs:register_bckp_a], cx           ; Save our value
 
     popa                                        ; Restore register states
-    mov cx, word [register_bckp_a]              ; Restore our value
+    mov cx, word [gs:register_bckp_a]           ; Restore our value
 
     pop es
     pop ds                                      ; Restore our segments
@@ -219,11 +219,10 @@ find_substr:                                    ; Find instance of substring
     sub bx, si                                  ; Subtract to get relative index
 
 .done:
-    call data_kernseg                           ; We're about to use kernel variables
-    mov word [register_bckp_a], bx              ; Save our value
+    mov word [gs:register_bckp_a], bx           ; Save our value
 
     popa                                        ; Restore register states
-    mov bx, word [register_bckp_a]              ; Restore our value
+    mov bx, word [gs:register_bckp_a]           ; Restore our value
 
     pop ds                                      ; Restore segment
     ret                                         ; Return to caller
@@ -278,11 +277,10 @@ find_char:                                      ; Find instance of character
     sub bx, si                                  ; Subtract to get relative index
 
 .done:
-    call data_kernseg                           ; We're about to use kernel variables
-    mov word [register_bckp_a], bx              ; Save our value
+    mov word [gs:register_bckp_a], bx           ; Save our value
 
     popa                                        ; Restore register states
-    mov bx, word [register_bckp_a]              ; Restore our value
+    mov bx, word [gs:register_bckp_a]           ; Restore our value
 
     pop ds                                      ; Restore segment
     ret                                         ; Return to caller
@@ -384,10 +382,10 @@ str_return:                                     ; Return a string to a command
     stosb                                       ; Write to end string
 
 .done:
-    mov word [register_bckp_a], di              ; Preserve this value
+    mov word [gs:register_bckp_a], di           ; Preserve this value
 
     popa                                        ; Restore register states
-    mov di, word [register_bckp_a]              ; Restore this value
+    mov di, word [gs:register_bckp_a]           ; Restore this value
 
     ret                                         ; Return to caller
 
@@ -439,9 +437,7 @@ conv_word_hex:                                  ; Convert AX to ASCII hexadecima
 conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at ES:DI
     pusha                                       ; Push register states to stack
 
-    call data_kernseg                           ; We want to use kernel variables
-
-    mov word [input_number], ax                 ; Save our number
+    mov word [gs:input_number], ax              ; Save our number
 
 .clear:
     mov cx, 0x0005                              ; There are up to 5 digits in a 16-bit unsigned number
@@ -458,7 +454,7 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
     mov bx, 0x000A                              ; Divisor is 10
 
 .length:
-    cmp word [input_number], ax                 ; Are we less than this power of 10?
+    cmp word [gs:input_number], ax              ; Are we less than this power of 10?
     jae .calc                                   ; If not, continue
 
     div bx                                      ; Otherwise, check the next power down
@@ -468,10 +464,10 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
     mov cx, 0x0001                              ; Zero should have 1 digit
 
 .calc:
-    mov ax, word [input_number]                 ; Restore our number
+    mov ax, word [gs:input_number]              ; Restore our number
 
 .digit:
-    mov word [input_number], ax                 ; Save our number
+    mov word [gs:input_number], ax              ; Save our number
     push cx                                     ; Save our counter
 
     mov ax, 0x0001                              ; One
@@ -487,7 +483,7 @@ conv_word_dec_unsigned:                         ; Convert AX to ASCII decimal at
 .calc_digit:
     mov bx, ax                                  ; Save our place value
     pop cx                                      ; Restore our counter
-    mov ax, word [input_number]                 ; Restore our number
+    mov ax, word [gs:input_number]              ; Restore our number
 
     mov dx, 0x0000                              ; Upper word of dividend is zero
     div bx                                      ; Divide to find the digit in that place value
@@ -565,7 +561,7 @@ conv_byte_dec_unsigned:                         ; Convert AL to ASCII decimal at
 
 .digits:
     cmp al, 0x64                                ; Are we less than this power of ten?
-    jnb .hundreds                               ; If not, start here
+    jnb .hundreds                               ; If not, start hereF
 
     cmp al, 0x0A                                ; Are we less than ten?
     jnb .tens                                   ; If not, start here
@@ -727,11 +723,10 @@ conv_hex_bin:                                   ; Convert hexadecimal at DS:SI t
     clc                                         ; No error
 
 .end:
-    call data_kernseg                           ; We're about to access kernel variables
-    mov word [register_bckp_a], dx              ; Save our value
+    mov word [gs:register_bckp_a], dx           ; Save our value
 
     popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore our value
+    mov dx, word [gs:register_bckp_a]           ; Restore our value
 
     pop ds                                      ; Restore our segment
     ret                                         ; Return to caller
@@ -790,11 +785,10 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
     clc                                         ; No error
 
 .end:
-    call data_kernseg                           ; We're about to access kernel variables
-    mov word [register_bckp_a], dx              ; Save our value
+    mov word [gs:register_bckp_a], dx           ; Save our value
 
     popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore our value
+    mov dx, word [gs:register_bckp_a]           ; Restore our value
 
     pop ds                                      ; Restore our segment
     ret                                         ; Return to caller
@@ -829,7 +823,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
 get_item_list:                                  ; Get a specific item from a comma-separated list
     pusha                                       ; Save register states to stack
 
-    cmp byte [ds:si], 0x00                      ; Does the list end at the very beginning?
+    cmp byte [si], 0x00                         ; Does the list end at the very beginning?
     je .error_index                             ; If so, there are no list items
 
     mov bx, 0x0000                              ; Commas should not be escaped (BL), we aren't writing (BH)
@@ -904,7 +898,7 @@ get_total_list:                                 ; Get the total number of list i
     pusha                                       ; Save register states to stack
 
     mov cx, 0x0000                              ; Start our counter at zero
-    cmp byte [ds:si], 0x00                      ; Does the list end right as it begins?
+    cmp byte [si], 0x00                         ; Does the list end right as it begins?
     je .done                                    ; If so, end here
 
     inc cx                                      ; Otherwise, there's at least one item
@@ -937,10 +931,10 @@ get_total_list:                                 ; Get the total number of list i
     jmp .find_comma                             ; Repeat
 
 .done:
-    mov word [register_bckp_a], cx              ; Preserve our output
+    mov word [gs:register_bckp_a], cx           ; Preserve our output
 
     popa                                        ; Restore register states
-    mov cx, word [register_bckp_a]              ; Restore our output
+    mov cx, word [gs:register_bckp_a]           ; Restore our output
 
     ret                                         ; Return to caller
 

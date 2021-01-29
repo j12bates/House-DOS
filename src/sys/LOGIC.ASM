@@ -98,8 +98,6 @@ dis_unix_timestamp:                             ; Convert UNIX timestamp to seco
 conv_rtctime_seconds:                           ; Convert an RTC time to a number of seconds in CF:AX
     pusha                                       ; Save register states to stack
 
-    call setup_segments                         ; Set up segments
-
 .hours:
     mov al, ch                                  ; Hours are stored here
     call conv_rtcval_byte                       ; Convert to a proper value
@@ -142,10 +140,10 @@ conv_rtctime_seconds:                           ; Convert an RTC time to a numbe
     stc                                         ; Otherwise, set the carry flag to indicate over 64K seconds
 
 .done:
-    mov word [register_bckp_a], ax              ; Save our value
+    mov word [gs:register_bckp_a], ax           ; Save our value
 
     popa                                        ; Restore register states
-    mov ax, word [register_bckp_a]              ; Restore our value
+    mov ax, word [gs:register_bckp_a]           ; Restore our value
 
     ret                                         ; Return to caller
 
@@ -245,10 +243,10 @@ conv_rtcdate_days:                              ; Convert an RTC date to a numbe
     add ax, bx                                  ; Add to total
 
 .done:
-    mov word [register_bckp_a], ax              ; Save our value
+    mov word [gs:register_bckp_a], ax           ; Save our value
 
     popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore our value into the correct register
+    mov dx, word [gs:register_bckp_a]           ; Restore our value into the correct register
 
     ret                                         ; Return to caller
 
@@ -259,8 +257,6 @@ conv_rtcdate_days:                              ; Convert an RTC date to a numbe
 
 conv_seconds_rtctime:                           ; Convert the number of seconds in CF:AX to an RTC time
     pusha                                       ; Save register states to stack
-
-    call setup_segments                         ; Set up segments
 
     mov dx, 0x0000                              ; Clear upper word
 
@@ -294,13 +290,13 @@ conv_seconds_rtctime:                           ; Convert the number of seconds 
     mov ch, al                                  ; Hours should be in CH
 
 .done:
-    mov word [register_bckp_a], cx
-    mov word [register_bckp_b], dx              ; Preserve our RTC time
+    mov word [gs:register_bckp_a], cx
+    mov word [gs:register_bckp_b], dx           ; Preserve our RTC time
 
     popa                                        ; Restore register states
 
-    mov cx, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our RTC time
+    mov cx, word [gs:register_bckp_a]
+    mov dx, word [gs:register_bckp_b]           ; Restore our RTC time
 
     ret                                         ; Return to caller
 
@@ -429,13 +425,13 @@ conv_days_rtcdate:                              ; Convert number of days in DX t
     clc                                         ; No error
 
 .done:
-    mov word [register_bckp_a], cx
-    mov word [register_bckp_b], dx              ; Preserve our RTC date
+    mov word [gs:register_bckp_a], cx
+    mov word [gs:register_bckp_b], dx           ; Preserve our RTC date
 
     popa                                        ; Restore register states
 
-    mov cx, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our RTC date
+    mov cx, word [gs:register_bckp_a]
+    mov dx, word [gs:register_bckp_b]           ; Restore our RTC date
 
     ret                                         ; Return to caller
 
@@ -553,10 +549,10 @@ conv_rtctime_fat:                               ; Convert an RTC time to the FAT
     or bx, ax                                   ; Set our bits in place in BX
 
 .done:
-    mov word [register_bckp_a], bx              ; Preserve output
+    mov word [gs:register_bckp_a], bx           ; Preserve output
 
     popa                                        ; Restore register states
-    mov ax, word [register_bckp_a]              ; Restore output into the correct register
+    mov ax, word [gs:register_bckp_a]           ; Restore output into the correct register
 
     ret                                         ; Return to caller
 
@@ -590,7 +586,7 @@ conv_rtcdate_fat:                               ; Convert an RTC date to FAT dat
 .years:
     mov ax, cx                                  ; Year is stored here
 
-    call setup_segments                         ; We are going to be writing to and referencing kernel vars
+    call setup_segments                         ; We're about to use kernel variables
 
     mov di, dec_src                             ; Our destination buffer
     call conv_word_hex                          ; Convert to hex (RTC values are weird)
@@ -603,10 +599,10 @@ conv_rtcdate_fat:                               ; Convert an RTC date to FAT dat
     or bx, dx                                   ; Set our bits in place in BX
 
 .done:
-    mov word [register_bckp_a], bx              ; Preserve output
+    mov word [gs:register_bckp_a], bx           ; Preserve output
 
     popa                                        ; Restore register states
-    mov ax, word [register_bckp_a]              ; Restore output into the correct register
+    mov ax, word [gs:register_bckp_a]           ; Restore output into the correct register
 
     ret                                         ; Return to caller
 
@@ -647,12 +643,12 @@ conv_fat_rtctime:                               ; Convert a FAT time to the RTC 
     mov ch, al                                  ; Hours should be in CH
 
 .done:
-    mov word [register_bckp_a], cx
-    mov word [register_bckp_b], dx              ; Preserve our output
+    mov word [gs:register_bckp_a], cx
+    mov word [gs:register_bckp_b], dx           ; Preserve our output
 
     popa                                        ; Restore register states
-    mov cx, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our output
+    mov cx, word [gs:register_bckp_a]
+    mov dx, word [gs:register_bckp_b]           ; Restore our output
 
     ret                                         ; Return to caller
 
@@ -702,12 +698,12 @@ conv_fat_rtcdate:                               ; Convert a FAT date to the RTC 
     pop dx                                      ; Restore our Day/Month
 
 .done:
-    mov word [register_bckp_a], cx
-    mov word [register_bckp_b], dx              ; Preserve our output
+    mov word [gs:register_bckp_a], cx
+    mov word [gs:register_bckp_b], dx           ; Preserve our output
 
     popa                                        ; Restore register states
-    mov cx, word [register_bckp_a]
-    mov dx, word [register_bckp_b]              ; Restore our output
+    mov cx, word [gs:register_bckp_a]
+    mov dx, word [gs:register_bckp_b]           ; Restore our output
 
     ret                                         ; Return to caller
 
@@ -734,10 +730,10 @@ conv_hz_freq:                                   ; Convert frequency in Hertz to 
     div bx                                      ; Divide
 
 .done:
-    mov word [register_bckp_a], ax              ; Preserve output
+    mov word [gs:register_bckp_a], ax           ; Preserve output
 
     popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore output into correct register
+    mov dx, word [gs:register_bckp_a]           ; Restore output into correct register
 
     ret                                         ; Return to caller
 
