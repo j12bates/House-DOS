@@ -17,12 +17,10 @@
 input:                                          ; Get input from user, store in ES:DI
     pusha                                       ; Push register states to stack
 
-    call data_kernseg                           ; We will be using kernel variables
-
-    mov word [input_buffer_addr], di            ; Save our address
+    mov word [gs:input_buffer_addr], di         ; Save our address
 
     add cx, di                                  ; Find the end of the buffer
-    mov word [input_buffer_limit], cx           ; Save this
+    mov word [gs:input_buffer_limit], cx        ; Save this
 
     mov al, 0x00                                ; NULL char (zero)
     sub cx, di                                  ; The number of bytes in this buffer
@@ -30,13 +28,13 @@ input:                                          ; Get input from user, store in 
 
     rep stosb                                   ; Write zeroes over the buffer
 
-    mov di, word [input_buffer_addr]            ; Start at the beginning of our buffer
+    mov di, word [gs:input_buffer_addr]         ; Start at the beginning of our buffer
 
 .key:
     mov ah, 0x00                                ; Get keyboard input
     int 0x16                                    ; BIOS keyboard interrupt
 
-    cmp byte [break_byte], 0x00                 ; Was CTRL+BREAK pressed?
+    cmp byte [gs:break_byte], 0x00              ; Was CTRL+BREAK pressed?
     jne .terminate                              ; If so, we're done getting input
 
 .num_lock_handler:
@@ -84,7 +82,7 @@ input:                                          ; Get input from user, store in 
     cmp al, 0x20                                ; Is it between SPACE and DEL?
     jl .key                                     ; If not, we can't print this character
 
-    cmp di, word [input_buffer_limit]           ; Have we exhausted our buffer?
+    cmp di, word [gs:input_buffer_limit]        ; Have we exhausted our buffer?
     jae .key                                    ; If so, don't continue
 
 .record:
@@ -94,10 +92,10 @@ input:                                          ; Get input from user, store in 
     jmp .key                                    ; Get more input
 
 .backspace:
-    cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
+    cmp di, word [gs:input_buffer_addr]         ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't do a backspace
 
-    cmp di, word [input_buffer_limit]           ; Are we at the rightmost limit?
+    cmp di, word [gs:input_buffer_limit]        ; Are we at the rightmost limit?
     je .backspace_verified                      ; If so, we may not have a NULL char
 
     cmp byte [es:di], 0x00                      ; Are we at the end of the input?
@@ -119,7 +117,7 @@ input:                                          ; Get input from user, store in 
     jmp .key                                    ; Get more input
 
 .left:
-    cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
+    cmp di, word [gs:input_buffer_addr]         ; Have we reached the leftmost limit?
     je .key                                     ; If so, we can't move left
 
     mov al, 0x08                                ; Backwards
@@ -130,7 +128,7 @@ input:                                          ; Get input from user, store in 
     jmp .key                                    ; Get more input
 
 .right:
-    cmp di, word [input_buffer_limit]           ; Have we reached the rightmost limit?
+    cmp di, word [gs:input_buffer_limit]        ; Have we reached the rightmost limit?
     je .key                                     ; If so, we can't move right
 
     cmp byte [es:di], 0x00                      ; Is this char a null char?
@@ -146,7 +144,7 @@ input:                                          ; Get input from user, store in 
     jmp .key                                    ; Get more input
 
 .home:
-    cmp di, word [input_buffer_addr]            ; Have we reached the leftmost limit?
+    cmp di, word [gs:input_buffer_addr]         ; Have we reached the leftmost limit?
     je .key                                     ; If so, get more input
 
     mov al, 0x08                                ; Otherwise, backwards
@@ -167,7 +165,7 @@ input:                                          ; Get input from user, store in 
     call teletype_output                        ; Print the same character and advance cursor
     inc di                                      ; Advance the pointer
 
-    cmp di, word [input_buffer_limit]           ; Are we at the end of our buffer?
+    cmp di, word [gs:input_buffer_limit]        ; Are we at the end of our buffer?
     je .key                                     ; If so, get more input
 
     jmp .end_input                              ; Otherwise, repeat
@@ -178,23 +176,23 @@ input:                                          ; Get input from user, store in 
 
     inc di                                      ; Otherwise, advance pointer
 
-    cmp di, word [input_buffer_limit]           ; Are we at the end of our buffer?
+    cmp di, word [gs:input_buffer_limit]        ; Are we at the end of our buffer?
     je .break                                   ; If so, proceed
 
     jmp .terminate                              ; Otherwise, repeat
 
 .break:
-    cmp byte [break_byte], 0x00                 ; Was CTRL+BREAK pressed?
+    cmp byte [gs:break_byte], 0x00              ; Was CTRL+BREAK pressed?
     je .done                                    ; If not, proceed
 
     stc                                         ; Otherwise, set carry-flag
-    mov byte [break_byte], 0x00                 ; And clear break byte
+    mov byte [gs:break_byte], 0x00              ; And clear break byte
 
 .done:
-    mov word [register_bckp_a], di              ; Preserve our return value
+    mov word [gs:register_bckp_a], di           ; Preserve our return value
 
     popa                                        ; Restore register states
-    mov di, word [register_bckp_a]              ; Restore our return value
+    mov di, word [gs:register_bckp_a]           ; Restore our return value
 
     ret                                         ; Return to caller
 
@@ -205,6 +203,8 @@ input:                                          ; Get input from user, store in 
 
 confirm:                                        ; Ask the user to confirm
     pusha                                       ; Push register states to stack
+
+    call data_kernseg                           ; Use kernel variables
 
     mov si, iface_confirm
     call print_str                              ; Print message
@@ -245,7 +245,7 @@ clear:                                          ; Clear screen
     mov es, ax                                  ; Write to that segment
     mov di, 0x0000                              ; Starting at the beginning
 
-    mov ax, 0x0700                              ; Black background, dim white foreground, SPACE character
+    mov ax, 0x0700                              ; Black background, dim white foreground, NULL character
     mov cx, 0x07D0                              ; 2000 characters onscreen
     cld                                         ; Ensure correct direction
 
@@ -470,10 +470,10 @@ get_cursor_pos:                                 ; Get the cursor's position
     mov bh, 0x00                                ; Page 0
     int 0x10                                    ; BIOS VGA interrupt
 
-    mov word [register_bckp_a], dx              ; Preserve output
+    mov word [gs:register_bckp_a], dx           ; Preserve output
 
     popa                                        ; Restore register states
-    mov dx, word [register_bckp_a]              ; Restore output
+    mov dx, word [gs:register_bckp_a]           ; Restore output
 
     ret                                         ; Return to caller
 
@@ -526,7 +526,7 @@ block:                                          ; Draws a block of char AL size 
     push ax                                     ; Save our character
     push cx                                     ; Save our block size
 
-    mov word [register_bckp_a], dx              ; Save our requested location
+    mov word [gs:register_bckp_a], dx           ; Save our requested location
 
 .get_position:
     mov ah, 0x03                                ; Get cursor position
@@ -536,7 +536,7 @@ block:                                          ; Draws a block of char AL size 
     push dx                                     ; Save initial cursor position
 
 .set_position:
-    mov dx, word [register_bckp_a]              ; Our requested location
+    mov dx, word [gs:register_bckp_a]           ; Our requested location
     call move_cursor                            ; Set cursor position
 
     pop dx                                      ; Restore initial cursor position
@@ -603,7 +603,7 @@ get_key_nonblocking:                            ; Returns scan code/ASCII of key
     mov ah, 0x01                                ; Get key (nonblocking)
     int 0x16                                    ; BIOS keyboard interrupt
 
-    mov word [register_bckp_a], ax              ; Save our key
+    mov word [gs:register_bckp_a], ax           ; Save our key
 
     je .no_key                                  ; If the zero flag is set, there was no key pressed
 
@@ -618,7 +618,7 @@ get_key_nonblocking:                            ; Returns scan code/ASCII of key
 
 .done:
     popa                                        ; Restore register states
-    mov ax, word [register_bckp_a]              ; Restore our key
+    mov ax, word [gs:register_bckp_a]           ; Restore our key
 
     ret                                         ; Return to caller
 
@@ -629,6 +629,8 @@ get_key_nonblocking:                            ; Returns scan code/ASCII of key
 
 pause_keypress:                                 ; Pause until the user presses a key
     pusha                                       ; Save register states to stack
+
+    call data_kernseg                           ; Use kernel variables
 
     mov si, iface_press_cont
     call print_str                              ; Print message
@@ -786,12 +788,8 @@ prompt:                                         ; Set up a prompt for the user
 
 comment:                                        ; Print a string as commentary
     pusha                                       ; Save register states to stack
-    push ds                                     ; Preserve segment
 
-    call data_kernseg                           ; We're about to access a kernel variable
-    test byte [config_iface], 0b00000010        ; Is the COMMENTARY bit set?
-
-    pop ds                                      ; Restore segment
+    test byte [gs:config_iface], 0b00000010     ; Is the COMMENTARY bit set?
     jnz .done                                   ; If so, don't print anything
 
     call print_str                              ; Otherwise, print string
@@ -807,12 +805,8 @@ comment:                                        ; Print a string as commentary
 
 comment_line:                                   ; Print a line as commentary
     pusha                                       ; Save register states to stack
-    push ds                                     ; Preserve segment
 
-    call data_kernseg                           ; We're about to access a kernel variable
-    test byte [config_iface], 0b00000010        ; Is the COMMENTARY bit set?
-
-    pop ds                                      ; Restore segment
+    test byte [gs:config_iface], 0b00000010     ; Is the COMMENTARY bit set?
     jnz .done                                   ; If so, don't print anything
 
     call println                                ; Otherwise, print line
@@ -829,7 +823,7 @@ comment_line:                                   ; Print a line as commentary
 done:                                           ; Print the DONE comment
     pusha                                       ; Save register states to stack
 
-    call data_kernseg                           ; Segment in which we're loaded
+    call data_kernseg                           ; Use kernel variables
 
     mov si, iface_done                          ; Message to print
     call comment_line                           ; Print line

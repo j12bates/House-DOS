@@ -151,7 +151,10 @@ main:                                           ; Main code for House-DOS kernel
     cmp word [pipe_offset], 0x0000              ; Is our pipe offset set?
     jne command                                 ; If so, don't output right now
 
-    call default_out                            ; Output to default device
+    mov al, byte [default_dev]                  ; Our default device
+    mov cx, word [buffer_endpoint]              ; The length of our buffer
+
+    call write_dev                              ; Output to default device
 
 
 command:                                        ; Main loop: Retrieve command from user
@@ -2658,7 +2661,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 48; Compiled 2021-01-25", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 49; Compiled 2021-01-28", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

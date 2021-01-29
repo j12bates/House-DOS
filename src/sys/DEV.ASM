@@ -130,47 +130,11 @@ nul_in:                                         ; Input from null
 ; DEVICE KERNEL ROUTINES
 ; ========================================================================
 
-; OUTPUT TO DEFAULT: Outputs the contents of the buffer to the default device
-; IN: [default_dev] = Default device ID
-; OUT: None
+; VERIFY DEVICE FILE: Verifies a device file
+; IN: [filename] = 8.3 filename
+; OUT: [dev] = Device ID
 
-default_out:                                    ; Output to default
-    pusha                                       ; Save register states to stack
-
-    mov al, byte [default_dev]                  ; Default device ID
-    mov cx, word [buffer_endpoint]              ; Number of bytes in the buffer
-
-    cmp al, 0x00
-    je .nul                                     ; NUL
-
-    cmp al, 0x01
-    je .tty                                     ; TTY
-
-    cmp al, 0x02
-    je .mem                                     ; MEM
-
-.done:
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-.nul:
-    call nul_out                                ; Output to null
-    jmp .done                                   ; We're done!
-
-.tty:
-    call tty_out                                ; Output in teletype mode
-    jmp .done                                   ; We're done!
-
-.mem:
-    call mem_out                                ; Output to secondary buffer
-    jmp .done                                   ; We're done!
-
-
-; LOAD DEVICE FILE: Loads the contents of a device file
-; IN: [filename] = 8.3 filename; [file_buffer_pointer] = Offset to load to
-; OUT: [file_buffer_pointer] = Initial value + bytes copied
-
-load_dev:                                       ; Load contents of a device file
+verify_dev:
     pusha                                       ; Save register states to stack
 
     call setup_segments                         ; Ensure segments are set correctly
@@ -200,78 +164,92 @@ load_dev:                                       ; Load contents of a device file
     mov ax, 0x0800                              ; Otherwise, invalid device
     call error                                  ; Handle this error
 
+    jmp .end                                    ; We're done
+
 .done:
+    mov word [gs:root_entry], 0x0000            ; Point entry to the volume label
+
+.end:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
 .tty:
-    call tty_in                                 ; Get input from teletype
-    jmp .done                                   ; We're done!
+    mov byte [gs:dev], 0x01                     ; 1 is for teletype
+    jmp .done
 
 .mem:
-    call mem_in                                 ; Get input from user buffer
-    jmp .done                                   ; We're done!
+    mov byte [gs:dev], 0x02                     ; 2 is for user buffer
+    jmp .done
 
 .nul:
-    call nul_in                                 ; Get input from null
-    jmp .done                                   ; We're done!
+    mov byte [gs:dev], 0x00                     ; 0 is for null
+    jmp .done
 
 
-; WRITE TO DEVICE FILE: Writes to a device file
-; IN: [filename] = 8.3 filename; CX = Number of bytes to write
+
+; WRITE TO DEVICE FILE: Writes the contents of the buffer to a device file
+; IN: AL = Device ID; CX = Number of bytes to write
 ; OUT: None
 
 write_dev:                                      ; Write to a device file
     pusha                                       ; Save register states to stack
 
-    call setup_segments                         ; Ensure segments are set correctly
-    push cx                                     ; Preserve number of bytes
+    cmp al, 0x00
+    je .nul                                     ; NUL
 
-    mov si, filename                            ; Read from the filename
-    mov di, tty_name                            ; TTY filename
-    mov cx, 0x0004                              ; TTY is 3 chars
+    cmp al, 0x01
+    je .tty                                     ; TTY
 
-    repe cmpsb                                  ; Compare filenames
-    je .tty                                     ; If they are equal, write to teletype
-
-    mov si, filename                            ; Otherwise, read from the filename
-    mov di, mem_name                            ; MEM filename
-    mov cx, 0x0004                              ; MEM is 3 chars
-
-    repe cmpsb                                  ; Compare filenames
-    je .mem                                     ; If they are equal, write to user buffer
-
-    mov si, filename                            ; Otherwise, read from the filename
-    mov di, nul_name                            ; NUL filename
-    mov cx, 0x0004                              ; NUL is 3 chars
-
-    repe cmpsb                                  ; Compare filenames
-    je .nul                                     ; If they are equal, write to null
-
-.error_dev:
-    mov ax, 0x0800                              ; Otherwise, invalid device
-    call error                                  ; Handle this error
+    cmp al, 0x02
+    je .mem                                     ; MEM
 
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
-.tty:
-    pop cx                                      ; Restore number of bytes
-    call tty_out                                ; Write to teletype
+.nul:
+    call nul_out                                ; Output to null
+    jmp .done                                   ; We're done!
 
+.tty:
+    call tty_out                                ; Output in teletype mode
     jmp .done                                   ; We're done!
 
 .mem:
-    pop cx                                      ; Restore number of bytes
-    call mem_out                                ; Write to buffer
-
+    call mem_out                                ; Output to secondary buffer
     jmp .done                                   ; We're done!
 
-.nul:
-    pop cx                                      ; Restore number of bytes
-    call nul_out                                ; Write to null
 
+; LOAD DEVICE FILE: Loads the contents of a device file
+; IN: AL = Device ID; [file_buffer_pointer] = Offset to load to
+; OUT: [file_buffer_pointer] = Initial value + bytes copied
+
+load_dev:                                       ; Load contents of a device file
+    pusha                                       ; Save register states to stack
+
+    cmp al, 0x00
+    je .nul                                     ; NUL
+
+    cmp al, 0x01
+    je .tty                                     ; TTY
+
+    cmp al, 0x02
+    je .mem                                     ; MEM
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.nul:
+    call nul_in                                 ; Input from null
+    jmp .done                                   ; We're done!
+
+.tty:
+    call tty_in                                 ; Input from teletype mode
+    jmp .done                                   ; We're done!
+
+.mem:
+    call mem_in                                 ; Input from secondary buffer
     jmp .done                                   ; We're done!
 
 
@@ -281,6 +259,8 @@ write_dev:                                      ; Write to a device file
 ; ========================================================================
 
 dev_data:
+
+dev                 db 0xFF                     ; Verified device ID (0xFF for not a device file)
 
 tty_name            db "TTY "
 mem_name            db "MEM "
