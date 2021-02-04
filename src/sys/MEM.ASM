@@ -89,6 +89,77 @@ out_str:                                        ; Output string to the I/O buffe
     ret                                         ; Return to caller
 
 
+; OUTPUT BYTES MANUALLY: Writes bytes to the I/O buffer at a specified location
+; IN: DS:SI = Source buffer; CX = Number of bytes; DI = Destination index
+; OUT: SI = Initial value + bytes copied; DI = Initial value + bytes copied
+
+out_man:                                        ; Output bytes manually
+    push cx                                     ; Save register state to stack
+
+    call extra_fileseg                          ; Write to the I/O buffer
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes
+
+    call update_man_endpoint                    ; Manually update endpoint
+
+    pop cx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; OUTPUT TO LINE: Outputs a line (ending in LF) to the I/O buffer as a certain line
+; IN: DS:SI = Input buffer; CX = Line number
+; OUT: SI = Initial value + bytes copied; CF = Set on error
+
+out_line:                                       ; Output to line
+    pusha                                       ; Save register states to stack
+    push si                                     ; Preserve source
+    push ds                                     ; And its segment
+    push cx                                     ; Preserve line number
+
+    call get_line_length                        ; Get the length of our new line
+    mov ax, cx                                  ; Store in AX
+
+    pop cx                                      ; Restore line number
+    call get_line_info                          ; Get the address/length of the line in the buffer
+    jc .done                                    ; If error, we're done
+    push si                                     ; Otherwise, preserve the address of the line
+
+    sub cx, ax                                  ; Subtract to get difference in length
+    neg cx                                      ; Negate (positive values shift right)
+    clc                                         ; Signed integer
+
+    call shift                                  ; Shift buffer to make room/constrict
+    add word [gs:buffer_endpoint], cx           ; Offset the endpoint
+
+    pop di                                      ; Restore the line address as destination
+    pop ds                                      ; Restore the source segment
+    pop si                                      ; And the source pointer
+
+    mov cx, ax                                  ; Use the length of the new line as the counter
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes
+
+    call update_man_endpoint                    ; Manually update endpoint
+    clc                                         ; No error
+
+.done:
+    mov word [gs:register_bckp_a], si           ; Preserve source index
+
+    popa                                        ; Restore register states
+    mov si, word [gs:register_bckp_a]           ; Restore source index
+
+    ret                                         ; Return to caller
+
+.error_line:
+    mov ax, 0x0500                              ; Invalid line number
+    call error                                  ; Handle this error
+
+    add sp, 0x0004                              ; Balance the stack
+    jmp .done                                   ; We're done
+
+
 ; INPUT BYTES: Copies a byte from the I/O buffer at the pointer location to an address
 ; IN: [buffer_in_pointer] = Source index; CX = Number of bytes; ES:DI = Destination index
 ; OUT: [buffer_in_pointer] = Initial value + bytes copied; CX = Number of bytes copied
@@ -141,6 +212,58 @@ in_byte:                                        ; Load byte from the I/O buffer
     ret                                         ; Return to caller
 
 
+; INPUT BYTES MANUALLY: Loads bytes from the I/O buffer at a specified location
+; IN: SI = Source index; CX = Number of bytes; ES:DI = Destination buffer
+; OUT: SI = Initial value + bytes copied; DI = Initial value + bytes copied
+
+in_man:                                         ; Load bytes manually
+    push cx                                     ; Save register state to stack
+
+    call data_fileseg                           ; Read from the I/O buffer
+    jcxz .done                                  ; If counter is zero, avoid endless loop
+    cld                                         ; Ensure correct direction
+
+.byte:
+    cmp si, word [gs:buffer_endpoint]           ; Check pointer against endpoint
+    ja .done                                    ; If we've gone through everything, we're done!
+
+    movsb                                       ; Otherwise, copy byte
+    loop .byte                                  ; Repeat
+
+.done:
+    cmp si, word [gs:buffer_endpoint]           ; Check against endpoint
+
+    pop cx                                      ; Restore register state
+    ret                                         ; Return to caller
+
+
+; INPUT LINE: Loads a specific line from the I/O buffer
+; IN: CX = Line number; ES:DI = Destination index
+; OUT: DI = Initial value + bytes copied
+
+in_line:                                        ; Load a line manually
+    pusha                                       ; Save register states to stack
+    push es                                     ; Preserve segment
+
+    call get_line_info                          ; Get line address and length
+
+    pop es                                      ; Restore segment
+    jc .done                                    ; If no such line, we're done
+
+    call data_fileseg                           ; Read from the I/O buffer
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Otherwise, copy bytes
+
+.done:
+    mov word [gs:register_bckp_a], di           ; Preserve destination
+
+    popa                                        ; Restore register states
+    mov di, word [gs:register_bckp_a]           ; Restore destination
+
+    ret                                         ; Return to caller
+
+
 ; CLEAR I/O BUFFER: Overwrites everything in the file buffer with zeroes and resets pointers/endpoint
 ; IN: None
 ; OUT: None (segments)
@@ -148,19 +271,39 @@ in_byte:                                        ; Load byte from the I/O buffer
 clear_buffer:                                   ; Clear the I/O buffer (0x10000-0x1FFFF)
     pusha                                       ; Save register states to stack
 
-    call extra_fileseg                          ; Write to the file buffer
-    mov di, 0x0000                              ; Start at offset 0
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, 0x0000                              ; Start from the beginning
 
     mov al, 0x00                                ; All zeroes
     mov cx, 0xFFFF                              ; Clear every byte
     cld                                         ; Ensure correct direction
 
-    rep stosb                                   ; Move zeroes in (AL is already 0)
+    rep stosb                                   ; Move zeroes in
 
     mov word [gs:buffer_out_pointer], 0x0000    ; Reset buffer pointer
     mov word [gs:buffer_in_pointer], 0x0000     ; Reset input buffer pointer
 
     mov word [gs:buffer_endpoint], 0x0000       ; Reset buffer endpoint
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; CLEAR EXECUTION BUFFER: Overwrites everything in the execution segment
+; IN: None
+; OUT: None (segments)
+
+clear_execution:                                ; Clear the execution buffer (0x40000-0x4FFFF)
+    pusha                                       ; Save register states to stack
+
+    call extra_binseg                           ; Write to the execution buffer
+    mov di, 0x0000                              ; Start from the beginning
+
+    mov al, 0x00                                ; All zeroes
+    mov cx, 0xFFFF                              ; Clear every byte
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Move zeroes in
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -209,7 +352,7 @@ get_line_addr:                                  ; Get address of specific line f
     jmp .done                                   ; We're done
 
 
-; GET LENGTH OF LINE: Gets the number of characters up to an including the next newline character
+; GET LENGTH OF LINE: Gets the number of characters up to and including the next newline character
 ; IN: DS:SI = Start of line
 ; OUT: CX = Number of characters; CF = Set if zero
 
@@ -281,13 +424,13 @@ addr_line_col:                                  ; Convert address to line/col
     loop .char                                  ; Repeat with next character
 
 .done:
-    mov word [gs:register_bckp_a], bx           ; Preserve the row
+    mov word [gs:register_bckp_a], bx           ; Preserve the line
     mov word [gs:register_bckp_b], dx           ; Preserve the col
 
     popa                                        ; Restore register states
 
     mov cx, word [gs:register_bckp_a]           ; Restore the row into CX
-    mov dx, word [gs:register_bckp_b]           ; Restore the col
+    mov dx, word [gs:register_bckp_b]           ; Restore the line
 
     ret                                         ; Return to caller
 
@@ -449,7 +592,7 @@ indent_out_pointer:
 ; IN: [buffer_out_pointer] = Current pointer value
 ; OUT: [buffer_endpoint] = New total
 
-update_endpoint:                                ; Update the buffer total
+update_endpoint:                                ; Update the buffer endpoint
     pusha                                       ; Save register states to stack
 
     mov ax, word [gs:buffer_out_pointer]        ; Our current buffer pointer
@@ -460,6 +603,20 @@ update_endpoint:                                ; Update the buffer total
 
 .done:
     popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; UPDATE OUTPUT ENDPOINT MANUALLY: Update the pointer for the end of the output manually
+; IN: DI = Current pointer value
+; OUT: [buffer_endpoint] = New total
+
+update_man_endpoint:                            ; Manually update the buffer endpoint
+    cmp di, word [gs:buffer_endpoint]           ; Is our pointer higher than the current endpoint?
+    jna .done                                   ; If not, we're done
+
+    mov word [gs:buffer_endpoint], si           ; Otherwise, the new endpoint becomes our current pointer
+
+.done:
     ret                                         ; Return to caller
 
 
@@ -482,6 +639,64 @@ check_newline:                                  ; Check for newline at the end o
 .done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
+
+
+; GET LINE INFO: Gets information about a specific line in the I/O buffer
+; IN: CX = Line number
+; OUT: CF = Set if line does not exist; SI = Address of line; CX = Length of line
+
+get_line_info:                                  ; Get information about a line
+    pusha                                       ; Save register states to stack
+
+    call extra_fileseg                          ; Scan the I/O buffer
+    mov di, 0x0000                              ; Starting at the beginning
+    mov al, 0x0A                                ; Scan for a newline character
+    cld                                         ; Ensure correct direction
+
+    jcxz .find_eol                              ; If line counter is zero, avoid an endless loop
+
+.find_newline:
+    push cx                                     ; Preserve counter for lines
+
+    mov cx, word [gs:buffer_endpoint]           ; The number of bytes in the buffer
+    sub cx, di                                  ; Subtract position to get relative number of bytes
+    jbe .no_line                                ; If no more space in the buffer, this line doesn't exist
+
+    repne scasb                                 ; Scan buffer
+
+    pop cx                                      ; Restore counter for lines
+    jne .no_line                                ; If not found, this line doesn't exist
+
+    loop .find_newline                          ; Otherwise, repeat
+
+.find_eol:
+    mov cx, word [gs:buffer_endpoint]           ; The number of bytes in the buffer
+    sub cx, di                                  ; Subtract position to get relative number of bytes
+    jbe .no_line                                ; If no more space in the buffer, this line doesn't exist
+
+    push di                                     ; Otherwise, preserve line address
+
+    repne scasb                                 ; Scan buffer
+
+    mov cx, di                                  ; The end of the line
+    pop di                                      ; Restore the beginning
+
+    jne .no_line                                ; If not found, this isn't a valid line
+    sub cx, di                                  ; Otherwise, subtract to get length
+
+.done:
+    mov word [gs:register_bckp_a], di           ; Preserve line address
+    mov word [gs:register_bckp_b], cx           ; Preserve line length
+
+    popa                                        ; Restore register states
+    mov si, word [gs:register_bckp_a]           ; Restore line address
+    mov cx, word [gs:register_bckp_b]           ; Restore line length
+
+    ret                                         ; Return to caller
+
+.no_line:
+    stc                                         ; Carry-flag
+    jmp .done                                   ; We're done
 
 
 ; ========================================================================

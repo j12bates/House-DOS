@@ -230,11 +230,52 @@ III. I/O Functions
 
         Outputs a certain byte.
 
-    SET_DEFAULT_DEV
+    SET_DEFAULT_DEV_OUT
         AH = 0x43
         AL = New device (0 = NUL, 1 = TTY, 2 = MEM)
 
         Sets a new default device to write output to at the end of the command.
+
+    AH = 0x48: MANUAL OUTPUT (BYTES)
+
+        OUT_MAN_BYTES
+            AL = 0x00
+            SI = Source buffer
+            CX = Number of bytes
+            DI = Buffer address
+
+            Return:
+            SI = Initial value + bytes copied
+            DI = Initial value + bytes copied
+            CF & ZF = Cleared if buffer exceeded.
+
+            Writes a certain number of bytes to a specific position in the I/O buffer.
+
+        OUT_MAN_BYTES_INDICES
+            AL = 0x01
+            SI = Source buffer
+            CX = End of source
+            DI = Buffer address
+
+            Return:
+            SI = Initial value + bytes copied
+            DI = Initial value + bytes copied
+            CF & ZF = Cleared if buffer exceeded.
+
+            Writes bytes between two indices to a specific position in the I/O buffer.
+
+    AH = 0x49: MANUAL OUTPUT (LINES)
+
+        OUT_LINE
+            AL = 0x00
+            CX = Line number
+            SI = Source buffer
+
+            Return:
+            SI = Initial value + bytes copied
+            CF = Set if no such line
+
+            Overwrites a certain line in the I/O buffer.
 
 
     AH = 0x50: BASIC INPUT
@@ -286,16 +327,59 @@ III. I/O Functions
         AL = Resulting byte
         CF & ZF = Cleared if pointer has passed the endpoint.
 
-        Retrieves a byte from the buffer.
-
+        Retrieves a byte from the buffer at the input buffer pointer.
 
     AH = 0x58: MANUAL INPUT (BYTES)
 
-    AH = 0x59: MANUAL INPUT (LINES)
+        IN_MAN_BYTES
+            AL = 0x00
+            SI = Starting address
+            CX = Number of bytes
+            DI = Destination buffer
 
-        GET_LINE
+            Return:
+            SI = Initial value + bytes copied
+            DI = Initial value + bytes copied
+            CF & ZF = Cleared if buffer exceeded.
 
-        GET_LINE_LENGTH
+            Retrieves a certain number of bytes from a specific position in the I/O buffer.
+
+        IN_MAN_BYTES_INDICES
+            AL = 0x01
+            SI = Starting address
+            CX = Ending address
+            DI = Destination buffer
+
+            Return:
+            SI = Initial value + bytes copied
+            DI = Initial value + bytes copied
+            CF & ZF = Cleared if buffer exceeded.
+
+            Retrieves the bytes between two indices in the I/O buffer.
+
+    AH = 0x59: LINE INPUT
+
+        IN_LINE
+            AL = 0x00
+            CX = Line number
+            DI = Destination buffer
+
+            Return:
+            DI = Initial value + bytes copied
+            CF = Set if no such line
+
+            Retrieves the contents of a certain line in the I/O buffer.
+
+        LINE_INFO
+            AL = 0x10
+            CX = Line number
+
+            Return:
+            SI = Line address
+            CX = Line length
+            CF = Set if no such line
+
+            Gets the address and length of a certain line in the I/O buffer.
 
 
 IV. Object/Data Functions
@@ -386,6 +470,19 @@ IV. Object/Data Functions
 
             Returns the total number of characters in a string (doesn't count NULL).
 
+        STRING_REPLACE_CHAR
+            AL = 0x40
+            SI = String location
+            DH = Character to search for
+            DL = Character to replace with
+            DI = Destination buffer
+
+            Return:
+            CF = Set on error
+
+            Searches a string for a specific character, and replaces all instances with a
+            different character.
+
 
     AH = 0x81: LIST OPERATIONS
 
@@ -462,6 +559,7 @@ IV. Object/Data Functions
         CF = Set if not found/error
 
         Finds the first instance of a character within a string, given certain bounds.
+
 
 V. Logic Functions
 
