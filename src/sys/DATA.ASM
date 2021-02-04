@@ -295,6 +295,37 @@ find_char:                                      ; Find instance of character
     jmp .done                                   ; We're done
 
 
+; REPLACE CHARACTERS: Replaces all instances of a certain character in a string
+; IN: DS:SI = String location; ES:DI = Output buffer; DH = Character to search for; DL = Character to replace with
+; OUT: CF = Set on error
+
+replace_char:                                   ; Replace characters in a string
+    pusha                                       ; Save register states to stack
+
+    cld                                         ; Ensure correct direction
+
+.char_load:
+    lodsb                                       ; Load next character
+
+    cmp al, 0x00                                ; Is this the null character?
+    je .done                                    ; If so, it's the end of the string
+
+    cmp al, dh                                  ; Is this the character we're looking for?
+    jne .char_write                             ; If not, proceed
+
+    mov al, dl                                  ; Otherwise, write the character we're replacing with
+
+.char_write:
+    stosb                                       ; Write character to output
+    jmp .char_load                              ; Repeat
+
+.done:
+    stosb                                       ; Write the null character
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; CHOMP STRING: Chomp the leading spaces off of a string
 ; IN: DS:SI = String location; ES:DI = Output buffer
 ; OUT: None

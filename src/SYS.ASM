@@ -478,6 +478,8 @@ command:                                        ; Main loop: Retrieve command fr
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
 
+    call clear_execution                        ; Clear execution buffer
+
     mov word [file_buffer_segment], 0x4000      ; Load into the execution buffer
     mov word [file_buffer_pointer], 0x0000      ; At the beginning
 
@@ -1162,6 +1164,15 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x43
     je out_routines.dev                         ; Set default device ID
 
+    cmp ax, 0x4800
+    je out_routines.man_qty                     ; Manually output bytes (index-quantity)
+
+    cmp ax, 0x4801
+    je out_routines.man_indices                 ; Manually output bytes (indices)
+
+    cmp ax, 0x4900
+    je out_routines.line                        ; Output to a specific line
+
 .in_funcs:                                      ; Input functions
     cmp ax, 0x5000
     je in_routines.string                       ; Retrieve string
@@ -1177,6 +1188,18 @@ syscall_handler:                                ; System call handler
 
     cmp ah, 0x52
     je in_routines.byte                         ; Retrieve byte
+
+    cmp ax, 0x5800
+    je in_routines.man_qty                      ; Manually retrieve bytes (index-quantity)
+
+    cmp ax, 0x5801
+    je in_routines.man_indices                  ; Manually retrieve bytes (indices)
+
+    cmp ax, 0x5900
+    je in_routines.line                         ; Retrieve line
+
+    cmp ax, 0x5910
+    je in_routines.line_info                    ; Get line info
 
 .disk_funcs:                                    ; Disk functions
     cmp ah, 0x60
@@ -1293,6 +1316,9 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x8020
     je data_routines.str_length                 ; Get length
+
+    cmp ax, 0x8040
+    je data_routines.str_replace                ; Replace characters
 
     cmp ax, 0x8100
     je data_routines.list_get_item              ; Get a list item
@@ -1412,9 +1438,12 @@ out_routines:                                   ; Output functions
     call data_binseg                            ; Read data from the program
     call out_str                                ; Output string
 
+    push ax                                     ; Save register state to stack
+
     mov al, 0x0A                                ; Newline character
     call out_byte                               ; Output byte
 
+    pop ax                                      ; Restore register state
     jmp int_ret                                 ; We're done!
 
 .line_break:
@@ -1583,6 +1612,26 @@ out_routines:                                   ; Output functions
     mov byte [default_dev], al                  ; Set default device ID
     jmp int_ret                                 ; We're done!
 
+.man_qty:
+    call data_binseg                            ; Read data from the program
+    call out_man                                ; Output bytes manually
+    jmp int_ret                                 ; We're done!
+
+.man_indices:
+    call data_binseg                            ; Read data from the program
+    push cx                                     ; Preserve register state
+
+    sub cx, si                                  ; Convert index to quantity
+    call out_man                                ; Output bytes manually
+
+    pop cx                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
+.line:
+    call data_binseg                            ; Read data from the program
+    call out_line                               ; Output to line
+    jmp int_ret.preserve_flags                  ; We're done!
+
 
 in_routines:                                    ; Input functions
 
@@ -1616,6 +1665,30 @@ in_routines:                                    ; Input functions
 
 .byte:
     call in_byte                                ; Retrieve byte
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.man_qty:
+    call extra_binseg                           ; Write data to the program
+    call in_man                                 ; Retrieve bytes manually
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.man_indices:
+    call extra_binseg                           ; Write data to the program
+    push cx                                     ; Preserve register state
+
+    sub cx, si                                  ; Convert index to quantity
+    call in_man                                 ; Retrieve bytes manually
+
+    pop cx                                      ; Restore register state
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.line:
+    call extra_binseg                           ; Write data to the program
+    call in_line                                ; Retrieve line
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.line_info:
+    call get_line_info                          ; Get line address and length
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -1915,6 +1988,11 @@ data_routines:                                  ; Data functions
     call str_len                                ; Get string length
 
     jmp int_ret                                 ; We're done!
+
+.str_replace:
+    call segments_binary                        ; We're working with stuff in the command
+    call replace_char                           ; Replace all characters
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .str_find_char:
     call data_binseg                            ; We want to access data from the command
@@ -2575,7 +2653,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x3000 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
+times 0x3200 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2584,7 +2662,7 @@ times 0x3000 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (t
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00023000
+input_buffer        dq 0x0000000000000000       ; 0x00023200
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2593,7 +2671,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00023000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00023040
+params              dq 0x0000000000000000       ; 0x00023240
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2602,7 +2680,7 @@ params              dq 0x0000000000000000       ; 0x00023040
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00023080
+misc_buffer         dq 0x0000000000000000       ; 0x00023280
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2611,7 +2689,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00023080
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000230C0
+param_flags         dq 0x0000000000000000       ; 0x000232C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2661,7 +2739,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 49; Compiled 2021-01-28", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 50; Compiled 2021-01-30", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
