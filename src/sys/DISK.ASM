@@ -943,6 +943,35 @@ disk_error:
     ret                                         ; Return to caller
 
 
+; CHECK CHARACTER LEGALITY: Check if a character is allowed to be in a filename
+; IN: AL = Character
+; OUT: CF = Set if illegal
+
+check_fname_legal:                              ; Check a character for filename legality
+    pusha                                       ; Save register states to stack
+
+    cmp al, 0x20                                ; Is the character a non-control ASCII code or a space?
+    jle .illegal                                ; If so, illegal
+
+    call extra_kernseg                          ; Compare against kernel data
+    mov di, fname_illegal_chars                 ; Against our list of illegal characters
+    mov cx, 0x000F                              ; Which is 15 bytes long
+    cld                                         ; Ensure correct direction
+
+    repne scasb                                 ; Compare our character against the list
+    je .illegal                                 ; If it's a match, illegal character
+
+    clc                                         ; Otherwise, perfectly legal
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.illegal:
+    stc                                         ; Carry-flag
+    jmp .done                                   ; We're done
+
+
 ; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
 ; IN: None
 ; OUT: [cluster] = Cluster number; CF = Set on error
@@ -1056,8 +1085,12 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
 
 .name_char:
     lodsb                                       ; Load next character
+
     call capitalize_char                        ; Capitalize
-    stosb                                       ; Store resulting character
+    call check_fname_legal                      ; Check if it is a legal character for a filename
+    jc .error_filename                          ; If illegal, error
+
+    stosb                                       ; Otherwise, store resulting character
 
     cmp byte [si], 0x2E                         ; Is this next character the dot?
     je .dot                                     ; If so, move on
@@ -1440,6 +1473,8 @@ root_start          dw 0x0000
 renames             dw 0x0000
 deletions           dw 0x0000
 vis_changes         dw 0x0000
+
+fname_illegal_chars db 0x22, "*+,/:;<=>?[", 0x5C, "]|"
 
 iface_disk_changesA db "This will result in "
 iface_disk_changesB dd 0x00000000

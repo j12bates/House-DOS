@@ -89,6 +89,9 @@ III. I/O Functions
 
     AH = 0x40: BASIC OUTPUT
 
+        Return:
+        CF = Set on error/buffer overflow
+
         These system calls utilize a kernel variable for a pointer. Addresses need not be
         provided as whatever output is provided will be written to the address contained in that
         pointer; the pointer will then be advanced past that output. Only what has been written
@@ -117,7 +120,7 @@ III. I/O Functions
             SI = Source
             CX = Number of Bytes
 
-            Outputs specified number of characters from source.
+            Outputs specified number of bytes from source.
 
         OUT_FILE
             AL = 0x20
@@ -235,6 +238,49 @@ III. I/O Functions
         AL = New device (0 = NUL, 1 = TTY, 2 = MEM)
 
         Sets a new default device to write output to at the end of the command.
+
+    AH = 0x44: INSERT OUTPUT
+
+        Return:
+        CF = Set on error/buffer overflow
+
+        These system calls function similar to the basic output calls, in that they utilize the
+        same hidden pointers. They differ in that these calls will shift any output to the right
+        so that it will not be overwritten.
+
+        OUT_INS_STRING
+            AL = 0x00
+            SI = String location
+
+            Insert a string into the output.
+
+        OUT_INS_STRING_LINE
+            AL = 0x01
+            SI = String location
+
+            Insert a string and a line break into the output.
+
+        OUT_INS_BYTES
+            AL = 0x10
+            SI = Source buffer
+            CX = Number of bytes
+
+            Inserts specified number of bytes into the output.
+
+    SHIFT_BUFFER
+        AH = 0x45
+        SI = Index to begin shift from
+        CX = Offset rightward
+        CF = Set for unsigned offset
+        DF = Set for left offset (only if unsigned)
+
+        Shifts everything past one point in the buffer by a certain offset.
+
+    OUT_INS_BYTE
+        AH = 0x46
+        AL = Byte to insert
+
+        Inserts a certain byte into the output.
 
     AH = 0x48: MANUAL OUTPUT (BYTES)
 

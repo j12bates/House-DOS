@@ -73,7 +73,7 @@ main:                                           ; Main code for House-DOS kernel
     mov word [gs:pipe_offset], 0x0000           ; Reset command offset
 
 .handback:
-    call check_newline                          ; Check for a newline at the end of the buffer
+    call check_end_buffer                       ; Ensure the end of the buffer is up-to-standard
 
     call setup_segments                         ; Ensure segments are all ready
     mov sp, 0x3FFE                              ; Reset stack pointer (we're going to pop something in a bit)
@@ -511,7 +511,8 @@ command:                                        ; Main loop: Retrieve command fr
     mov si, ax                                  ; This is the index within the header
     mov si, word [si]                           ; The location contained at that point is our string
 
-    call out_str                                ; Output string
+    call str_len                                ; Get string length
+    call out_bytes                              ; Output bytes
     jmp main.handback                           ; Simulate a handback and get a new command
 
 .error_header:
@@ -541,6 +542,8 @@ handback_manual:                                ; Routine to manually perform ha
 error_oflow:                                    ; Routine for BUFFER_OVERFLOW error (don't call, jump)
     mov ax, 0x0400                              ; Buffer overflow
     call error                                  ; Handle this error
+
+    call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -1164,6 +1167,21 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x43
     je out_routines.dev                         ; Set default device ID
 
+    cmp ax, 0x4400
+    je out_routines.ins_string                  ; Insert string
+
+    cmp ax, 0x4401
+    je out_routines.ins_string_ln               ; Insert string as line
+
+    cmp ax, 0x4410
+    je out_routines.ins_bytes                   ; Insert bytes
+
+    cmp ah, 0x45
+    je out_routines.shift                       ; Shift buffer
+
+    cmp ah, 0x46
+    je out_routines.ins_byte                    ; Insert byte
+
     cmp ax, 0x4800
     je out_routines.man_qty                     ; Manually output bytes (index-quantity)
 
@@ -1431,20 +1449,31 @@ out_routines:                                   ; Output functions
 
 .string:
     call data_binseg                            ; Read data from the program
-    call out_str                                ; Output string
-    jmp int_ret                                 ; We're done!
+
+    push cx                                     ; Preserve register state
+
+    call str_len                                ; Get string length
+    call out_bytes                              ; Output bytes
+
+    pop cx                                      ; Restore register state
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .string_ln:
     call data_binseg                            ; Read data from the program
-    call out_str                                ; Output string
 
-    push ax                                     ; Save register state to stack
+    push cx                                     ; Preserve register state
+
+    call str_len                                ; Get string length
+    call out_bytes                              ; Output bytes
+
+    pop cx                                      ; Restore register state
+    push ax                                     ; Preserve register state
 
     mov al, 0x0A                                ; Newline character
     call out_byte                               ; Output byte
 
     pop ax                                      ; Restore register state
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .line_break:
     push ax                                     ; Save register state to stack
@@ -1453,12 +1482,12 @@ out_routines:                                   ; Output functions
     call out_byte                               ; Output byte
 
     pop ax                                      ; Restore register state
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .bytes:
     call data_binseg                            ; Read data from the program
     call out_bytes                              ; Output bytes
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .file:
     pusha                                       ; Save register states to stack
@@ -1472,7 +1501,7 @@ out_routines:                                   ; Output functions
     call update_endpoint                        ; Update buffer endpoint
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .num_word_dec:
     pusha                                       ; Save register states to stack
@@ -1482,10 +1511,11 @@ out_routines:                                   ; Output functions
     call conv_word_dec_unsigned                 ; Convert to decimal
 
     mov si, di                                  ; Print from our buffer
-    call out_str                                ; Output string
+    call str_len                                ; Get string length
+    call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .num_byte_dec:
     pusha                                       ; Save register states to stack
@@ -1495,10 +1525,11 @@ out_routines:                                   ; Output functions
     call conv_byte_dec_unsigned                 ; Convert to decimal
 
     mov si, di                                  ; Print from our buffer
-    call out_str                                ; Output string
+    call str_len                                ; Get string length
+    call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .num_word_hex:
     pusha                                       ; Save register states to stack
@@ -1512,7 +1543,7 @@ out_routines:                                   ; Output functions
     call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .num_byte_hex:
     pusha                                       ; Save register states to stack
@@ -1526,7 +1557,7 @@ out_routines:                                   ; Output functions
     call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .date_dstamp:
     pusha                                       ; Save register states to stack
@@ -1543,7 +1574,7 @@ out_routines:                                   ; Output functions
     call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .date_tstamp:
     pusha                                       ; Save register states to stack
@@ -1560,7 +1591,7 @@ out_routines:                                   ; Output functions
     call out_bytes                              ; Output bytes
 
     popa                                        ; Restore register states
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .clear:
     call clear_buffer                           ; Clear I/O buffer
@@ -1606,16 +1637,57 @@ out_routines:                                   ; Output functions
 
 .byte:
     call out_byte                               ; Output byte
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .dev:
     mov byte [default_dev], al                  ; Set default device ID
     jmp int_ret                                 ; We're done!
 
+.ins_string:
+    call data_binseg                            ; Read data from the program
+
+    push cx                                     ; Preserve register state
+
+    call str_len                                ; Get string length
+    call out_ins_bytes                          ; Insert bytes
+
+    pop cx                                      ; Restore register state
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.ins_string_ln:
+    call data_binseg                            ; Read data from the program
+
+    push cx                                     ; Preserve register state
+
+    call str_len                                ; Get string length
+    call out_ins_bytes                          ; Insert bytes
+
+    pop cx                                      ; Restore register state
+    push ax                                     ; Preserve register state
+
+    mov al, 0x0A                                ; Newline character
+    call out_ins_byte                           ; Insert byte
+
+    pop ax                                      ; Restore register state
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.ins_bytes:
+    call data_binseg                            ; Read data from the program
+    call out_ins_bytes                          ; Insert bytes
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.shift:
+    call shift_buffer                           ; Shift I/O buffer
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.ins_byte:
+    call out_ins_byte                           ; Insert byte
+    jmp int_ret.preserve_flags                  ; We're done!
+
 .man_qty:
     call data_binseg                            ; Read data from the program
     call out_man                                ; Output bytes manually
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .man_indices:
     call data_binseg                            ; Read data from the program
@@ -1625,7 +1697,7 @@ out_routines:                                   ; Output functions
     call out_man                                ; Output bytes manually
 
     pop cx                                      ; Restore register state
-    jmp int_ret                                 ; We're done!
+    jmp int_ret.preserve_flags                  ; We're done!
 
 .line:
     call data_binseg                            ; Read data from the program
@@ -1639,11 +1711,11 @@ in_routines:                                    ; Input functions
     call data_fileseg                           ; Read data from the buffer
     mov si, word [buffer_in_pointer]            ; At our pointer
 
+    push cx                                     ; Preserve register state
+
     clc                                         ; Use DS:SI
     call str_len                                ; Get string length
     inc cx                                      ; Retrieve the NULL character as well
-
-    push cx                                     ; Preserve number of bytes
 
     call in_bytes                               ; Retrieve bytes
 
@@ -2739,7 +2811,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 50; Compiled 2021-01-30", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 51; Compiled 2021-02-09", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
