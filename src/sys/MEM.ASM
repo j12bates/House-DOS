@@ -12,7 +12,7 @@
 
 ; OUTPUT BYTES: Outputs a certain nummber of bytes to the I/O buffer at the pointer location
 ; IN: DS:SI = Source buffer; CX = Number of bytes; [buffer_out_pointer] = Destination index
-; OUT: [buffer_out_pointer] = Initial value + bytes copied
+; OUT: [buffer_out_pointer] = Initial value + bytes copied; [buffer_endpoint] = New endpoint
 
 out_bytes:                                      ; Output bytes to the I/O buffer
     pusha                                       ; Save register states to stack
@@ -38,7 +38,7 @@ out_bytes:                                      ; Output bytes to the I/O buffer
 
 ; OUTPUT BYTE: Outputs a byte to the I/O buffer at the pointer location
 ; IN: AL = Byte to output; [buffer_out_pointer] = Destination index
-; OUT: [buffer_out_pointer] = Initial value + bytes copied
+; OUT: [buffer_out_pointer] = Initial value + bytes copied; [buffer_endpoint] = New endpoint
 
 out_byte:                                       ; Output byte to the I/O buffer
     pusha                                       ; Save register states to stack
@@ -48,39 +48,7 @@ out_byte:                                       ; Output byte to the I/O buffer
 
     stosb                                       ; Write byte
 
-    inc word [gs:buffer_out_pointer]            ; Increment buffer pointer
-    jc error_oflow                              ; If there was a carry, buffer overflow
-
-    call update_endpoint                        ; Update buffer endpoint
-
-    popa                                        ; Restore register states
-    ret                                         ; Return to caller
-
-
-; OUTPUT STRING: Outputs a string to the I/O buffer at the pointer location
-; IN: DS:SI = String location; [buffer_out_pointer] = Destination index
-; OUT: [buffer_out_pointer] = Initial value + bytes copied
-
-out_str:                                        ; Output string to the I/O buffer
-    pusha                                       ; Save register states to stack
-
-    call extra_fileseg                          ; Write to the I/O buffer
-    mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
-    mov cx, 0x0000                              ; Count the iterations
-    cld                                         ; Ensure correct direction
-
-.char:
-    lodsb                                       ; Load next character
-
-    cmp al, 0x00                                ; Is it a NULL character?
-    je .done                                    ; If so, we're done!
-
-    stosb                                       ; Otherwise, write byte
-    loop .char                                  ; Repeat
-
-.done:
-    neg cx                                      ; Negate to get positive number of iterations
-    add word [gs:buffer_out_pointer], cx        ; This is our new pointer
+    add word [gs:buffer_out_pointer], 0x0001    ; Increment buffer pointer
     jc error_oflow                              ; If there was a carry, buffer overflow
 
     call update_endpoint                        ; Update buffer endpoint
@@ -91,7 +59,7 @@ out_str:                                        ; Output string to the I/O buffe
 
 ; OUTPUT BYTES MANUALLY: Writes bytes to the I/O buffer at a specified location
 ; IN: DS:SI = Source buffer; CX = Number of bytes; DI = Destination index
-; OUT: SI = Initial value + bytes copied; DI = Initial value + bytes copied
+; OUT: SI = Initial value + bytes copied; DI = Initial value + bytes copied; [buffer_endpoint] = New endpoint
 
 out_man:                                        ; Output bytes manually
     push cx                                     ; Save register state to stack
@@ -125,12 +93,13 @@ out_line:                                       ; Output to line
     jc .done                                    ; If error, we're done
     push si                                     ; Otherwise, preserve the address of the line
 
+    add si, cx                                  ; Shift starting from the end of the line
+    dec si                                      ; Avoid an O.B.O.E with the newline
     sub cx, ax                                  ; Subtract to get difference in length
     neg cx                                      ; Negate (positive values shift right)
     clc                                         ; Signed integer
 
-    call shift                                  ; Shift buffer to make room/constrict
-    add word [gs:buffer_endpoint], cx           ; Offset the endpoint
+    call shift_buffer                           ; Shift buffer to make room/constrict
 
     pop di                                      ; Restore the line address as destination
     pop ds                                      ; Restore the source segment
@@ -158,6 +127,68 @@ out_line:                                       ; Output to line
 
     add sp, 0x0004                              ; Balance the stack
     jmp .done                                   ; We're done
+
+
+; INSERT BYTES: Outputs bytes to the buffer at the pointer location, shifts everything out of the way
+; IN: DS:SI = Source buffer; CX = Number of bytes; [buffer_out_pointer] = Destination index
+; OUT: [buffer_out_pointer] = Initial value + bytes copied; [buffer_endpoint] = New endpoint
+
+out_ins_bytes:                                  ; Insert bytes into the buffer
+    pusha                                       ; Save register states to stack
+    push si                                     ; Preserve source
+    push ds                                     ; And its segment
+
+    mov si, word [gs:buffer_out_pointer]        ; Shift everything to the right of our pointer
+    stc                                         ; Unsigned integer
+    cld                                         ; Shift to the right
+    call shift_buffer                           ; Shift everything over
+
+    pop ds                                      ; Restore data segment
+    pop si                                      ; Restore source
+    push cx                                     ; Preserve counter
+
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
+    jcxz .done                                  ; If counter is zero, skip
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes over
+
+    pop cx                                      ; Restore counter
+    add word [gs:buffer_out_pointer], cx        ; Update buffer pointer
+    jc error_oflow                              ; If there was a carry, buffer overflow
+
+    call update_endpoint                        ; Update buffer endpoint
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; INSERT BYTE: Outputs a byte to the buffer at the pointer location, shifts everything out of the way
+; IN: AL = Byte to output; [buffer_out_pointer] = Destination index
+; OUT: [buffer_out_pointer] = Initial value + bytes copied; [buffer_endpoint] = New endpoint
+
+out_ins_byte:                                   ; Insert a byte into the buffer
+    pusha                                       ; Save register states to stack
+
+    mov si, word [gs:buffer_out_pointer]        ; Shift everything to the right of our pointer
+    mov cx, 0x0001                              ; Offset by one
+    clc                                         ; Signed integer
+    call shift_buffer                           ; Shift everything over
+
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
+
+    stosb                                       ; Write byte
+
+    add word [gs:buffer_out_pointer], 0x0001    ; Increment buffer pointer
+    jc error_oflow                              ; If there was a carry, buffer overflow
+
+    call update_endpoint                        ; Update buffer endpoint
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
 
 
 ; INPUT BYTES: Copies a byte from the I/O buffer at the pointer location to an address
@@ -261,6 +292,77 @@ in_line:                                        ; Load a line manually
     popa                                        ; Restore register states
     mov di, word [gs:register_bckp_a]           ; Restore destination
 
+    ret                                         ; Return to caller
+
+
+; SHIFT I/O BUFFER: Shifts everything past one index in the buffer by a certain number of bytes (right by default)
+; IN: CX = Offset; SI = Starting index; [buffer_endpoint] = Buffer endpoint; CF = Set for unsigned int; DF = Set to shift left (if unsigned)
+; OUT: [buffer_endpoint] = New endpoint
+
+shift_buffer:                                   ; Shift everything in the buffer over
+    pusha                                       ; Save register states to stack
+
+    call data_fileseg
+    call extra_fileseg                          ; Work with data in the I/O buffer
+
+    jnc .sign                                   ; If signed, figure out the sign
+
+    pushf                                       ; Otherwise, push FLAGS
+    pop ax                                      ; Pop into AX
+
+    test ax, 0x0400                             ; Is DF set?
+    jnz .left_unsigned                          ; If so, shift left
+
+    jmp .right                                  ; Otherwise, shift right
+
+.sign:
+    cmp cx, 0x0000                              ; Is our offset negative?
+    jl .left                                    ; If so, shift left
+
+.right:
+    push cx                                     ; Preserve positive offset
+    push si                                     ; Preserve starting index
+
+    mov si, word [gs:buffer_endpoint]           ; Start at the end of the buffer
+    mov di, si                                  ; Destination and source should be the same
+    add di, cx                                  ; Add the offset to get the initial destination
+
+    pop cx                                      ; Restore starting index
+    sub cx, di                                  ; Subtract to get bytes to the right
+    inc cx                                      ; Avoid an O.B.O.E
+    neg cx                                      ; Requires negation
+
+    std                                         ; Move from right to left
+    rep movsb                                   ; Move everything
+
+    pop cx                                      ; Restore offset
+    add word [gs:buffer_endpoint], cx           ; Add offset to get new buffer endpoint
+
+    jmp .done                                   ; We're done!
+
+.left_unsigned:
+    neg cx                                      ; Treat the unsigned int as negative
+
+.left:
+    push cx                                     ; Preserve negative offset
+
+    mov di, si                                  ; Destination and source should be the same
+    add di, cx                                  ; Add the offset to get the final destination
+
+    mov cx, word [gs:buffer_endpoint]           ; Start counter at the end of the buffer
+    sub cx, si                                  ; Subtract to get total number of bytes to be moved
+
+    cld                                         ; Move from left to right
+    rep movsb                                   ; Move everything
+
+    pop cx                                      ; Restore offset
+    neg cx                                      ; Make positive
+    sub word [gs:buffer_endpoint], cx           ; Subtract offset to get new buffer endpoint
+
+.done:
+    jc error_oflow                              ; If there was a carry, buffer overflow
+
+    popa                                        ; Otherwise, restore register states
     ret                                         ; Return to caller
 
 
@@ -486,7 +588,7 @@ write_line:                                     ; Write line to file buffer
     ret                                         ; Return to caller
 
 
-; SHIFT FILE BUFFER: Shift everything past one point in the file buffer by a certain number of bytes
+; SHIFT FILE BUFFER: Shifts everything past one point in the file buffer by a certain number of bytes
 ; IN: CX = Number of bytes by which to offset right; SI = Starting index; CF = Set for unsigned integer; DF = Set to shift left (if unsigned)
 ; OUT: None
 
@@ -620,21 +722,34 @@ update_man_endpoint:                            ; Manually update the buffer end
     ret                                         ; Return to caller
 
 
-; CHECK NEWLINE: Check if the end of the buffer contains a newline, and output one if there isn't
+; CHECK END OF BUFFER: Ensures the buffer ends with a newline, pads the remainder with null characters
 ; IN: [buffer_endpoint] = End of buffer
 ; OUT: [buffer_endpoint] = End of buffer
 
-check_newline:                                  ; Check for newline at the end of the buffer
+check_end_buffer:                               ; End buffer with newline, pad remainder with zeroes
     pusha                                       ; Save register states to stack
 
     call data_fileseg                           ; Read from I/O buffer
     mov si, word [gs:buffer_endpoint]           ; At the endpoint
 
     cmp byte [si-0x01], 0x0A                    ; Is the last byte in the buffer a newline?
-    je .done                                    ; If so, proceed
+    je .zeroes                                  ; If so, proceed
 
     mov byte [si], 0x0A                         ; Otherwise, place a newline character
     inc word [gs:buffer_endpoint]               ; Increment the endpoint
+
+.zeroes:
+    call extra_fileseg                          ; Write to the I/O buffer
+    mov di, word [gs:buffer_endpoint]           ; Just after the end of the buffer
+
+    mov cx, di                                  ; The counter should be the same
+    neg cx                                      ; Negate to get bytes up to 0xFFFF
+    dec cx                                      ; Avoid an O.B.O.E
+    jcxz .done                                  ; If zero, avoid an endless loop
+    cld                                         ; Ensure correct direction
+
+    mov al, 0x00                                ; NULL characters
+    rep stosb                                   ; Write bytes in
 
 .done:
     popa                                        ; Restore register states
