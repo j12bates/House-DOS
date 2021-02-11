@@ -67,6 +67,6 @@ fname           dq 0x0000000000000000
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for deleting a file.", 0x00
-usage           db "DELETE <FILENAME> *<FILENAME>* ...", 0x0A
+usage           db "DELETE <FILE> *<FILE>* ...", 0x0A
                 db "Flags:", 0x0A
                 db "A - Immediately apply changes", 0x00

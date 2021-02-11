@@ -64,6 +64,6 @@ fname           dq 0x0000000000000000
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for renaming a file.", 0x00
-usage           db "RENAME <FILENAME-SOURCE> <FILENAME-DEST>", 0x0A
+usage           db "RENAME <FILE-SRC> <FILE-DEST>", 0x0A
                 db "Flags:", 0x0A
                 db "A - Immediately apply changes", 0x00

@@ -117,7 +117,7 @@ fname           db "XXXXXXXX.XXX"
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for writing a new text file.", 0x00
-usage           db "WRITE *<FILENAME>*", 0x0A
+usage           db "WRITE *<FILE>*", 0x0A
                 db "OUT: Contents written", 0x00
 
 src_buffer:

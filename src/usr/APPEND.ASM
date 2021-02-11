@@ -63,8 +63,8 @@ data:
 lines           dw 0x0000
 
 creator         db "House-DOS Developers", 0x00
-desc            db "Utility to lines to input.", 0x00
-usage           db "APPEND *<LINE>* *<LINE>* ...", 0x0A
+desc            db "Utility to append lines to input", 0x00
+usage           db "APPEND <LINE> *<LINE>* ...", 0x0A
                 db "IN: Input", 0x0A
                 db "OUT: Input with lines appended", 0x00
 

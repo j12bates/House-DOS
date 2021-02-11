@@ -78,7 +78,7 @@ prompt          db "Input filename: ", 0x00
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for hiding/revealing a file.", 0x00
-usage           db "HIDE <FILENAME> *<FILENAME>* ...", 0x0A
+usage           db "HIDE <FILE> *<FILE>* ...", 0x0A
                 db "Flags:", 0x0A
                 db "A - Immediately apply changes", 0x0A
                 db "R - Reveal files", 0x00

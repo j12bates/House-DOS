@@ -103,7 +103,7 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility to dump a file/input as hex/plaintext. No output is produced.", 0x00
-usage           db "HEXDUMP *<FILENAME>*", 0x0A
+usage           db "HEXDUMP *<FILE>*", 0x0A
                 db "IN: Content to dump as hex (if file not given)", 0x00
 
 dest_buffer:
