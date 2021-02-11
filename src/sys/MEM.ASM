@@ -16,12 +16,13 @@
 
 out_bytes:                                      ; Output bytes to the I/O buffer
     pusha                                       ; Save register states to stack
-    push cx                                     ; Preserve counter
 
     call extra_fileseg                          ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
     jcxz .done                                  ; If counter is zero, skip
     cld                                         ; Ensure correct direction
+
+    push cx                                     ; Preserve counter
 
     rep movsb                                   ; Copy bytes over
 
@@ -200,14 +201,21 @@ in_bytes:                                       ; Copy bytes from the I/O buffer
 
     call data_fileseg                           ; Read from the I/O buffer
     mov si, word [gs:buffer_in_pointer]         ; Read starting at our pointer
+
+    add cx, si                                  ; Add to counter to get final index
+    cmp cx, word [gs:buffer_endpoint]           ; Will we end up going past the endpoint?
+    jna .read                                   ; If not, proceed
+
+    mov cx, word [gs:buffer_endpoint]           ; Otherwise, read up to the endpoint
+    inc cx                                      ; Avoid an O.B.O.E
+
+.read:
+    sub cx, si                                  ; Subtract pointer to get number of bytes to copy
+
+    jcxz .done                                  ; If counter is zero, skip
     cld                                         ; Ensure correct direction
 
-.byte:
-    cmp si, word [gs:buffer_endpoint]           ; Check pointer against endpoint
-    ja .done                                    ; If we've gone through everything, we're done!
-
-    movsb                                       ; Otherwise, copy byte
-    loop .byte                                  ; Repeat
+    rep movsb                                   ; Copy bytes
 
 .done:
     mov cx, si                                  ; Our current position in the buffer

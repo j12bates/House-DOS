@@ -1,5 +1,5 @@
 ; ========================================================================
-; House-DOS CALC COMMAND
+; House-DOS CALCULATOR
 ; 
 ; Written by Jet Pham and Jacob Bates
 ; ========================================================================
@@ -110,5 +110,4 @@ creator         db "Jet Pham & Jacob Bates", 0x00
 desc            db "Utility to do basic arithmetic.", 0x00
 usage           db "CALC <INT> OP <INT>", 0x0A
                 db "OP = +, -, *, or /", 0x0A
-                db "Use <INT8> if OP = *", 0x0A
-                db "Flags: none", 0x00
+                db "Use <INT8> if OP = *", 0x00

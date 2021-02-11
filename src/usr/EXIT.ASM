@@ -34,5 +34,4 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Reboot the system/proceed with boot process.", 0x00
-usage           db "EXIT", 0x0A
-                db "Flags: none", 0x00
+usage           db "EXIT", 0x00

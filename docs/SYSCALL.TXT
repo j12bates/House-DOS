@@ -227,6 +227,16 @@ III. I/O Functions
 
             Advances the output buffer pointer to the specified column in the current line.
 
+        POINTER_RESET
+            AL = 0x40
+
+            Moves the output buffer pointer to the start of the buffer.
+
+        POINTER_END
+            AL = 0x41
+
+            Moves the output buffer pointer to the end of the buffer.
+
     OUT_BYTE
         AH = 0x42
         AL = Byte to output
@@ -322,6 +332,16 @@ III. I/O Functions
             CF = Set if no such line
 
             Overwrites a certain line in the I/O buffer.
+
+    WRITE_BUFFER
+        AH = 0x4F
+        SI = X.3 filename (or 0x0000)
+
+        Return:
+        CF = Set on error
+
+        Write buffer to disk as a file with the name given. If SI is 0, then the most recently
+        verified file will be written to.
 
 
     AH = 0x50: BASIC INPUT

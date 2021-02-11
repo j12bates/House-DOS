@@ -247,4 +247,5 @@ usage           db "FILE <FILENAME>", 0x0A
                 db "C - Display creation date", 0x0A
                 db "A - Display access date", 0x0A
                 db "W - Display write date", 0x0A
-                db "P - Display applicable permissions", 0x00
+                db "P - Display applicable permissions", 0x0A
+                db "OUT: Information about the file", 0x00

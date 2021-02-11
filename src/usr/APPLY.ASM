@@ -34,6 +34,5 @@ done:
 data:
 
 creator         db "House-DOS Developers", 0x00
-desc            db "Apply all filesystem changes (DELETE, RENAME).", 0x00
-usage           db "APPLY", 0x0A
-                db "Flags: none", 0x00
+desc            db "Apply all filesystem changes (DELETE, RENAME, HIDE).", 0x00
+usage           db "APPLY", 0x00
