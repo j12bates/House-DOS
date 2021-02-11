@@ -34,5 +34,4 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Shut down the system.", 0x00
-usage           db "QUIT", 0x0A
-                db "Flags: none", 0x00
+usage           db "QUIT", 0x00

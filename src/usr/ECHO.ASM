@@ -62,8 +62,8 @@ words           dw 0x0000
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for echoing text to a device.", 0x00
-usage           db "ECHO *WORD* *WORD* ...", 0x0A
-                db "Flags: none", 0x00
+usage           db "ECHO *<WORD>* *<WORD>* ...", 0x0A
+                db "OUT: Words separated by spaces", 0x00
 
 
 dest_buffer:

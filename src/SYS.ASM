@@ -1161,6 +1161,12 @@ syscall_handler:                                ; System call handler
     cmp ax, 0x4122
     je out_routines.indent                      ; Indent pointer
 
+    cmp ax, 0x4140
+    je out_routines.pointer_reset               ; Reset pointer
+
+    cmp ax, 0x4141
+    je out_routines.pointer_end                 ; Set pointer to end of buffer
+
     cmp ah, 0x42
     je out_routines.byte                        ; Output byte
 
@@ -1190,6 +1196,9 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x4900
     je out_routines.line                        ; Output to a specific line
+
+    cmp ah, 0x4F
+    je out_routines.write                       ; Write buffer to disk
 
 .in_funcs:                                      ; Input functions
     cmp ax, 0x5000
@@ -1635,6 +1644,19 @@ out_routines:                                   ; Output functions
     call indent_out_pointer                     ; Indent output buffer pointer
     jmp int_ret                                 ; We're done!
 
+.pointer_reset:
+    mov word [buffer_out_pointer], 0x0000       ; Reset output buffer pointer
+    jmp int_ret                                 ; We're done!
+
+.pointer_end:
+    push ax                                     ; Preserve register state
+
+    mov ax, word [buffer_endpoint]              ; Get our buffer endpoint
+    mov word [buffer_out_pointer], ax           ; Set our output buffer pointer to this
+
+    pop ax                                      ; Restore register state
+    jmp int_ret                                 ; We're done!
+
 .byte:
     call out_byte                               ; Output byte
     jmp int_ret.preserve_flags                  ; We're done!
@@ -1702,6 +1724,21 @@ out_routines:                                   ; Output functions
 .line:
     call data_binseg                            ; Read data from the program
     call out_line                               ; Output to line
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.write:
+    call data_binseg                            ; We want to access data from the command
+
+    cmp si, 0x0000                              ; Is SI 0?
+    je ._write                                  ; If so, skip ahead
+
+    call conv_x3_83                             ; Otherwise, convert filename to proper format
+    jc int_ret.preserve_flags                   ; If error, we're done
+
+._write:
+    mov cx, word [gs:buffer_endpoint]           ; Write to the end of the buffer
+    call write_file                             ; Write file to disk
+
     jmp int_ret.preserve_flags                  ; We're done!
 
 
@@ -2811,7 +2848,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 51; Compiled 2021-02-09", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 52; Compiled 2021-02-12", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

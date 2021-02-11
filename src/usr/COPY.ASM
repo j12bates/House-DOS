@@ -59,5 +59,4 @@ fname           dq 0x0000000000000000
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for copying a file.", 0x00
-usage           db "COPY <FILENAME-SOURCE> <FILENAME-DEST>", 0x0A
-                db "Flags: none", 0x00
+usage           db "COPY <FILE-SRC> <FILE-DEST>", 0x00

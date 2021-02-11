@@ -54,4 +54,4 @@ msg         db "============ House-DOS Help ============", 0x0A, 0x0A
 creator     db "House-DOS Developers", 0x00
 desc        db "Show system help.", 0x00
 usage       db "HELP", 0x0A
-            db "Flags: none", 0x00
+            db "OUT: Help contents", 0x00

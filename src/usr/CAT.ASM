@@ -62,9 +62,7 @@ files           dw 0x0000
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for concatenating and displaying file contents.", 0x00
-usage           db "CAT <FILENAME> *<FILENAME>* ...", 0x0A
-                db "Flags: none", 0x0A
-                db "IN: Nothing", 0x0A
+usage           db "CAT <FILE> *<FILE>* ...", 0x0A
                 db "OUT: Contents of files sequentially", 0x00
 
 

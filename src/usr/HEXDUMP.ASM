@@ -29,7 +29,7 @@ main:
     mov ah, 0x21                        ; Get total parameters
     int 0x7E
 
-    jcxz .size                          ; If no parameter, skip
+    jcxz .next_16                       ; If no parameter, proceed
 
     mov ah, 0x2A                        ; Verify file from parameter
     mov cx, 0x0000                      ; The first parameter
@@ -39,12 +39,6 @@ main:
     int 0x7E
 
     jc .done                            ; If error, we're done
-
-.size:
-    mov ax, 0x4113                      ; Get buffer endpoint
-    int 0x7E
-
-    mov word [eof], cx                  ; This is the number of bytes to print
 
 .next_16:
     mov ax, 0x5101                      ; Get input buffer pointer
@@ -78,13 +72,8 @@ main:
     mov ax, 0x8201                      ; Print as hex
     int 0x7E
 
-    push si                             ; Preserve index
-
-    mov ah, 0x01                        ; Print string
-    mov si, space                       ; Space
+    mov ah, 0x14                        ; Advance cursor
     int 0x7E
-
-    pop si                              ; Restore index
 
     loop .char_hex                      ; Repeat
 
@@ -112,19 +101,9 @@ main:
 
 data:
 
-eof             dw 0x0000
-buffer_pointer  dw 0x0000
-
-files           dw 0x0000
-fname           dq 0x0000000000000000
-                dd 0x00000000
-                db 0x00
-
-space           db " ", 0x00
-
 creator         db "House-DOS Developers", 0x00
-desc            db "Utility to dump a file/input as hex/plaintext.", 0x00
-usage           db "HEXDUMP *<FILENAME>*", 0x0A
-                db "Flags: none", 0x00
+desc            db "Utility to dump a file/input as hex/plaintext. No output is produced.", 0x00
+usage           db "HEXDUMP *<FILE>*", 0x0A
+                db "IN: Content to dump as hex (if file not given)", 0x00
 
 dest_buffer:

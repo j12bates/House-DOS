@@ -50,6 +50,6 @@ data:
 creator         db "House-DOS Developers", 0x00
 desc            db "Show system info.", 0x00
 usage           db "INFO", 0x0A
-                db "Flags: none", 0x00
+                db "OUT: OS and system information", 0x00
 
 data_buffer:

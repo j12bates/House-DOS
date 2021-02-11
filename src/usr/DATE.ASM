@@ -43,5 +43,4 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for displaying time/date.", 0x00
-usage           db "DATE", 0x0A
-                db "Flags: none", 0x00
+usage           db "DATE", 0x00

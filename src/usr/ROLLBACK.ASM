@@ -35,5 +35,4 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Reload filesystem from disk. Discard filesystem changes.", 0x00
-usage           db "ROLLBACK", 0x0A
-                db "Flags: none", 0x00
+usage           db "ROLLBACK", 0x00

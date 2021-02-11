@@ -33,5 +33,4 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for clearing the console.", 0x00
-usage           db "CLEAR", 0x0A
-                db "Flags: none", 0x00
+usage           db "CLEAR", 0x00

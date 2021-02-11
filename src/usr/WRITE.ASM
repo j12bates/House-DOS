@@ -30,7 +30,7 @@ main:
     mov si, help                        ; Our instructions
     int 0x7E
 
-    mov ah, 0x6E                        ; Clear file buffer
+    mov ax, 0x4100                      ; Clear the buffer
     int 0x7E
 
 .input:
@@ -47,20 +47,17 @@ main:
 
     mov ah, 0x04                        ; Get input
     mov cx, 0x0080                      ; Hard limit 128 chars/line
-    mov di, src_buffer                  ; Write input into our local buffer
+    mov di, src_buffer                  ; Our buffer
     int 0x7E
 
-    mov al, 0x0A                        ; UNIX newline character
-    stosb                               ; Store in the source buffer
+    mov cx, di                          ; Counter is our pointer
+    sub cx, src_buffer                  ; Relative to the start of the buffer
 
-    mov cx, di                          ; The end of the input
-    sub cx, src_buffer                  ; The number of bytes input
-
-    cmp cx, 0x0001                      ; Did they immediately press RETURN?
+    cmp cx, 0x0000                      ; Did they immediately press RETURN?
     je .save                            ; If so, save the file
 
-    mov ax, 0x4010                      ; Otherwise, output bytes to file buffer
-    mov si, src_buffer                  ; The beginning of the source buffer
+    mov ax, 0x4001                      ; Otherwise, output string to file buffer as line
+    mov si, src_buffer                  ; Our buffer
     int 0x7E
     
     jmp .input                          ; Repeat
@@ -96,10 +93,7 @@ main:
     int 0x7E
 
 .write:
-    mov ax, 0x4113                      ; Get buffer endpoint
-    int 0x7E
-
-    mov ah, 0x6F                        ; Write file to disk (size already set)
+    mov ah, 0x4F                        ; Write buffer to disk
     mov si, fname                       ; Our filename
     int 0x7E
 
@@ -123,7 +117,7 @@ fname           db "XXXXXXXX.XXX"
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for writing a new text file.", 0x00
-usage           db "WRITE *<FILENAME>*", 0x0A
-                db "Flags: none", 0x00
+usage           db "WRITE *<FILE>*", 0x0A
+                db "OUT: Contents written", 0x00
 
 src_buffer:

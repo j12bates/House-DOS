@@ -31,5 +31,4 @@ data:
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Performs no operations.", 0x00
-usage           db "R", 0x0A
-                db "Flags: none", 0x00
+usage           db "R", 0x00

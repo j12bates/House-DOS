@@ -241,10 +241,11 @@ message_system  db "This is a system file.", 0x00
 
 creator         db "House-DOS Developers", 0x00
 desc            db "Utility for showing a file's properties.", 0x00
-usage           db "FILE <FILENAME>", 0x0A
+usage           db "FILE <FILE>", 0x0A
                 db "Flags:", 0x0A
                 db "S - Display file size", 0x0A
                 db "C - Display creation date", 0x0A
                 db "A - Display access date", 0x0A
                 db "W - Display write date", 0x0A
-                db "P - Display applicable permissions", 0x00
+                db "P - Display applicable permissions", 0x0A
+                db "OUT: Information about the file", 0x00
