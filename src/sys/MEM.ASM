@@ -105,6 +105,7 @@ out_line:                                       ; Output to line
     pop di                                      ; Restore the line address as destination
     pop ds                                      ; Restore the source segment
     pop si                                      ; And the source pointer
+    jc .done                                    ; If overflow, we're done
 
     mov cx, ax                                  ; Use the length of the new line as the counter
     cld                                         ; Ensure correct direction
@@ -146,6 +147,7 @@ out_ins_bytes:                                  ; Insert bytes into the buffer
 
     pop ds                                      ; Restore data segment
     pop si                                      ; Restore source
+    jc .done                                    ; If overflow, we're done
     push cx                                     ; Preserve counter
 
     call extra_fileseg                          ; Write to the I/O buffer
@@ -177,6 +179,7 @@ out_ins_byte:                                   ; Insert a byte into the buffer
     mov cx, 0x0001                              ; Offset by one
     clc                                         ; Signed integer
     call shift_buffer                           ; Shift everything over
+    jc .done                                    ; If overflow, we're done
 
     call extra_fileseg                          ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
@@ -188,6 +191,7 @@ out_ins_byte:                                   ; Insert a byte into the buffer
 
     call update_endpoint                        ; Update buffer endpoint
 
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -305,7 +309,7 @@ in_line:                                        ; Load a line manually
 
 ; SHIFT I/O BUFFER: Shifts everything past one index in the buffer by a certain number of bytes (right by default)
 ; IN: CX = Offset; SI = Starting index; [buffer_endpoint] = Buffer endpoint; CF = Set for unsigned int; DF = Set to shift left (if unsigned)
-; OUT: [buffer_endpoint] = New endpoint
+; OUT: [buffer_endpoint] = New endpoint; CF = Set if overflow
 
 shift_buffer:                                   ; Shift everything in the buffer over
     pusha                                       ; Save register states to stack
@@ -337,7 +341,6 @@ shift_buffer:                                   ; Shift everything in the buffer
 
     pop cx                                      ; Restore starting index
     sub cx, di                                  ; Subtract to get bytes to the right
-    inc cx                                      ; Avoid an O.B.O.E
     neg cx                                      ; Requires negation
 
     std                                         ; Move from right to left
@@ -393,7 +396,7 @@ clear_buffer:                                   ; Clear the I/O buffer (0x10000-
     mov word [gs:buffer_out_pointer], 0x0000    ; Reset buffer pointer
     mov word [gs:buffer_in_pointer], 0x0000     ; Reset input buffer pointer
 
-    mov word [gs:buffer_endpoint], 0x0000       ; Reset buffer endpoint
+    mov word [gs:buffer_endpoint], 0x0001       ; Reset buffer endpoint
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -826,7 +829,7 @@ get_line_info:                                  ; Get information about a line
 ; SEGMENTATION SUBROUTINES
 ; ========================================================================
 
-data_fileseg:                                   ; Sets the data segment to the file buffer segment
+data_fileseg:                                   ; Sets the data segment to the I/O buffer segment
     push 0x1000                                 ; I/O buffer
     pop ds                                      ; Set segment register
 
@@ -854,7 +857,7 @@ data_memseg:                                    ; Sets the data segment to the u
     ret                                         ; Return to caller
 
 
-extra_fileseg:                                  ; Sets the extra segment to the file buffer segment
+extra_fileseg:                                  ; Sets the extra segment to the I/O buffer segment
     push 0x1000                                 ; I/O buffer
     pop es                                      ; Set segment register
 

@@ -212,8 +212,9 @@ III. I/O Functions
 
         INC_POINTER
             AL = 0x20
+            DF = Set to decrement
 
-            Increments the output buffer pointer.
+            Increments/Decrements the output buffer pointer.
 
         ADVANCE_POINTER
             AL = 0x21
@@ -332,6 +333,30 @@ III. I/O Functions
             CF = Set if no such line
 
             Overwrites a certain line in the I/O buffer.
+
+        OUT_INS_LINE
+            AL = 0x10
+            CX = Destination line number
+            SI = Source buffer
+
+            Return:
+            CF = Set if no such line
+
+            Inserts a new line into the I/O buffer.
+
+    AH = 0x4C: BACKSPACE OUTPUT
+
+        BACKSPACE_BYTE
+            AL = 0x00
+
+            Gets rid of the byte to the left of the pointer, decrements the pointer.
+
+    AH = 0x4D: DELETE OUTPUT
+
+        DELETE_BYTE
+            AL = 0x00
+
+            Gets rid of the byte the pointer is on.
 
     WRITE_BUFFER
         AH = 0x4F
