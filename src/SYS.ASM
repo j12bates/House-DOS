@@ -168,6 +168,7 @@ command:                                        ; Main loop: Retrieve command fr
     jne .init_parse                             ; If so, skip ahead
 
     call clear_buffer                           ; Otherwise, clear out I/O buffer
+    call check_end_buffer                       ; Ensure the end of the buffer is up-to-standard
     call setup_segments                         ; Reset segments again
     mov byte [default_dev], 0x01                ; Reset default output device
 
@@ -474,6 +475,7 @@ command:                                        ; Main loop: Retrieve command fr
 .load_file:
     mov si, program_fname                       ; Our program filename
     call conv_x3_83                             ; Convert to usable format
+    jc .bad_command                             ; If error, bad command
 
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
@@ -815,7 +817,7 @@ init:                                           ; Initialization code
     mov word [bytes_cluster], ax                ; Save the number of bytes per sector
 
     pop bx                                      ; Take this out of the stack for now
-    mov sp, 0x4000                              ; Make the stack stretch up to the file buffer (32K)
+    mov sp, 0x4000                              ; 16K stack
     push bx                                     ; Push this back
 
 .ivt:
@@ -1196,6 +1198,15 @@ syscall_handler:                                ; System call handler
 
     cmp ax, 0x4900
     je out_routines.line                        ; Output to a specific line
+
+    cmp ax, 0x4910
+    je out_routines.ins_line                    ; Insert line
+
+    cmp ax, 0x4C00
+    je out_routines.backspace                   ; Backspace byte
+
+    cmp ax, 0x4D00
+    je out_routines.delete                      ; Delete byte
 
     cmp ah, 0x4F
     je out_routines.write                       ; Write buffer to disk
@@ -1634,7 +1645,19 @@ out_routines:                                   ; Output functions
 
 .inc:
     inc word [buffer_out_pointer]               ; Increment output buffer pointer
-    jmp int_ret                                 ; We're done!
+
+    pop ax                                      ; Restore flags into AX
+    test ax, 0x0400                             ; Is the direction flag set?
+    jz int_ret.flags_used                       ; If not, we're done!
+
+    dec word [buffer_out_pointer]               ; Undo the increment
+
+    cmp word [buffer_out_pointer], 0x0000       ; Are we able to decrement?
+    je int_ret.flags_used                       ; If not, do nothing
+
+    dec word [buffer_out_pointer]               ; Otherwise, decrement again
+
+    jmp int_ret.flags_used                      ; We're done!
 
 .advance:
     add word [buffer_out_pointer], cx           ; Advance output buffer pointer
@@ -1699,8 +1722,9 @@ out_routines:                                   ; Output functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .shift:
+    popf                                        ; Use the flags for this routine
     call shift_buffer                           ; Shift I/O buffer
-    jmp int_ret.preserve_flags                  ; We're done!
+    jmp int_ret.preserve_flags_flags_used       ; We're done!
 
 .ins_byte:
     call out_ins_byte                           ; Insert byte
@@ -1725,6 +1749,59 @@ out_routines:                                   ; Output functions
     call data_binseg                            ; Read data from the program
     call out_line                               ; Output to line
     jmp int_ret.preserve_flags                  ; We're done!
+
+.ins_line:
+    pusha                                       ; Preserve register states
+
+    call get_line_info                          ; Get address of destination line
+    add sp, 0x0010                              ; Temporarily balance stack
+    jc int_ret.preserve_flags                   ; If error, we're done
+
+    sub sp, 0x0010                              ; Otherwise, reset stack
+
+    mov cx, 0x0001                              ; Make space for one byte
+    clc                                         ; Signed integer
+    call shift_buffer                           ; Shift the buffer over
+
+    mov byte [si], 0x0A                         ; Insert a newline character to make a new line
+
+    popa                                        ; Restore register states
+
+    call data_binseg                            ; Read data from the program
+    call out_line                               ; Output to line
+
+    jmp int_ret.preserve_flags                  ; We're done!
+
+.backspace:
+    pusha                                       ; Preserve register states
+
+    cmp word [buffer_out_pointer], 0x0000       ; Is the pointer zero?
+    je int_ret                                  ; If so, don't do anything
+
+    mov si, word [buffer_out_pointer]           ; Our pointer
+    mov cx, 0xFFFF                              ; Negative one
+    clc                                         ; Signed integer
+    call shift_buffer                           ; Shift over the byte to the left
+
+    dec word [gs:buffer_out_pointer]            ; Decrement pointer
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
+
+.delete:
+    pusha                                       ; Preserve register states
+
+    mov si, word [buffer_out_pointer]           ; Our pointer
+    cmp si, word [buffer_endpoint]              ; Are we at the end of the buffer?
+    jae int_ret                                 ; If so, don't do anything
+
+    inc si                                      ; Delete the character we're on
+    mov cx, 0xFFFF                              ; Negative one
+    clc                                         ; Signed integer
+    call shift_buffer                           ; Shift over the byte to the left
+
+    popa                                        ; Restore register states
+    jmp int_ret                                 ; We're done!
 
 .write:
     call data_binseg                            ; We want to access data from the command
@@ -2762,7 +2839,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x3200 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
+times 0x3400 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2771,7 +2848,7 @@ times 0x3200 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (t
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00023200
+input_buffer        dq 0x0000000000000000       ; 0x00023400
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2780,7 +2857,7 @@ input_buffer        dq 0x0000000000000000       ; 0x00023200
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-params              dq 0x0000000000000000       ; 0x00023240
+params              dq 0x0000000000000000       ; 0x00023440
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2789,7 +2866,7 @@ params              dq 0x0000000000000000       ; 0x00023240
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-misc_buffer         dq 0x0000000000000000       ; 0x00023280
+misc_buffer         dq 0x0000000000000000       ; 0x00023480
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2798,7 +2875,7 @@ misc_buffer         dq 0x0000000000000000       ; 0x00023280
                     dq 0x0000000000000000
                     dq 0x0000000000000000
 
-param_flags         dq 0x0000000000000000       ; 0x000232C0
+param_flags         dq 0x0000000000000000       ; 0x000234C0
                     dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
@@ -2848,7 +2925,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 52; Compiled 2021-02-12", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 52; Compiled 2021-02-14", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
