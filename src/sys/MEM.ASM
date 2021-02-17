@@ -396,7 +396,7 @@ clear_buffer:                                   ; Clear the I/O buffer (0x10000-
     mov word [gs:buffer_out_pointer], 0x0000    ; Reset buffer pointer
     mov word [gs:buffer_in_pointer], 0x0000     ; Reset input buffer pointer
 
-    mov word [gs:buffer_endpoint], 0x0001       ; Reset buffer endpoint
+    mov word [gs:buffer_endpoint], 0x0000       ; Reset buffer endpoint
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
