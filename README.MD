@@ -32,7 +32,7 @@ Alternatively, you can download a disk image from [jetpham.com](http://jetpham.c
 A full and complete reference can be found in `docs/SYSCALL.TXT`. System calls are always being added.
 
 ## Features Coming Soon:
-Here are some features planned for the next release (v0.1.1), which is in the works:
+Here are some features planned for the next release (`v0.1.2`), which is in the works:
 - FAT12 and Floppy Disk support
   - Support for other disk sizes
 - Basic Filesystem Hierarchy
