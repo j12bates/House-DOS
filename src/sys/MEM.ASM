@@ -17,7 +17,7 @@
 out_bytes:                                      ; Output bytes to the I/O buffer
     pusha                                       ; Save register states to stack
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
     jcxz .done                                  ; If counter is zero, skip
     cld                                         ; Ensure correct direction
@@ -44,7 +44,7 @@ out_bytes:                                      ; Output bytes to the I/O buffer
 out_byte:                                       ; Output byte to the I/O buffer
     pusha                                       ; Save register states to stack
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
 
     stosb                                       ; Write byte
@@ -65,7 +65,7 @@ out_byte:                                       ; Output byte to the I/O buffer
 out_man:                                        ; Output bytes manually
     push cx                                     ; Save register state to stack
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Copy bytes
@@ -150,7 +150,7 @@ out_ins_bytes:                                  ; Insert bytes into the buffer
     jc .done                                    ; If overflow, we're done
     push cx                                     ; Preserve counter
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write starting at our pointer
     jcxz .done                                  ; If counter is zero, skip
     cld                                         ; Ensure correct direction
@@ -181,7 +181,7 @@ out_ins_byte:                                   ; Insert a byte into the buffer
     call shift_buffer                           ; Shift everything over
     jc .done                                    ; If overflow, we're done
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, word [gs:buffer_out_pointer]        ; Write at our pointer
 
     stosb                                       ; Write byte
@@ -203,7 +203,7 @@ out_ins_byte:                                   ; Insert a byte into the buffer
 in_bytes:                                       ; Copy bytes from the I/O buffer
     pusha                                       ; Save register states to stack
 
-    call data_fileseg                           ; Read from the I/O buffer
+    call data_bseg                              ; Read from the I/O buffer
     mov si, word [gs:buffer_in_pointer]         ; Read starting at our pointer
 
     add cx, si                                  ; Add to counter to get final index
@@ -243,7 +243,7 @@ in_bytes:                                       ; Copy bytes from the I/O buffer
 in_byte:                                        ; Load byte from the I/O buffer
     push si                                     ; Save register state to stack
 
-    call data_fileseg                           ; Read from the I/O buffer
+    call data_bseg                              ; Read from the I/O buffer
     mov si, word [gs:buffer_in_pointer]         ; Read at our pointer
 
     lodsb                                       ; Load byte
@@ -262,7 +262,7 @@ in_byte:                                        ; Load byte from the I/O buffer
 in_man:                                         ; Load bytes manually
     push cx                                     ; Save register state to stack
 
-    call data_fileseg                           ; Read from the I/O buffer
+    call data_bseg                              ; Read from the I/O buffer
     jcxz .done                                  ; If counter is zero, avoid endless loop
     cld                                         ; Ensure correct direction
 
@@ -293,7 +293,7 @@ in_line:                                        ; Load a line manually
     pop es                                      ; Restore segment
     jc .done                                    ; If no such line, we're done
 
-    call data_fileseg                           ; Read from the I/O buffer
+    call data_bseg                              ; Read from the I/O buffer
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Otherwise, copy bytes
@@ -314,8 +314,8 @@ in_line:                                        ; Load a line manually
 shift_buffer:                                   ; Shift everything in the buffer over
     pusha                                       ; Save register states to stack
 
-    call data_fileseg
-    call extra_fileseg                          ; Work with data in the I/O buffer
+    call data_bseg
+    call extra_bseg                             ; Work with data in the I/O buffer
 
     jnc .sign                                   ; If signed, figure out the sign
 
@@ -384,7 +384,7 @@ shift_buffer:                                   ; Shift everything in the buffer
 clear_buffer:                                   ; Clear the I/O buffer (0x10000-0x1FFFF)
     pusha                                       ; Save register states to stack
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, 0x0000                              ; Start from the beginning
 
     mov al, 0x00                                ; All zeroes
@@ -429,7 +429,7 @@ clear_execution:                                ; Clear the execution buffer (0x
 get_line_addr:                                  ; Get address of specific line from file buffer
     pusha                                       ; Save register states to stack
 
-    call data_fileseg                           ; Where our file is loaded
+    call data_bseg                              ; Where our file is loaded
     mov si, 0x0000                              ; Start at the beginning of the file buffer
 
     jcxz .done                                  ; If line zero, we're already done
@@ -514,7 +514,7 @@ addr_line_col:                                  ; Convert address to line/col
     mov cx, si                                  ; Loop through this many bytes
     jcxz .done                                  ; If counter is zero, avoid an endless loop
 
-    call data_fileseg                           ; Read from the file buffer
+    call data_bseg                              ; Read from the file buffer
     mov si, 0x0000                              ; Start from the first byte
 
     cld                                         ; Ensure correct direction
@@ -568,7 +568,7 @@ write_line:                                     ; Write line to file buffer
     jc .done                                    ; If error, we're done
     push si                                     ; Save this address
 
-    call data_fileseg                           ; We're doing to be reading from the file buffer
+    call data_bseg                              ; We're doing to be reading from the file buffer
     call get_line_length                        ; Get the length of the line as it is
 
 .subtract:
@@ -606,8 +606,8 @@ write_line:                                     ; Write line to file buffer
 shift:                                          ; Shift everything from one point on by a certain number of chars
     pusha                                       ; Save register states to stack
 
-    call data_fileseg
-    call extra_fileseg                          ; We're going to be working in the I/O buffer
+    call data_bseg
+    call extra_bseg                             ; We're going to be working in the I/O buffer
 
     jnc .sign                                   ; If signed, proceed
 
@@ -668,7 +668,7 @@ indent_out_pointer:
     pusha                                       ; Save register states to stack
     push dx                                     ; Preserve offset
 
-    call data_fileseg                           ; Read from the I/O buffer
+    call data_bseg                              ; Read from the I/O buffer
     mov si, word [gs:buffer_out_pointer]        ; At our output buffer pointer
     std                                         ; Look in reverse
 
@@ -740,7 +740,7 @@ update_man_endpoint:                            ; Manually update the buffer end
 check_end_buffer:                               ; End buffer with newline, pad remainder with zeroes
     pusha                                       ; Save register states to stack
 
-    call data_fileseg                           ; Read from I/O buffer
+    call data_bseg                              ; Read from I/O buffer
     mov si, word [gs:buffer_endpoint]           ; At the endpoint
 
     cmp byte [si-0x01], 0x0A                    ; Is the last byte in the buffer a newline?
@@ -750,7 +750,7 @@ check_end_buffer:                               ; End buffer with newline, pad r
     inc word [gs:buffer_endpoint]               ; Increment the endpoint
 
 .zeroes:
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, word [gs:buffer_endpoint]           ; Just after the end of the buffer
 
     mov cx, di                                  ; The counter should be the same
@@ -774,7 +774,7 @@ check_end_buffer:                               ; End buffer with newline, pad r
 get_line_info:                                  ; Get information about a line
     pusha                                       ; Save register states to stack
 
-    call extra_fileseg                          ; Scan the I/O buffer
+    call extra_bseg                             ; Scan the I/O buffer
     mov di, 0x0000                              ; Starting at the beginning
     mov al, 0x0A                                ; Scan for a newline character
     cld                                         ; Ensure correct direction
@@ -829,7 +829,7 @@ get_line_info:                                  ; Get information about a line
 ; SEGMENTATION SUBROUTINES
 ; ========================================================================
 
-data_fileseg:                                   ; Sets the data segment to the I/O buffer segment
+data_bseg:                                      ; Sets the data segment to the I/O buffer segment
     push 0x1000                                 ; I/O buffer
     pop ds                                      ; Set segment register
 
@@ -857,7 +857,7 @@ data_memseg:                                    ; Sets the data segment to the u
     ret                                         ; Return to caller
 
 
-extra_fileseg:                                  ; Sets the extra segment to the I/O buffer segment
+extra_bseg:                                     ; Sets the extra segment to the I/O buffer segment
     push 0x1000                                 ; I/O buffer
     pop es                                      ; Set segment register
 
