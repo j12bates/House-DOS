@@ -35,30 +35,19 @@ main:
     mov di, fname                       ; Our filename buffer
     int 0x7E
 
-    jc .buffer_file                     ; If failed, load contents of buffer
+    jc .load                            ; If failed, work with contents of buffer
 
-    mov ah, 0x28                        ; Load file from first parameter
+    mov ah, 0x2A                        ; Verify file from parameter
+    mov cx, 0x0000                      ; First parameter
     int 0x7E
 
-    jc .buffer_file                     ; If failed, load contents of buffer
+    jc .load                            ; If failed, work with contents of buffer
 
-    mov ah, 0x70                        ; Get size of file
+    mov ax, 0x4020                      ; Output file
     int 0x7E
 
-    mov word [fsize], ax                ; Store size here
-
-    jmp .load                           ; Proceed
-
-.empty:
-    mov ax, 0x4002                      ; Output line break
+    mov ax, 0x4140                      ; Reset output buffer pointer
     int 0x7E
-
-.buffer_file:
-    mov ax, 0x4113                      ; Get endpoint of buffer
-    int 0x7E
-
-    jcxz .empty                         ; If nothing is in the buffer, we need a line break
-    mov word [fsize], cx                ; Store file size here
 
     jmp .load                           ; Proceed
 
@@ -80,7 +69,9 @@ main:
 
 .print:
     push cx                             ; Preserve line number
-    call get_line_length                ; Get the length of this line
+
+    mov ax, 0x5910                      ; Get line address/length
+    int 0x7E
 
     jc .footer                          ; If error, everything is loaded
 
@@ -98,12 +89,12 @@ main:
     shl dx, 0x6                         ; Otherwise, multiply by 64
     mov bx, dx                          ; Copy result
     shr bx, 0x2                         ; Divide copy by 4
-    add dx, bx                          ; Add to get row multplied by 80 (number of spaces left onscreen)
+    add dx, bx                          ; Add to get row multiplied by 80 (number of spaces left onscreen)
 
     cmp cx, dx                          ; Do we have enough spaces left for this line?
     jg .bytes_line                      ; If not, perform a different operation
 
-    mov ah, 0x64                        ; Otherwise, get line
+    mov ax, 0x5900                      ; Otherwise, retrieve line
     pop cx                              ; Restore line number
     push cx                             ; Push back to stack
     mov di, dest_buffer                 ; Copy into buffer
@@ -122,11 +113,7 @@ main:
     jmp .print                          ; Load/print next line
 
 .bytes_line:
-    mov ah, 0x65                        ; Get address of line
-    pop cx                              ; Restore line number
-    int 0x7E
-
-    mov ah, 0x62                        ; Get bytes
+    mov ax, 0x5800                      ; Manually retrieve bytes
     mov cx, dx                          ; Number of spaces left
     mov di, dest_buffer                 ; Copy into buffer
     int 0x7E
@@ -142,8 +129,7 @@ main:
     mov dx, 0x1840                      ; Mid-right, bottom row
     int 0x7E
 
-    mov ah, 0x67                        ; Get line/column numbers
-    mov si, word [address]              ; Our address
+    mov ax, 0x4114                      ; Get line/column numbers for our output buffer pointer
     int 0x7E
 
     push dx                             ; Preserve column number
@@ -171,16 +157,24 @@ main:
     mov dx, 0x0100                      ; The upper-left corner (avoid the header)
     int 0x7E
 
-    mov ah, 0x65                        ; Get line address
+    mov ax, 0x5910                      ; Get line info
     mov cx, word [linecounter]          ; The starting line on screen
     int 0x7E
 
-    cmp word [address], si              ; Are we behind where the line actually begins?
+    push si                             ; Preserve starting line address
+
+    mov ax, 0x4112                      ; Get output buffer pointer
+    int 0x7E
+
+    pop dx                              ; Restore starting line address
+
+    cmp di, dx                          ; Are we behind where the line actually begins?
     jl .rowup                           ; If so, avoid infinite loop, start from one row higher
 
-    mov ah, 0x62                        ; Get bytes starting from that point
-    mov cx, word [address]              ; Print bytes of how far into the file
-    sub cx, si                          ; Minus the bytes offscreen
+    mov ax, 0x5800                      ; Get bytes starting from that point
+    mov cx, di                          ; Print bytes of how far into the file
+    sub cx, dx                          ; Minus the bytes offscreen
+    mov si, dx                          ; Start from the starting line
     mov di, dest_buffer
     int 0x7E
 
@@ -247,16 +241,8 @@ main:
     cmp al, 0x00                        ; Is there no ASCII code?
     je .edit                            ; If so, loop
 
-    mov byte [char_write], al           ; Otherwise, save the character to write
-
-    mov ah, 0x6B                        ; Insert byte
-    mov di, word [address]              ; Our position
-    mov cx, 0x0001                      ; Write 1 byte
-    mov si, char_write                  ; Address of our character
+    mov ah, 0x46                        ; Otherwise, insert this character
     int 0x7E
-
-    inc word [address]                  ; Move 1 character forward
-    inc word [fsize]                    ; Increase file size by 1 character
 
     jmp .load
 
@@ -276,153 +262,114 @@ main:
     jmp .load                           ; Otherwise, print file again, then resume editing
 
 .backspace:
-    cmp word [address], 0x0000          ; Are we at the beginning of the file?
-    je .edit                            ; If so, do nothing
-
-    mov ah, 0x6B                        ; Insert bytes (shift left)
-    mov cx, 0xFFFF                      ; Shift 1 left (delete 1 character)
-    mov di, word [address]              ; Shift starting from here
+    mov ax, 0x4C00                      ; Backspace 1 character
     int 0x7E
-
-    dec word [address]                  ; Move cursor back one
-    dec word [fsize]                    ; Decrement file size
 
     jmp .load                           ; Print edited version
 
 .delete:
-    mov ax, word [address]              ; Our position in the file
-    inc ax                              ; We don't want to ever be on the last character
-
-    cmp ax, word [fsize]                ; Are we at the end of the file?
-    jnb .edit                           ; If so, do nothing
-
-    mov ah, 0x6B                        ; Insert bytes (shift left)
-    mov cx, 0xFFFF                      ; Shift one left
-    mov di, word [address]              ; Shift starting from here
-    inc di                              ; Delete character to the right
+    mov ax, 0x4D00                      ; Delete 1 character
     int 0x7E
-
-    dec word [fsize]                    ; Decrement file size
 
     jmp .load                           ; Print edited version
 
 .newline:
-    mov di, word [address]              ; Get our address
-    mov ah, 0x6B                        ; Insert bytes
-    mov cx, 0x01                        ; Write 1 byte
-    mov si, newline_char                ; We want to write a newline
+    mov ah, 0x46                        ; Insert byte
+    mov al, 0x0A                        ; Insert a newline character
     int 0x7E
-
-    inc word [address]                  ; Move 1 character forward
-    inc word [fsize]                    ; Increase file size by 1 character
 
     jmp .load                           ; Print edited version
 
 .left_arrow:
-    cmp word [address], 0x0000          ; Are we at the beginning of the file?
-    je .edit                            ; If so, do nothing
+    mov ax, 0x4120                      ; Advance pointer
+    std                                 ; Go backward
+    int 0x7E
 
-    dec word [address]                  ; Otherwise, move address back 1
     jmp .footer                         ; Update footer/cursor position
 
 .right_arrow:
-    mov ax, word [address]              ; Our position in the file
-    inc ax                              ; We don't want to ever be on the last character
+    mov ax, 0x4112                      ; Get pointer
+    int 0x7E
 
-    cmp ax, word [fsize]                ; Are we at the end of the file?
+    mov ax, 0x4113                      ; Get endpoint
+    int 0x7E
+
+    sub cx, 0x0002                      ; Don't count the final newline
+    cmp di, cx                          ; Is our pointer at/beyond the end of the buffer?
     jnb .edit                           ; If so, do nothing
 
-    inc word [address]                  ; Move address forward 1
+    mov ax, 0x4120                      ; Otherwise, advance pointer
+    cld                                 ; Go forward
+    int 0x7E
+
     jmp .footer                         ; Update footer/cursor position
 
 .up_arrow:
-    mov ah, 0x67                        ; Get line and col
-    mov si, word [address]              ; Our address in the file
+    mov ax, 0x4114                      ; Get line and column of pointer
     int 0x7E
 
     cmp cx, 0x0000                      ; Are we on the first line?
-    je .edit                            ; Id so, do nothing
+    je .edit                            ; If so, do nothing
 
-    mov bx, word [address]              ; Our address
-    sub bx, dx                          ; Subtract col number to get address of our line
-    dec bx                              ; Avoid those O.B.O.Es
-    push bx                             ; Save the address of the start of our line
-
-    mov ah, 0x65                        ; Get address of a line
-    dec cx                              ; Line above us
+    mov ax, 0x5910                      ; Otherwise, get info of line
+    dec cx                              ; Previous line
     int 0x7E
 
-    mov word [address], si              ; Go to start of line above us
-    add word [address], dx              ; Add our column number
+    cmp cx, dx                          ; Is the column number less than the length of the line above us?
+    jbe .short_line                     ; If so, go to the end of that line
 
-    sub bx, si                          ; Subtract to get length of line above us
-    inc dx                              ; Avoid an O.B.O.E
-    cmp bx, dx                          ; Is the line above us shorter than our col?
+    add si, dx                          ; Otherwise, add our column number
+    mov di, si                          ; Move address into di
 
-    pop bx                              ; Restore address of start of our line
-    jae .footer                         ; If not, update footer/cursor position
+    mov ax, 0x4110                      ; Set pointer
+    int 0x7E
 
-    mov word [address], bx              ; Otherwise, set our address to this
-    jmp .footer                         ; Update footer/cursor position
+    jmp .footer                         ; Update footer
 
 .down_arrow:
-    mov ah, 0x67                        ; Get line and col
-    mov si, word [fsize]                ; Get the address of the file size
-    dec si                              ; Avoid an O.B.O.E
+    mov ax, 0x4114                      ; Get line and column of pointer
     int 0x7E
 
-    push cx                             ; Preserve the row number
-
-    mov si, word [address]              ; Our address in the file
+    mov ax, 0x5910                      ; Get line info
+    inc cx                              ; Next line
     int 0x7E
 
-    pop bx                              ; Restore the last row
-    cmp cx, bx                          ; Are we on the last row?
-    jnb .edit                           ; If so, do nothing
+    jc .edit                            ; If we're on the last line, do nothing
 
-    mov bx, word [address]              ; Our address
-    sub bx, dx                          ; Subtract col number to get address of our line
-    dec bx                              ; Avoid those O.B.O.Es
+    cmp cx, dx                          ; Is the column number less than the length of the line below us?
+    jbe .short_line                     ; If so, go to the end of that line
 
-    mov ah, 0x65                        ; Get address of a line
-    inc cx                              ; Line below us
+    add si, dx                          ; Add our column number
+    mov di, si                          ; Move address into di
+
+    mov ax, 0x4110                      ; Set pointer
     int 0x7E
 
-    mov word [address], si              ; Go to start of line below us
-    add word [address], dx              ; Add our column number (go straight down)
+    jmp .footer                         ; Update footer
 
-    push cx                             ; Preserve line number
-
-    mov ah, 0x67                        ; Convert address to line/col numbers
-    mov si, word [address]              ; Our current address
+.short_line:
+    mov ax, 0x4110                      ; Set pointer
+    add si, cx                          ; End of line
+    mov di, si                          ; Go to this address
+    dec di                              ; Avoid an O.B.O.E
     int 0x7E
 
-    pop bx                              ; Restore line below us
-    cmp cx, bx                          ; Is our address on the next line?
-    je .footer                          ; If so, update footer/cursor position
-
-    mov ah, 0x65                        ; Get address of line
-    mov cx, bx                          ; Line number
-    inc cx                              ; 2 lines below us
-    int 0x7E
-
-    dec si                              ; Go one character back
-    mov word [address], si              ; Go to this address
-    jmp .footer                         ; Update footer/cursor position
+    jmp .footer
 
 .line_cut:
-    mov ah, 0x67                        ; Get line/col from address
-    mov si, word [address]              ; Our current address
+    mov ax, 0x4114                      ; Get line and column
     int 0x7E
 
     push cx                             ; Save line number
 
-    mov ah, 0x64                        ; Get line
+    mov ax, 0x5900                      ; Get line
     mov di, line_storage                ; Our buffer
     int 0x7E
 
-    call get_line_length                ; Get the length of this line
-    mov word [cline_length], si         ; Store here
+    mov ax, 0x5910                      ; Get line info
+    int 0x7E
+
+    mov word [cline_length], cx         ; Store line length here
 
     pop cx                              ; Restore line number
     call delete_line                    ; Now delete the line
@@ -430,36 +377,31 @@ main:
     jmp .load                           ; Print edited version
 
 .line_copy:
-    mov ah, 0x67                        ; Get line/col from address
-    mov si, word [address]              ; Our current address
+    mov ax, 0x4114                      ; Get line and column
     int 0x7E
 
-    mov ah, 0x64                        ; Get line
+    mov ax, 0x5900                      ; Get line
     mov di, line_storage                ; Our buffer
     int 0x7E
 
-    call get_line_length                ; Get the length of this line
-    mov word [cline_length], si         ; Store here
+    mov ax, 0x5910                      ; Get line info
+    int 0x7E
+    mov word [cline_length], cx         ; Store line length here
 
     jmp .load                           ; Print edited version
 
 .line_paste:
-    mov ah, 0x67                        ; Get line/col from address
-    mov si, word [address]              ; Our current address
+    mov ax, 0x4114                      ; Get line and column
     int 0x7E
 
-    mov ah, 0x6D                        ; Insert line
+    mov ax, 0x4910                      ; Insert line
     mov si, line_storage                ; From buffer (what's been copied)
     int 0x7E
-
-    mov ax, word [cline_length]         ; Store length of line that's being pasted
-    add word [fsize], ax                ; Increase file size by this much
 
     jmp .load                           ; Print edited version
 
 .line_delete:
-    mov ah, 0x67                        ; Get line and col
-    mov si, word [address]              ; Our address in the file
+    mov ax, 0x4114                      ; Get line and column
     int 0x7E
 
     call delete_line                    ; Use the routine
@@ -483,10 +425,6 @@ main:
     jmp .load                           ; Return to editing
 
 .done:
-    mov ax, 0x4111                      ; Set endpoint
-    mov cx, word [fsize]                ; Our file size
-    int 0x7E
-
     mov ah, 0xFF                        ; End command
     int 0x7E
 
@@ -515,44 +453,21 @@ draw_header:
 delete_line:                            ; Delete whatever line is in CX
     pusha                               ; Save register states to stack
 
-    mov ah, 0x65                        ; Get line address
+    mov ax, 0x5910                      ; Get line info
     int 0x7E
 
-    mov word [address], si              ; This will be our new cursor position
-    push si                             ; Preserve address
-
-    inc cx                              ; Next line
+    mov ax, 0x4110                      ; Set pointer
+    mov di, si                          ; Beginning of line
     int 0x7E
 
-    pop cx                              ; Restore address
-    sub cx, si                          ; Subtract to get negative length of line (negated, to shift left)
-
-    mov ah, 0x6B                        ; Insert bytes (shift left)
-    mov di, si                          ; Shift starting from next line
+    mov ah, 0x45                        ; Insert bytes (shift left)
+    add si, cx                          ; Start of next line
+    mov di, si                          ; Shift starting from here
+    stc                                 ; Unsigned integer
+    std                                 ; Shift left
     int 0x7E
-
-    add word [fsize], cx                ; Add negative length of line to file length
 
     popa                                ; Restore register states
-    ret                                 ; Return to caller
-
-
-get_line_length:                        ; Get length of the line in CX
-    mov ah, 0x65                        ; Get line address
-    int 0x7E
-
-    push si                             ; Preserve this address
-
-    inc cx                              ; Go to next line
-    int 0x7E
-
-    pop cx                              ; Restore address
-    jc .done                            ; If error, we're done
-
-    sub si, cx                          ; Subtract to get length of line
-    mov cx, si                          ; Put length in CX
-
-.done:
     ret                                 ; Return to caller
 
 
@@ -563,9 +478,8 @@ save_file:                              ; Save the file
     mov al, 0b00000010                  ; Error messages on, commentary off
     int 0x7E
 
-    mov ah, 0x6F                        ; Write file to disk
+    mov ah, 0x4F                        ; Write buffer to disk
     mov si, fname                       ; File name
-    mov cx, word [fsize]                ; File size
     int 0x7E
 
     jc main.done                        ; If failed, we're done
@@ -587,7 +501,6 @@ fname           dq 0x0000000000000000
 fsize           dw 0x0000
 
 linecounter     dw 0x0000               ; Nearest 23 lines
-address         dw 0x0000               ; Address of where we are
 
 cline_length    dw 0x0000               ; Length of line that's been copied or cut
 

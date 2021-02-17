@@ -821,7 +821,7 @@ VI. Interface Functions
 
     SET_SCREEN_ATTRIBUTE
         AH = 0x0A
-        BL = Attribute (Bits 0-3 = Foreground color, Bits 4-6 = Background color, Bit 7 = Blink)
+        BL = Attribute (Bits 0-3 = Foreground color, Bits 4-7 = Background color)
 
         Sets the foreground/background color of the entire screen.
 

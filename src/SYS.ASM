@@ -848,7 +848,7 @@ init:                                           ; Initialization code
     int 0x10                                    ; BIOS VGA interrupt
 
     mov ax, 0x1003                              ; Configure attribute bit 7
-    mov bl, 0x01                                ; Blink
+    mov bl, 0x00                                ; Intensity
     int 0x10                                    ; BIOS VGA interrupt
 
 .cpu:
@@ -2925,7 +2925,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 52; Compiled 2021-02-14", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 53; Compiled 2021-02-16", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
