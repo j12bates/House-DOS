@@ -2,12 +2,12 @@
 A real-mode x86 Disk Operating System that is, and forever will be, mostly useless.
 It's written completely in x86 assembler.
 ***
-This was created as a summer project during the 2020 pandemic.
+This was originally created as a summer project during the 2020 pandemic.
 I've been having lots of fun creating it, and hope to continue to take this project further.
 ***
 Special thanks to:
 - [Jet Pham](https://github.com/jetpham), for being interested
-- [Ben Johnson](https://github.com/benjaminjohnson2204), for helping me fix my logic
+- [Ben Johnson](https://github.com/benjaminjohnson2204), for helping me fix my logic and his work on the text editor
 - [David Uehara](https://github.com/DavidUehara) and [Derrick](https://github.com/Sabacweave), for being awesome
 
 ## Instructions for Use:
@@ -21,6 +21,7 @@ Alternatively, you can download a disk image from [jetpham.com](http://jetpham.c
   House-DOS commands are written in real-mode x86 assembly. There are many different system calls available for many specific tasks; here are a few examples:
 - Printing characters to the console
 - Getting input from the console
+- Reading from/Writing to the I/O buffer
 - Getting the time
 - Converting different forms of numeric notation
 - Loading and writing files
@@ -32,16 +33,13 @@ A full and complete reference can be found in `docs/SYSCALL.TXT`. System calls a
 
 ## Features Coming Soon:
 Here are some features planned for the next release (v0.1.1), which is in the works:
-- I/O Buffer
-  - New system calls for reading/writing
-  - Pipelines & Continuity (`|`)
-  - Output Redirection (`>`)
-  - File Input (`<`)
-  - Basic Device Files
-    - Console
-    - Longer-Term Memory Buffer
-    - Null
-  - Updated stock programs
+- FAT12 and Floppy Disk support
+  - Support for other disk sizes
+- Basic Filesystem Hierarchy
+  - `/HOME` directory for user files
+  - `/BIN` directory for binaries
+  - `/DEV` virtual filesystem for device files
+- Reserved Program Memory
 - And much more...
 
 ## What I've Learned:
