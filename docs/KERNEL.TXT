@@ -13,7 +13,7 @@ assembled from the file src/SYS.ASM and all the subsystems located in src/sys/.
 MEMORY MAP
 
 0x08000 - 0x0BFFF:  STACK
-0x10000 - 0x1FFFF:  FILE BUFFER
+0x10000 - 0x1FFFF:  I/O BUFFER
                     The file buffer is where all files are loaded from the disk and edited.
 0x20000 - 0x2FFFF:  KERNEL
                     This is the area in memory where the kernel is stored and is the spot where
@@ -24,18 +24,21 @@ MEMORY MAP
                     applied.
 0x40000 - 0x4FFFF:  EXECUTION
                     This is where binaries are loaded to be executed.
+0x50000 - 0x5FFFF:  USER BUFFER
+                    This is a reserved space for the user to redirect output to and direct input
+                    from. It is accessible through the MEM.DEV device file.
 
 
 II. Initialization
 
 Here is a list of steps the House-DOS kernel performs after it has been loaded by the bootloader:
 
-    1.  Set up segmentation
-    2.  Copy info from the BPB to the kernel
-    3.  Reset the stack
-    4.  Set up the system call interrupt
-    5.  Set up other hardware interrupt vectors
-    6.  Configure video mode and print message
+    0.  Set up segmentation
+    1.  Copy necessary info from the BPB to the kernel
+    2.  Reset the stack
+    3.  Set up the system call interrupt
+    4.  Set up other hardware interrupt vectors
+    5.  Configure video mode and print message/sound
 
 
 III. Main Loop
@@ -43,12 +46,16 @@ III. Main Loop
 After initialization, House-DOS effectively loops through getting a command and loading the
 binary for that command. Here is this loop in more detail:
 
+    0.  Check if the last program was to be piped, skip to 3 in this case
     1.  Line break and print out prompt
-    2.  Get keyboard input
-    3.  Format filename correctly
-    4.  Load binary into file segment
-    5.  Copy into execution segment
-    6.  Jump to execution segment
+    2.  Get keyboard input for new command
+    3.  Format binary filename correctly
+    4.  Parse parameters and special configurations
+    5.  Load binary into file segment
+    6.  Copy into execution segment
+    7.  Perform 7A if a metadata attribute was selected, otherwise 7B
+    7A. Lookup and output the metadata string from the program
+    7B. Jump to execution segment
 
 
 IV. System Calls
@@ -56,28 +63,30 @@ IV. System Calls
 Whenever interrupt 0x7E is called, House-DOS runs the specified system call and returns output,
 if appropriate. This is what happens:
 
-    1.  Flags are preserved
-    2.  If AH is 0xFF, perform a handback (reset stack and jump to main loop)
-    3.  Otherwise, enter system call handler
-    4.  Jump to correct system call routine
-    5.  Other kernel routines are called on
-    6.  Jump to interrupt return routine (if flags were used for the system call, the POPF is
+    0.  Flags are preserved
+    1.  If AH is 0xFF, perform a handback (reset stack and jump to main loop)
+    2.  Otherwise, enter system call handler
+    3.  Jump to correct system call routine
+    4.  Other kernel routines are called on
+    5.  Jump to interrupt return routine (if flags were used for the system call, the POPF is
         skipped; if flags should be returned, a different routine is used)
-    7.  Segmentation is set up and interrupt return
+    6.  Segmentation is set up and interrupt return
 
 
-V. The File Buffer
+V. The I/O Buffer
 
-The file is the region in memory where files are loaded and the source buffer for whenever a file
-is written. It takes up all the memory accessible through segment 0x1000, meaning it is 64K in
-size. In this future, this will be used as a general purpose I/O buffer for commands.
+The file is the region in memory where programs can retrieve input and write output. This is
+also where files are loaded and written from. It takes up all the accessible space in segment
+0x1000, thus it is 64K in length.
 
 
 VI. The Filesystem Segment
 
-The bootloader loads the entire FAT of the 32M disk into the space in memory between
-0x3000:0x0000 and 0x3800:0x0000. It also loads the root directory into the space in memory
-immediately following that (0x3800:0x0000 - 0x3C00:0x0000). In the future, the area used for the
-FAT will be shortened and the kernel will keep record of what area of the FAT is loaded, in order
-to support disks of other sizes. In addition, the additional space will be used for loading /USR,
-/HOME, and /DEV directories, as well as for allowing for CD'ing between subdirectories.
+The bootloader loads the entire FAT of the 32M disk into the space in memory from
+0x30000 to 0x37FFF. It also loads the root directory into the space in memory immediately
+following that (0x38000 to 0x3BFFF). The remaining space (0x3C000 to 0x3FFFF) is used for loading
+clusters before copying them to the I/O buffer. In the future, the area used for the FAT will be
+abridged and the kernel will keep record of what area of the FAT is loaded, in order to support
+disks of other sizes. In addition, the new additional space will be used for loading the /BIN and
+/HOME directorites, the /DEV, and /PROC filesystems, as well as for allowing for CD'ing between
+subdirectories.

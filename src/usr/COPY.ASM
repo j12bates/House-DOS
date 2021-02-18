@@ -23,24 +23,26 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x28                        ; Load first parameter as file
+    mov ax, 0x4100                      ; Clear buffer
+    int 0x7E
+
+    mov ah, 0x2A                        ; Verify file from parameter
+    mov cx, 0x0000                      ; First parameter
+    int 0x7E
+
+    mov ax, 0x4020                      ; Output file
     int 0x7E
 
 .destination:
     mov ah, 0x20                        ; Get parameter
-    mov cx, 0x0001                      ; Parameter 1
+    mov cx, 0x0001                      ; Second parameter
     mov di, fname                       ; Our destination filename
     int 0x7E
 
     jc .done                            ; If error, we're done
 
 .save:
-    mov ah, 0x70                        ; Get file size
-    int 0x7E
-
-    mov cx, ax                          ; Store in CX
-
-    mov ah, 0x6F                        ; Save file
+    mov ah, 0x4F                        ; Save buffer as file
     mov si, fname                       ; Filename
     int 0x7E
 

@@ -17,7 +17,7 @@
 tty_out:                                        ; Output to teletype
     pusha                                       ; Save register states to stack
 
-    call data_fileseg                           ; Read from I/O buffer
+    call data_bseg                              ; Read from I/O buffer
     mov si, 0x0000                              ; Starting at the beginning
 
     cmp cx, 0x0001                              ; Are we just a newline?
@@ -38,7 +38,7 @@ tty_out:                                        ; Output to teletype
 mem_out:                                        ; Output to user buffer
     pusha                                       ; Save register states to stack
 
-    call data_fileseg                           ; Read from I/O buffer
+    call data_bseg                              ; Read from I/O buffer
     mov si, 0x0000                              ; Starting at the beginning
 
     call extra_memseg                           ; Write to user buffer
@@ -68,7 +68,7 @@ nul_out:                                        ; Output to null
 tty_in:                                         ; Input from teletype
     pusha                                       ; Save register states to stack
 
-    call extra_fileseg                          ; Write to I/O buffer
+    call extra_bseg                             ; Write to I/O buffer
     mov di, [gs:file_buffer_pointer]            ; At this offset
 
 .input:
@@ -106,7 +106,7 @@ mem_in:                                         ; Input from user buffer
     call data_memseg                            ; Read from user buffer
     mov si, 0x0000                              ; Starting from the beginning
 
-    call extra_fileseg                          ; Write to the I/O buffer
+    call extra_bseg                             ; Write to the I/O buffer
     mov di, word [gs:file_buffer_pointer]       ; At this offset
 
     mov cx, word [gs:mem_buffer_endpoint]       ; The total number of bytes

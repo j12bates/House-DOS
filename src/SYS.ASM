@@ -493,7 +493,8 @@ command:                                        ; Main loop: Retrieve command fr
 
     jc command                                  ; If error, stop here
 
-    call data_kernseg                           ; Otherwise, we're about to use some kernel variables
+    call check_end_buffer                       ; Otherwise, ensure the end of the buffer is up-to-standard
+    call data_kernseg                           ; We're about to use some kernel variables
 
 .jump:
     cmp byte [header_offset], 0x00              ; Are we supposed to read from the header?
@@ -1822,7 +1823,7 @@ out_routines:                                   ; Output functions
 in_routines:                                    ; Input functions
 
 .string:
-    call data_fileseg                           ; Read data from the buffer
+    call data_bseg                              ; Read data from the buffer
     mov si, word [buffer_in_pointer]            ; At our pointer
 
     push cx                                     ; Preserve register state
@@ -2427,7 +2428,7 @@ disk_routines:                                  ; Disk functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .get_bytes_qty:
-    call data_fileseg                           ; We want to access data from the file buffer
+    call data_bseg                              ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
     cmp cx, 0x0000                              ; Is our counter zero?
@@ -2442,7 +2443,7 @@ disk_routines:                                  ; Disk functions
     jmp int_ret                                 ; We're done!
 
 .get_bytes_indices:
-    call data_fileseg                           ; We want to access data from the file buffer
+    call data_bseg                              ; We want to access data from the file buffer
     call extra_binseg                           ; We want to give data to the command
 
     cmp cx, si                                  ; Would our counter be zero?
@@ -2465,7 +2466,7 @@ disk_routines:                                  ; Disk functions
     jc int_ret.preserve_flags                   ; If error, we're done
 
     push cx                                     ; Save register state to stack
-    call data_fileseg                           ; We want to access data from the file buffer
+    call data_bseg                              ; We want to access data from the file buffer
     call get_line_length                        ; Get the number of bytes to copy
 
     inc sp
@@ -2496,7 +2497,7 @@ disk_routines:                                  ; Disk functions
 
 .write_bytes_qty:
     call data_binseg                            ; We want to access data from the command
-    call extra_fileseg                          ; We want to give data to the file buffer
+    call extra_bseg                             ; We want to give data to the file buffer
 
     cmp cx, 0x0000                              ; Is our counter zero?
     je int_ret                                  ; If so, avoid an endless loop
@@ -2511,7 +2512,7 @@ disk_routines:                                  ; Disk functions
 
 .write_bytes_indices:
     call data_binseg                            ; We want to access data from the command
-    call extra_fileseg                          ; We want to give data to the file buffer
+    call extra_bseg                             ; We want to give data to the file buffer
 
     cmp cx, si                                  ; Would our counter be zero?
     je int_ret                                  ; If so, avoid an endless loop
@@ -2925,7 +2926,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 53; Compiled 2021-02-16", 0x00
+info_os             db "House-DOS v0.1.1 NATE, Build 54; Compiled 2021-02-17", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
