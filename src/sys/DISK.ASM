@@ -136,6 +136,8 @@ get_file_info:                                  ; Get an item (AL=offset) from a
 load_file:                                      ; Load file starting at cluster into buffer
     pusha                                       ; Push register states to stack
 
+    call get_file_cluster                       ; Get file starting cluster and size
+
     cmp byte [gs:dev], 0xFF                     ; Is this a device file?
     je .load_cluster                            ; If not, proceed
 
@@ -146,8 +148,6 @@ load_file:                                      ; Load file starting at cluster 
 .load_cluster:
     mov si, iface_disk_cluster
     call comment                                ; Comment message
-
-    call get_file_cluster                       ; Get file starting cluster and size
 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
