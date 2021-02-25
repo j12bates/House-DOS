@@ -766,17 +766,33 @@ advance_cursor:                                 ; Advance cursor
 prompt:                                         ; Set up a prompt for the user
     pusha                                       ; Push register states to stack
 
-    mov ah, 0x0E                                ; Teletype output
-    mov bh, 0x00                                ; Page 0
+    call line_break                             ; Make the prompt on a new line
+    call get_cursor_pos                         ; Get the current cursor position
+
+    push dx                                     ; Preserve cursor position
+
+    mov cx, 0x0000                              ; Reset counter
+    mov cl, dh                                  ; Move row into counter
+    sub cx, 0x0017                              ; Subtract total number of lines
+    neg cx                                      ; Negate to get number of lines left
+
+    shr dx, 0x4                                 ; Get row multiplied by 16
+    shl cx, 0x6                                 ; Multiply by 64
+    add cx, dx                                  ; Add to get row times 80
+
+    pop dx                                      ; Restore cursor position
+    mov al, 0x20                                ; Spaces
+    mov bl, 0b00000111                          ; Light grey on black
+    call block                                  ; Draw block
 
     mov al, 0x20                                ; Space
-    int 0x10                                    ; BIOS VGA interrupt
+    call teletype_output                        ; Write
 
     mov al, 0x2D                                ; Hyphen
-    int 0x10                                    ; BIOS VGA interrupt
+    call teletype_output                        ; Write
 
     mov al, 0x20                                ; Space
-    int 0x10                                    ; BIOS VGA interrupt
+    call teletype_output                        ; Write
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller

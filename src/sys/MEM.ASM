@@ -878,7 +878,7 @@ extra_kernseg:                                  ; Sets the extra segment to the 
     ret                                         ; Return to caller
 
 
-extra_memseg:                                   ; Sets the extra segment to the user buffer
+extra_memseg:                                   ; Sets the extra segment to the user buffer segment
     push 0x5000                                 ; User buffer
     pop es                                      ; Set segment register
 
