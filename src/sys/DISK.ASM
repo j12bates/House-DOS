@@ -167,7 +167,7 @@ load_file:                                      ; Load file starting at cluster 
     jc .end                                     ; If error, we're done
 
 .bytes:
-    mov cx, word [bytes_to_load]                ; The number of bytes left in the file to copy over
+    mov cx, word [bytes_remaining]              ; The number of bytes left in the file to copy over
     cmp cx, word [bytes_cluster]                ; Is this at least one full cluster?
     jb .copy                                    ; If not, proceed
 
@@ -191,7 +191,7 @@ load_file:                                      ; Load file starting at cluster 
     call data_kernseg                           ; We need to access kernel variables
 
     mov word [file_buffer_pointer], di          ; Update our buffer pointer
-    sub word [bytes_to_load], cx                ; Update the number of bytes to copy
+    sub word [bytes_remaining], cx              ; Update the number of bytes to copy
     jz .done                                    ; If no more bytes, we're done
 
 .next_cluster:
@@ -268,9 +268,8 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done!
 
 .pre_apply:
-    push cx                                     ; Save our file size
-
     mov word [file_buffer_pointer], 0x0000      ; Start reading from offset 0
+    mov word [fsize], cx                        ; Save our file size
 
     mov si, iface_disk_applyw
     call comment_line                           ; Comment message
@@ -331,7 +330,7 @@ write_file:                                     ; Write file buffer to disk as f
     mov ax, word [cluster]
     mov word [es:di+0x1A], ax                   ; Move our starting cluster into the correct field
 
-    pop cx                                      ; Restore our file size
+    mov cx, word [fsize]                        ; Retrieve our file size
     mov word [es:di+0x1C], cx                   ; Move our file size into the correct field
 
     push es                                     ; Save our segment
@@ -370,7 +369,7 @@ write_file:                                     ; Write file buffer to disk as f
     mov di, word [root_entry]                   ; The number of the root entry
     shl di, 0x5                                 ; There are 32 bytes in each entry
 
-    pop cx                                      ; Restore our file size
+    mov cx, word [fsize]                        ; Retrieve our file size
     mov word [es:di+0x1C], cx                   ; Move our file size into the correct field
     mov word [es:di+0x1E], 0x0000               ; Upper word of file size is 0
 
@@ -424,6 +423,7 @@ write_file:                                     ; Write file buffer to disk as f
     shl di, 0x1                                 ; There are 2 bytes per entry in FAT16
     mov bx, word [es:di]                        ; The FAT entry for this cluster
 
+    mov cx, word [fsize]                        ; Retrieve our file size
     cmp word [file_buffer_pointer], cx          ; Have we finished writing the entire file?
     jae .end_file                               ; If so, we need to do a few things
 
@@ -973,7 +973,7 @@ check_fname_legal:                              ; Check a character for filename
 
 
 ; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
-; IN: None
+; IN: [cluster] = Exception cluster
 ; OUT: [cluster] = Cluster number; CF = Set on error
 
 next_available_cluster:                         ; Get the next cluster available
@@ -982,22 +982,30 @@ next_available_cluster:                         ; Get the next cluster available
     mov ax, 0x3000
     mov es, ax                                  ; The segment in which the FAT is loaded
 
-    mov di, 0x0004                              ; Start looking at offset 4 (entry 2)
+    mov di, 0x0002                              ; Start looking at entry 2
     mov cx, 0x3FFE                              ; Look through all the FAT entries
 
-.check_fat_entry:
+.check_entry:
+    shl di, 0x1                                 ; Entries are 2 bytes each
+
     cmp word [es:di], 0x0000                    ; Is this FAT entry unused?
     je .done                                    ; If so, we've found it
 
+    shr di, 0x1                                 ; Otherwise, convert back to an entry number
+
+.next_entry:
     add di, 0x0002                              ; Otherwise, move to the next two-byte entry
-    loop .check_fat_entry                       ; And repeat
+    loop .check_entry                           ; And repeat
 
     jmp .error_full                             ; If all clusters are full, error
 
 .done:
-    shr di, 0x1                                 ; There are two bytes per entry in FAT16
-    mov word [cluster], di                      ; The number of this entry is our cluster number
+    shr di, 0x1                                 ; Convert back to an entry number
 
+    cmp word [cluster], di                      ; Is this the exception cluster?
+    je .next_entry                              ; If so, skip
+
+    mov word [cluster], di                      ; Otherwise, the number of this entry is our cluster number
     clc                                         ; No error
 
 .end:
@@ -1178,7 +1186,7 @@ conv_83_x3:                                     ; Convert the 8.3 filename to th
 
 ; GET FILE STARTING CLUSTER: Gets the starting cluster for the specified file
 ; IN: [root_entry] = Root entry number of the file
-; OUT: [cluster] = Starting cluster of file, [bytes_to_load] = Number of bytes in the file
+; OUT: [cluster] = Starting cluster of file, [bytes_remaining] = Number of bytes in the file
 
 get_file_cluster:                               ; Get the starting cluster for a file
     pusha                                       ; Save register states to stack
@@ -1191,7 +1199,7 @@ get_file_cluster:                               ; Get the starting cluster for a
     mov al, 0x1C                                ; Read the file size
     call get_file_info                          ; Get from the root directory
 
-    mov word [bytes_to_load], ax                ; Store as the number of bytes to copy
+    mov word [bytes_remaining], ax              ; Store as the number of bytes to copy
 
 .done:
     popa                                        ; Restore register states
@@ -1457,7 +1465,8 @@ cluster             dw 0x0000
 root_entry          dw 0x0000
 file_buffer_pointer dw 0x0000
 file_buffer_segment dw 0x1000
-bytes_to_load       dw 0x0000
+bytes_remaining     dw 0x0000
+fsize               dw 0x0000
 
 bytes_sector        dw 0x0000
 sectors_cluster     db 0x00

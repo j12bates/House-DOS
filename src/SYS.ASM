@@ -81,9 +81,6 @@ main:                                           ; Main code for House-DOS kernel
     clc                                         ; Show cursor
     call display_cursor                         ; Make sure cursor is visible
 
-    mov bl, 0x07                                ; Light grey on black
-    call screen_attribute                       ; Set screen attribute
-
     call speaker_off                            ; Turn off speaker
 
     mov al, byte [config_sys_iface]             ; The system interface configuration
@@ -172,7 +169,6 @@ command:                                        ; Main loop: Retrieve command fr
     call setup_segments                         ; Reset segments again
     mov byte [default_dev], 0x01                ; Reset default output device
 
-    call line_break                             ; Line break
     call prompt                                 ; Setup prompt
 
     mov di, input_buffer                        ; Our input buffer
@@ -2926,7 +2922,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.1 NATE, Build 54; Compiled 2021-02-17", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 55; Compiled 2021-02-25", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
