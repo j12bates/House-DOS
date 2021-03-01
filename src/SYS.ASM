@@ -221,7 +221,7 @@ command:                                        ; Main loop: Retrieve command fr
 
     rep stosb                                   ; Clear parameter list
 
-    mov bx, 0x0000                              ; We are not currently reading a parameter or escaping spaces
+    mov bx, 0x0000                              ; We are not currently reading a parameter
     push params                                 ; Push the index of our parameter list
 
 .param_char:
@@ -236,9 +236,6 @@ command:                                        ; Main loop: Retrieve command fr
 
     cmp al, 0x7C                                ; Is this a vertical bar?
     je .pipe                                    ; If so, set up pipe
-
-    cmp bl, 0xFF                                ; Are spaces being escaped?
-    je .write                                   ; If so, skip spaces
 
     cmp al, 0x20                                ; Is it a space?
     je .next_param                              ; If so, that's one parameter
@@ -266,8 +263,17 @@ command:                                        ; Main loop: Retrieve command fr
     jmp .param_char                             ; And repeat
 
 .quotation:
-    xor bl, 0xFF                                ; Toggle space-escape
-    jmp .write                                  ; And write the quotation
+    stosb                                       ; Write the double-quote
+
+    dec si                                      ; Before the first double-quote
+    call format_quotation                       ; Write the formatted parameter
+    jc .bad_command                             ; If invalid, bad command
+
+    add di, cx                                  ; Move destination index past quotation contents
+    stosb                                       ; Write another double-quote
+
+    push di                                     ; Push new destination index
+    jmp .param_char                             ; And repeat
 
 .flags:
     push di                                     ; Preserve pointer
@@ -334,6 +340,9 @@ command:                                        ; Main loop: Retrieve command fr
 .input:
     push di                                     ; Preserve destination index
 
+    cmp byte [si], 0x3C                         ; Is the byte another angle bracket?
+    je .immediate                               ; If so, it may be immediate input
+
     cmp byte [si], 0x20                         ; Is the byte a space?
     jne .bad_command                            ; If not, bad command
 
@@ -387,6 +396,33 @@ command:                                        ; Main loop: Retrieve command fr
 
     pop si                                      ; Restore pointer
     pop ax                                      ; Restore last character
+
+    cmp al, 0x00                                ; Is this a NULL character?
+    je .end_command_owrite                      ; If so, the command is finished
+
+    jmp .param_char                             ; Otherwise, continue reading parameters
+
+.immediate:
+    inc si                                      ; Next byte
+
+    lodsb                                       ; Read next byte
+    cmp al, 0x3C                                ; Is this another angle-bracket?
+    jne .bad_command                            ; If not, bad command
+
+    lodsb                                       ; Read next byte
+    cmp al, 0x20                                ; Is this a space?
+    jne .bad_command                            ; If not, bad command
+
+    call extra_bseg                             ; Write to the I/O buffer
+    mov di, 0x0000                              ; Starting at the beginning
+
+    call format_quotation                       ; Write the following quotation
+    jc .bad_command                             ; If invalid, bad command
+
+    call extra_kernseg                          ; Write to kernel data
+    mov word [buffer_endpoint], cx              ; This is the length of our buffer
+
+    lodsb                                       ; Load next character
 
     cmp al, 0x00                                ; Is this a NULL character?
     je .end_command_owrite                      ; If so, the command is finished
@@ -645,6 +681,67 @@ check_flag:                                     ; Check if flag was set
     mov al, 0x00                                ; Set to zero
     sub al, 0x01                                ; Subtract to unset zero-flag
 
+    stc                                         ; Carry-flag for error
+    jmp .done                                   ; We're done
+
+
+; FORMAT QUOTATION: Reads a quotation from the input buffer up to the next unescaped double-quote
+; IN: DS:SI = Start of quotation (before first double-quote); ES:DI = Destination buffer
+; OUT: DS:SI = End of quotation (past second double-quote); CX = Bytes written; CF = Set if invalid
+
+format_quotation:                               ; Format a quotation from the input buffer
+    pusha                                       ; Save register states to stack
+
+    lodsb                                       ; Load first character
+    cmp al, 0x22                                ; Is this a double-quote?
+    jne .invalid                                ; If not, this is an invalid quotation
+
+.char:
+    lodsb                                       ; Load next character
+
+    cmp al, 0x00                                ; Is this the end of the input?
+    je .invalid                                 ; If so, this is an invalid quotation
+
+    cmp al, 0x22                                ; Is this a double-quote?
+    je .done                                    ; If so, we're done
+
+    cmp al, 0x5C                                ; Is this a backslash?
+    je .escape                                  ; If so, escape this character
+
+.write_char:
+    stosb                                       ; Otherwise, write character
+    jmp .char                                   ; And repeat
+
+.escape:
+    lodsb                                       ; Load the next character
+
+    cmp al, 0x22                                ; Is this a double-quote?
+    je .write_char                              ; If so, proceed
+
+    cmp al, 0x5C                                ; Is this a backslash?
+    je .write_char                              ; If so, proceed
+
+    cmp al, 0x6E                                ; Is this a lowercase N?
+    jne .char                                   ; If not, this is an invalid escape sequence
+
+    mov al, 0x0A                                ; Otherwise, newline
+    jmp .write_char                             ; And proceed
+
+.done:
+    mov word [gs:register_bckp_a], si           ; Preserve source index
+    mov word [gs:register_bckp_b], di           ; Preserve destination index
+
+    popa                                        ; Restore register states
+    mov si, word [gs:register_bckp_a]           ; Restore source index
+
+    pushf                                       ; Preserve FLAGS
+    mov cx, word [gs:register_bckp_b]           ; Restore destination index as counter
+    sub cx, di                                  ; Subtract to get length of quotation
+    popf                                        ; Restore FLAGS
+
+    ret                                         ; Return to caller
+
+.invalid:
     stc                                         ; Carry-flag for error
     jmp .done                                   ; We're done
 
@@ -2922,7 +3019,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.2 NATE, Build 55; Compiled 2021-02-25", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 56; Compiled 2021-03-01", 0x00
 info_creator        db "By Jacob, Jet, and Ben", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
