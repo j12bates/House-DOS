@@ -174,7 +174,7 @@ command:                                        ; Main loop: Retrieve command fr
     call prompt                                 ; Setup prompt
 
     mov di, input_buffer                        ; Our input buffer
-    mov cx, 0x003F                              ; 63-byte limit
+    mov cx, 0x003E                              ; 64-byte buffer, we need the last two zeroes
 
     call input                                  ; Get input from user
     call line_break                             ; Line break
@@ -228,9 +228,6 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x00                                ; Is this the end of the input?
     je .end_command                             ; If so, the command is finished
 
-    cmp al, 0x7C                                ; Is this a vertical bar?
-    je .pipe                                    ; If so, set up pipe
-
     cmp al, 0x24                                ; Is this a dollar-sign?
     je .flags                                   ; If so, these are flags
 
@@ -242,6 +239,9 @@ command:                                        ; Main loop: Retrieve command fr
 
     cmp al, 0x3E                                ; Is this a forward-facing angle-bracket?
     je .redir                                   ; If so, set up output redirection
+
+    cmp al, 0x7C                                ; Is this a vertical bar?
+    je .pipe                                    ; If so, set up pipe
 
 .parameter:
     dec si                                      ; Write entire parameter
@@ -2915,38 +2915,17 @@ times 0x3400 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (t
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00023400
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
+input_buffer:                                   ; 0x00023400
+times 0x0040        db 0x00
 
-params              dq 0x0000000000000000       ; 0x00023440
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
+misc_buffer:                                    ; 0x00023440
+times 0x0040        db 0x00
 
-misc_buffer         dq 0x0000000000000000       ; 0x00023480
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
+params:                                         ; 0x00023480
+times 0x0080        db 0x00
 
-param_flags         dq 0x0000000000000000       ; 0x000234C0
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dd 0x00000000
+param_flags:                                    ; 0x00023500
+times 0x0024        db 0x00                     ; One for each letter/number
 
 end_buffers:
 
