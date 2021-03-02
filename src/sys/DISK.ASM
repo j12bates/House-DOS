@@ -495,7 +495,6 @@ write_file:                                     ; Write file buffer to disk as f
 .abort:
     call abort                                  ; Aborting message
 
-    pop ax                                      ; Restore for balance
     stc                                         ; Carry flag for error
     jmp .end                                    ; We're done
 

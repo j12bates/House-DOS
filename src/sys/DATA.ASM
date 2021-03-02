@@ -230,10 +230,8 @@ find_substr:                                    ; Find instance of substring
 .error_substr:
     add sp, 0x0006                              ; Clear three words out of the stack
 
-    mov ax, 0x0160                              ; Substring not found
-    call error                                  ; Handle this error
-
     mov bx, 0xFFFF                              ; Negative one
+    stc                                         ; Carry-flag
     jmp .done                                   ; We're done
 
 
@@ -288,10 +286,8 @@ find_char:                                      ; Find instance of character
 .error_char:
     add sp, 0x0002                              ; Clear a word out of the stack
 
-    mov ax, 0x0161                              ; Character not found
-    call error                                  ; Handle this error
-
     mov bx, 0xFFFF                              ; Negative one
+    stc                                         ; Carry-flag
     jmp .done                                   ; We're done
 
 
@@ -848,7 +844,7 @@ conv_dec_unsigned_bin:                          ; Convert ASCII decimal at DS:SI
 ; ========================================================================
 
 ; GET ITEM FROM LIST: Gets a specific item from a comma-separated list
-; IN: DS:SI = Location of list, ES:DI = Output buffer, CX = List index
+; IN: DS:SI = Location of list; ES:DI = Output buffer; CX = List index
 ; OUT: CF = Set on error
 
 get_item_list:                                  ; Get a specific item from a comma-separated list
@@ -865,7 +861,7 @@ get_item_list:                                  ; Get a specific item from a com
 .find_comma:
     lodsb                                       ; Load next byte
 
-    cmp al, 0x22                                ; Is this a quotation?
+    cmp al, 0x22                                ; Is this a double-quote?
     je .quotation                               ; If so, toggle comma-escape
 
     cmp al, 0x00                                ; Is this a null character?
@@ -886,7 +882,13 @@ get_item_list:                                  ; Get a specific item from a com
 
 .quotation:
     xor bl, 0xFF                                ; Toggle comma-escape
-    jmp .find_comma                             ; Immediately read the next byte
+
+    cmp byte [si], 0x22                         ; Is the next byte another double-quote?
+    jne .find_comma                             ; If not, proceed
+
+    xor bl, 0xFF                                ; Otherwise, reset comma-escape
+    inc si                                      ; Increment source index
+    jmp .write                                  ; And write one double-quote if necessary
 
 .null:
     cmp bh, 0x00                                ; Are we writing?
@@ -967,6 +969,63 @@ get_total_list:                                 ; Get the total number of list i
     popa                                        ; Restore register states
     mov cx, word [gs:register_bckp_a]           ; Restore our output
 
+    ret                                         ; Return to caller
+
+
+; APPEND ITEM TO LIST: Appends a string to a list as an item
+; IN: DS:SI = Location of item to append; ES:DI = Location of list
+; OUT: None
+
+append_item_list:                               ; Append a string to a list
+    pusha                                       ; Save register states to stack
+
+.find_end:
+    mov cx, 0xFFFF                              ; Repeat an unlimited number of times
+    mov al, 0x00                                ; NULL character
+    cld                                         ; Ensure correct direction
+
+    repne scasb                                 ; Scan for the end of the list
+
+    dec di                                      ; Avoid an O.B.O.E
+    cmp cx, 0xFFFE                              ; Is there nothing in the list?
+    je .delimiter                               ; If so, proceed
+
+    mov al, 0x2C                                ; Otherwise, comma
+    stosb                                       ; Write comma for new list item
+
+.delimiter:
+    mov al, 0x2C                                ; Comma
+    mov bx, 0x0000                              ; From start
+    mov cx, 0x0000                              ; To end
+    call find_char                              ; Find comma in string
+    pushf                                       ; Save this result for the end
+    jc .char                                    ; If not found, proceed
+
+    mov al, 0x22                                ; Otherwise, double-quote
+    stosb                                       ; Write as item delimiter
+
+.char:
+    lodsb                                       ; Load next character in list item
+    stosb                                       ; Write it
+
+    cmp al, 0x00                                ; Is this a NULL character?
+    je .end_delimiter                           ; If so, proceed
+
+    cmp al, 0x22                                ; Is this a double-quote?
+    jne .char                                   ; If not, repeat
+
+    stosb                                       ; Otherwise, write another double-quote
+    jmp .char                                   ; And repeat
+
+.end_delimiter:
+    popf                                        ; Restore result for comma-search
+    jc .done                                    ; If not found, we're done
+
+    mov al, 0x22                                ; Otherwise, double-quote
+    stosb                                       ; Write as item delimiter
+
+.done:
+    popa                                        ; Restore register states
     ret                                         ; Return to caller
 
 

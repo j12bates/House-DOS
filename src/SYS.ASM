@@ -92,10 +92,12 @@ main:                                           ; Main code for House-DOS kernel
     cmp byte [redir_enabled], 0x00              ; Is output redirection enabled?
     je .default                                 ; If not, use default procedure
 
-    mov si, redir_fname                         ; Our redirection filename
-    call conv_x3_83                             ; Convert to usable format
+    mov si, redir_fname                         ; Our redirection filename buffer
+    mov di, filename                            ; Our normal filename buffer
+    mov cx, 0x000B                              ; 11 bytes in total
+    cld                                         ; Ensure correct direction
 
-    jc command                                  ; If error, don't attempt to write to disk
+    rep movsb                                   ; Copy bytes
 
     cmp byte [redir_enabled], 0x01              ; Is append mode enabled?
     jbe .write                                  ; If not, proceed
@@ -172,7 +174,7 @@ command:                                        ; Main loop: Retrieve command fr
     call prompt                                 ; Setup prompt
 
     mov di, input_buffer                        ; Our input buffer
-    mov cx, 0x003F                              ; 63-byte limit
+    mov cx, 0x003E                              ; 64-byte buffer, we need the last two zeroes
 
     call input                                  ; Get input from user
     call line_break                             ; Line break
@@ -202,15 +204,13 @@ command:                                        ; Main loop: Retrieve command fr
     jmp .bad_command                            ; There should have been a null/space by now
 
 .extension:
-    push si                                     ; Preserve pointer
+    push si                                     ; Preserve source index
 
     mov si, bin_extension                       ; The extension for a Binary file
     mov cx, 0x0005                              ; 5 chars, including dot and null
     cld                                         ; Ensure correct direction
 
     rep movsb                                   ; Move into our file extension
-
-    pop si                                      ; Restore pointer
 
 .params:
     mov al, 0x00                                ; Write null characters
@@ -221,27 +221,12 @@ command:                                        ; Main loop: Retrieve command fr
 
     rep stosb                                   ; Clear parameter list
 
-    mov bx, 0x0000                              ; We are not currently reading a parameter
-    push params                                 ; Push the index of our parameter list
-
 .param_char:
-    pop di                                      ; Restore destination index
+    pop si                                      ; Restore source index
     lodsb                                       ; Load next byte from command
-
-    cmp al, 0x22                                ; Is this a quotation?
-    je .quotation                               ; If so, toggle space-escape
 
     cmp al, 0x00                                ; Is this the end of the input?
     je .end_command                             ; If so, the command is finished
-
-    cmp al, 0x7C                                ; Is this a vertical bar?
-    je .pipe                                    ; If so, set up pipe
-
-    cmp al, 0x20                                ; Is it a space?
-    je .next_param                              ; If so, that's one parameter
-
-    cmp bh, 0xFF                                ; Are we currently reading a parameter?
-    je .write                                   ; If so, don't read as flags/header
 
     cmp al, 0x24                                ; Is this a dollar-sign?
     je .flags                                   ; If so, these are flags
@@ -255,29 +240,23 @@ command:                                        ; Main loop: Retrieve command fr
     cmp al, 0x3E                                ; Is this a forward-facing angle-bracket?
     je .redir                                   ; If so, set up output redirection
 
-.write:
-    stosb                                       ; Otherwise, store byte in list
+    cmp al, 0x7C                                ; Is this a vertical bar?
+    je .pipe                                    ; If so, set up pipe
 
-    mov bh, 0xFF                                ; We're currently reading a parameter
-    push di                                     ; Push new destination index
-    jmp .param_char                             ; And repeat
+.parameter:
+    dec si                                      ; Write entire parameter
+    mov di, misc_buffer                         ; Miscellaneous buffer
+    call get_raw_param                          ; Get parameter from input buffer
 
-.quotation:
-    stosb                                       ; Write the double-quote
+    push si                                     ; Preserve source index
 
-    dec si                                      ; Before the first double-quote
-    call format_quotation                       ; Write the formatted parameter
-    jc .bad_command                             ; If invalid, bad command
+    mov si, di                                  ; Read from this buffer
+    mov di, params                              ; Append to our parameter list
+    call append_item_list                       ; Append string to list as item
 
-    add di, cx                                  ; Move destination index past quotation contents
-    stosb                                       ; Write another double-quote
-
-    push di                                     ; Push new destination index
     jmp .param_char                             ; And repeat
 
 .flags:
-    push di                                     ; Preserve pointer
-
     mov al, 0x00                                ; Look for a null character
     mov di, param_flags                         ; Write somewhere into our flag list
     mov cx, 0x0024                              ; 36 bytes in the buffer (36 valid characters)
@@ -291,32 +270,38 @@ command:                                        ; Main loop: Retrieve command fr
     lodsb                                       ; Load next character
     call capitalize_char                        ; Capitalize
 
-    cmp al, 0x00                                ; Is this a null character?
-    je .end_command_owrite                      ; If so, the command is finished
+    cmp al, 0x00                                ; Is this a NULL character?
+    je .end_flags                               ; If so, we're done with flags
 
     cmp al, 0x20                                ; Is this a space?
-    je .param_char                              ; If so, read next parameter
+    je .end_flags                               ; If so, we're done with flags as well
 
     call check_flag                             ; Has this flag already been set, or is it invalid?
     je .flag_char                               ; If so, skip this one
     jc .flag_char                               ; If it's invalid, skip
 
     stosb                                       ; Otherwise, write to our flags
+
+    push si                                     ; Preserve source index
     jmp .flag_char                              ; Read the next character
 
-.next_param:
-    mov al, 0x2C                                ; Comma (items are separated by commas)
-    stosb                                       ; Write byte
-
-    mov bh, 0x00                                ; We're done writing that parameter
-    push di                                     ; Push new destination index
-    jmp .param_char                             ; And repeat
+.end_flags:
+    push si                                     ; Preserve source index
+    jmp .param_char                             ; Continue reading parameters
 
 .metadata:
-    push di                                     ; Preserve destination index
-
     lodsb                                       ; Read the next character
     call capitalize_char                        ; Capitalize
+
+    cmp byte [si], 0x20                         ; Is the next byte a space?
+    je .metadata_word                           ; If so, proceed
+
+    cmp byte [si], 0x00                         ; Is it a NULL character?
+    jne .bad_command                            ; If not, bad command
+
+.metadata_word:
+    inc si                                      ; Otherwise, move past space
+    push si                                     ; Preserve source index
 
     add byte [header_offset], 0x02              ; Move our offset ahead a word
     cmp al, 0x43                                ; Is this a C?
@@ -338,8 +323,6 @@ command:                                        ; Main loop: Retrieve command fr
     jmp command                                 ; Get a new command
 
 .input:
-    push di                                     ; Preserve destination index
-
     cmp byte [si], 0x3C                         ; Is the byte another angle bracket?
     je .immediate                               ; If so, it may be immediate input
 
@@ -347,41 +330,16 @@ command:                                        ; Main loop: Retrieve command fr
     jne .bad_command                            ; If not, bad command
 
     inc si                                      ; Otherwise, ignore space
+    mov di, misc_buffer                         ; Miscellaneous buffer
+    call get_raw_param                          ; Get parameter from input buffer
 
-    mov di, input_fname                         ; Write into input redirection filename
-    mov cx, 0x000D                              ; Up to 12 characters in the filename
-    mov al, 0x00                                ; Write NULL characters
-    cld                                         ; Ensure correct direction
-
-    rep stosb                                   ; Overwrite with zeroes
-
-    mov di, input_fname                         ; Write into input redirection filename
-    mov cx, 0x000D                              ; Up to 12 characters in the filename
-    cld                                         ; Ensure correct direction
-
-.input_fname_char:
-    lodsb                                       ; Load next byte
-
-    cmp al, 0x00                                ; Is this a NULL character?
-    je .load_input                              ; If so, load the file
-
-    cmp al, 0x20                                ; Is this a space?
-    je .load_input                              ; If so, also load the file
-
-    call capitalize_char                        ; Otherwise, capitalize character
-    stosb                                       ; Write byte to filename
-
-    loop .input_fname_char                      ; Repeat with next character
-    jmp .bad_command                            ; If we've reached this point, bad filename
-
-.load_input:
-    push ax                                     ; Preserve last character
-    push si                                     ; Preserve pointer
+    push si                                     ; Preserve source index
 
     call clear_buffer                           ; Clear I/O buffer
 
-    mov si, input_fname                         ; Read from our input redirection filename
+    mov si, di                                  ; Read from our miscellaneous buffer
     call conv_x3_83                             ; Convert to usable format
+    jc .bad_command                             ; If error, bad command
 
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
@@ -394,13 +352,7 @@ command:                                        ; Main loop: Retrieve command fr
 
     call setup_segments                         ; Reset segments
 
-    pop si                                      ; Restore pointer
-    pop ax                                      ; Restore last character
-
-    cmp al, 0x00                                ; Is this a NULL character?
-    je .end_command_owrite                      ; If so, the command is finished
-
-    jmp .param_char                             ; Otherwise, continue reading parameters
+    jmp .param_char                             ; Continue reading parameters
 
 .immediate:
     inc si                                      ; Next byte
@@ -416,18 +368,13 @@ command:                                        ; Main loop: Retrieve command fr
     call extra_bseg                             ; Write to the I/O buffer
     mov di, 0x0000                              ; Starting at the beginning
 
-    call format_quotation                       ; Write the following quotation
-    jc .bad_command                             ; If invalid, bad command
+    call get_raw_param                          ; Write the raw parameter
+    push si                                     ; Preserve source index
 
     call extra_kernseg                          ; Write to kernel data
     mov word [buffer_endpoint], cx              ; This is the length of our buffer
 
-    lodsb                                       ; Load next character
-
-    cmp al, 0x00                                ; Is this a NULL character?
-    je .end_command_owrite                      ; If so, the command is finished
-
-    jmp .param_char                             ; Otherwise, continue reading parameters
+    jmp .param_char                             ; Continue reading parameters
 
 .redir:
     push di                                     ; Preserve destination index
@@ -436,46 +383,34 @@ command:                                        ; Main loop: Retrieve command fr
     cmp byte [si], 0x3E                         ; Is the next character another forward-facing angle-bracket?
     je .append                                  ; If so, enable append-mode
 
-    cmp byte [si], 0x20                         ; Is the next byte a space?
-    jne .bad_command                            ; If not, bad command
-
-    jmp .clear_redir_fname                      ; And proceed
+    jmp .redir_fname                            ; Otherwise, proceed
 
 .append:
     inc byte [redir_enabled]                    ; Enable append-mode
     inc si                                      ; We don't care about the angle-bracket anymore
 
+.redir_fname:
     cmp byte [si], 0x20                         ; Is the next byte a space?
     jne .bad_command                            ; If not, bad command
 
-.clear_redir_fname:
-    inc si                                      ; Ignore space
+    inc si                                      ; Avoid space
+    mov di, misc_buffer                         ; Miscellaneous buffer
+    call get_raw_param                          ; Get parameter from input buffer
 
-    mov di, redir_fname                         ; Write into output redirection filename
-    mov cx, 0x000D                              ; Up to 12 characters in the filename
-    mov al, 0x00                                ; Write NULL characters
+    push si                                     ; Preserve source index
+
+    mov si, di                                  ; Read from our miscellaneous buffer
+    call conv_x3_83                             ; Convert to usable format
+    jc .bad_command                             ; If error, bad command
+
+    mov si, filename                            ; Read from our 8.3 filename buffer
+    mov di, redir_fname                         ; Write to our redirection 8.3 filename buffer
+    mov cx, 0x000B                              ; 11 bytes in total
     cld                                         ; Ensure correct direction
 
-    rep stosb                                   ; Overwrite with zeroes
+    rep movsb                                   ; Copy bytes
 
-    mov di, redir_fname                         ; Write into output redirection filename
-    mov cx, 0x000D                              ; Up to 12 characters in the filename
-    cld                                         ; Ensure correct direction
-
-.redir_fname_char:
-    lodsb                                       ; Load next byte
-
-    cmp al, 0x00                                ; Is this a NULL character?
-    je .end_command_owrite                      ; If so, the command is finished
-
-    cmp al, 0x20                                ; Is this a space?
-    je .param_char                              ; If so, next parameter
-
-    call capitalize_char                        ; Otherwise, capitalize character
-    stosb                                       ; Write byte to filename
-
-    loop .redir_fname_char                      ; Repeat with next character
-    jmp .bad_command                            ; If we've reached this point, bad filename
+    jmp .param_char                             ; Continue reading parameters
 
 .pipe:
     push di                                     ; Preserve pointer
@@ -488,21 +423,11 @@ command:                                        ; Main loop: Retrieve command fr
     sub ax, input_buffer                        ; Subtract the starting index of the command input buffer
     mov word [pipe_offset], ax                  ; This is our offset to look from next
 
-    jmp .overwrite_comma                        ; We are done with this part of the command
+    jmp .load_file                              ; We are done with this part of the command
 
 .end_command:
     mov word [pipe_offset], 0x0000              ; Clear out our offset
     jmp .load_file                              ; Proceed to load the file
-
-.end_command_owrite:
-    mov word [pipe_offset], 0x0000              ; Clear out our offset
-
-.overwrite_comma:
-    pop di                                      ; Restore pointer
-    cmp di, params                              ; Have we written any parameters?
-    je .load_file                               ; If not, proceed
-
-    mov byte [di-0x01], 0x00                    ; Otherwise, overwrite last comma
 
 .load_file:
     mov si, program_fname                       ; Our program filename
@@ -685,7 +610,55 @@ check_flag:                                     ; Check if flag was set
     jmp .done                                   ; We're done
 
 
-; FORMAT QUOTATION: Reads a quotation from the input buffer up to the next unescaped double-quote
+; GET RAW PARAMETER: Copies a singular parameter from the input buffer up to the next space/null as a string
+; IN: DS:SI = Start of word (after space); ES:DI = Destination buffer
+; OUT: DS:SI = End of word (after space); CX = Bytes written
+
+get_raw_param:                                  ; Get a full raw parameter from the input buffer
+    pusha                                       ; Save register states to stack
+
+.char:
+    lodsb                                       ; Load next character
+
+    cmp al, 0x20                                ; Is this a space?
+    je .done                                    ; If so, we're done
+
+    cmp al, 0x00                                ; Is this the end of the input?
+    je .done                                    ; If so, we're done
+
+    cmp al, 0x22                                ; Is this a double-quote?
+    je .quotation                               ; If so, format as a quotation
+
+    stosb                                       ; Otherwise, write byte
+    jmp .char                                   ; And repeat
+
+.quotation:
+    dec si                                      ; Position pointer before first double-quote
+    call format_quotation                       ; Write the next bits as a quotation
+
+    add di, cx                                  ; Move destination index past the contents of the quotation
+    jmp .char                                   ; And proceed
+
+.done:
+    mov al, 0x00                                ; NULL character
+    stosb                                       ; Write to end string
+
+    mov word [gs:register_bckp_a], si           ; Preserve source index
+    mov word [gs:register_bckp_b], di           ; Preserve destination index
+
+    popa                                        ; Restore register states
+    mov si, word [gs:register_bckp_a]           ; Restore source index
+
+    pushf                                       ; Preserve FLAGS
+    mov cx, word [gs:register_bckp_b]           ; Restore destination index as counter
+    sub cx, di                                  ; Subtract to get length of raw parameter
+    dec cx                                      ; Avoid an O.B.O.E
+    popf                                        ; Restore FLAGS
+
+    ret                                         ; Return to caller
+
+
+; FORMAT QUOTATION: Reads & writes a quotation from the input buffer up to the next unescaped double-quote
 ; IN: DS:SI = Start of quotation (before first double-quote); ES:DI = Destination buffer
 ; OUT: DS:SI = End of quotation (past second double-quote); CX = Bytes written; CF = Set if invalid
 
@@ -2942,38 +2915,17 @@ times 0x3400 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (t
 
 buffers:
 
-input_buffer        dq 0x0000000000000000       ; 0x00023400
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
+input_buffer:                                   ; 0x00023400
+times 0x0040        db 0x00
 
-params              dq 0x0000000000000000       ; 0x00023440
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
+misc_buffer:                                    ; 0x00023440
+times 0x0040        db 0x00
 
-misc_buffer         dq 0x0000000000000000       ; 0x00023480
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
+params:                                         ; 0x00023480
+times 0x0080        db 0x00
 
-param_flags         dq 0x0000000000000000       ; 0x000234C0
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dq 0x0000000000000000
-                    dd 0x00000000
+param_flags:                                    ; 0x00023500
+times 0x0024        db 0x00                     ; One for each letter/number
 
 end_buffers:
 
@@ -2993,8 +2945,7 @@ time_buffer         db "HH:MM:SS"
 program_fname       db "XXXXXXXX.XXX", 0x00
 bin_extension       db ".BIN", 0x00
 
-input_fname         db "XXXXXXXX.XXX", 0x00, 0x00
-redir_fname         db "XXXXXXXX.XXX", 0x00, 0x00
+redir_fname         db "XXXXXXXXXXX", 0x00, 0x00
 redir_enabled       db 0x00
 
 init_byte           db 0x00                     ; Have we been initialized?
@@ -3020,7 +2971,7 @@ usage               db "SYS", 0x0A
 
 ; Information strings
 info_os             db "House-DOS v0.1.2 NATE, Build 56; Compiled 2021-03-01", 0x00
-info_creator        db "By Jacob, Jet, and Ben", 0x00
+info_creator        db "By Jacob Bates and Ben Johnson", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
                     dq 0x0000000000000000
