@@ -78,6 +78,9 @@ main:                                           ; Main code for House-DOS kernel
     call setup_segments                         ; Ensure segments are all ready
     mov sp, 0x3FFE                              ; Reset stack pointer (we're going to pop something in a bit)
 
+    mov bh, 0x00                                ; Primary display page
+    call switch_page                            ; Change active display page
+
     clc                                         ; Show cursor
     call display_cursor                         ; Make sure cursor is visible
 
@@ -1133,6 +1136,9 @@ syscall_handler:                                ; System call handler
     cmp ah, 0x19
     je iface_routines.print_char                ; Print character
 
+    cmp ah, 0x1A
+    je iface_routines.switch_page               ; Switch active display page
+
     cmp ah, 0x20
     je iface_routines.parameter                 ; Get parameter
 
@@ -2066,6 +2072,25 @@ iface_routines:                                 ; Interface functions
     call teletype_output                        ; Output this character
     jmp int_ret                                 ; We're done!
 
+.switch_page:
+    popf                                        ; We need to access flags
+    push bx                                     ; Preserve register state
+
+    pushf                                       ; Push FLAGS
+    pop bx                                      ; Pop here
+    mov bh, bl                                  ; Move lower byte into BH
+    and bh, 0b00000001                          ; Erase bits 1-7 (CF happens to be bit 0)
+
+    call switch_page                            ; Switch active display page
+
+    pop bx                                      ; Restore register state
+
+    cmp byte [display_page], 0x00               ; Is this the primary display page?
+    je int_ret.flags_used                       ; If so, we're done!
+
+    call clear                                  ; Otherwise, clear screen
+    jmp int_ret.flags_used                      ; We're done!
+
 .parameter:
     call extra_binseg                           ; We want to give data to the command
     call get_parameter                          ; Get parameter
@@ -2970,7 +2995,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.2 NATE, Build 56; Compiled 2021-03-01", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 57; Compiled 2021-03-03 (Happy birthday, Ben)", 0x00
 info_creator        db "By Jacob Bates and Ben Johnson", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000

@@ -107,7 +107,7 @@ input:                                          ; Get input from user, store in 
 
     mov ah, 0x0A                                ; Write char
     mov al, 0x20                                ; Space
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     mov cx, 0x01                                ; Write once
     int 0x10                                    ; BIOS VGA interrupt
 
@@ -135,7 +135,7 @@ input:                                          ; Get input from user, store in 
     je .key                                     ; If so, there's nowhere to move
 
     mov ah, 0x08                                ; Get character at cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     call teletype_output                        ; Print the same character and advance cursor
@@ -159,7 +159,7 @@ input:                                          ; Get input from user, store in 
     je .key                                     ; If so, get more input
 
     mov ah, 0x08                                ; Get character at cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     call teletype_output                        ; Print the same character and advance cursor
@@ -234,6 +234,30 @@ confirm:                                        ; Ask the user to confirm
 ; DISPLAY ROUTINES
 ; ========================================================================
 
+; SWITCH DISPLAY PAGE: Changes the active display page
+; IN: BH = 0x00 (primary), 0x01 (secondary)
+; OUT: None
+
+switch_page:                                    ; Switch active display page
+    pusha                                       ; Push register states to stack
+
+    cmp bh, 0x01                                ; Is this a valid page number?
+    jna .change                                 ; If so, proceed
+
+    mov bh, 0x00                                ; Otherwise, set primary
+
+.change:
+    mov ah, 0x05                                ; Select active display page
+    mov al, bh                                  ; Our page number
+    int 0x10                                    ; BIOS VGA interrupt
+
+    mov byte [gs:display_page], bh              ; Save active display page in memory
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; CLEAR SCREEN: Completely clears the screen
 ; IN: None
 ; OUT: None
@@ -241,15 +265,21 @@ confirm:                                        ; Ask the user to confirm
 clear:                                          ; Clear screen
     pusha                                       ; Push register states to stack
 
-    mov ax, 0xB800                              ; VGA video memory
-    mov es, ax                                  ; Write to that segment
-    mov di, 0x0000                              ; Starting at the beginning
+    push 0xB800                                 ; VGA video memory
+    pop es                                      ; Write to that segment
+
+    mov ax, 0x0000                              ; Start at the beginning
+    mov cx, 0x07D0                              ; 2000 characters onscreen
+    mov al, byte [gs:display_page]              ; Our display page
+    shl ax, 0x1                                 ; Each character onscreen uses two bytes
+
+    mul cx                                      ; Multiply by number of characters
+    mov di, ax                                  ; The result is the start of our display page
 
     mov ax, 0x0700                              ; Black background, dim white foreground, NULL character
-    mov cx, 0x07D0                              ; 2000 characters onscreen
     cld                                         ; Ensure correct direction
 
-    rep stosw                                   ; Write words in to each space on the screen
+    rep stosw                                   ; Write words into each space on the screen
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -285,7 +315,7 @@ print_str:                                      ; Prints string in DS:SI
 printf:                                         ; Prints string in DS:SI with color attribute in BL
     pusha                                       ; Save register states to stack
 
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     cld                                         ; Ensure correct direction
 
 .char:
@@ -319,7 +349,7 @@ line_break:                                     ; Moves cursor down one line
     pusha                                       ; Push register states to stack
 
     mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     cmp dh, 0x18                                ; Are we already at the bottom?
@@ -339,7 +369,7 @@ line_break:                                     ; Moves cursor down one line
 
 .break:
     mov ah, 0x02                                ; Set cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     inc dh                                      ; One row down
     mov dl, 0x00                                ; Leftmost column
     int 0x10                                    ; BIOS VGA interrupt
@@ -451,7 +481,7 @@ move_cursor:                                    ; Move cursor to DH, DL
     jae .done                                   ; If so, we're done
 
     mov ah, 0x02                                ; Set cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
 .done:
@@ -467,7 +497,7 @@ get_cursor_pos:                                 ; Get the cursor's position
     pusha                                       ; Save register states to stack
 
     mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     mov word [gs:register_bckp_a], dx           ; Preserve output
@@ -489,7 +519,7 @@ indent:                                         ; Move cursor to the col in DL
     push dx                                     ; Set position to stack
 
     mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     pop bx                                      ; Restore wildcarded position
@@ -530,7 +560,7 @@ block:                                          ; Draws a block of char AL size 
 
 .get_position:
     mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     push dx                                     ; Save initial cursor position
@@ -563,12 +593,18 @@ block:                                          ; Draws a block of char AL size 
 screen_attribute:                               ; Set the attribute of all characters on screen
     pusha                                       ; Save register states to stack
 
-    mov ax, 0xB800
-    mov es, ax                                  ; Write to the VRAM segment
-    mov di, 0x0000                              ; Starting from the beginning?
+    push 0xB800                                 ; VGA video memory
+    pop es                                      ; Write to that segment
 
-    mov al, bl                                  ; Move attribute into AL
-    mov cx, 0x07D0                              ; There are 2000 characters total
+    mov ax, 0x0000                              ; Start at the beginning
+    mov cx, 0x07D0                              ; 2000 characters onscreen
+    mov al, byte [gs:display_page]              ; Our display page
+    shl ax, 0x1                                 ; Each character onscreen uses two bytes
+
+    mul cx                                      ; Multiply by number of characters
+    mov di, ax                                  ; The result is the start of our display page
+
+    mov al, bl                                  ; Write this attribute
     cld                                         ; Ensure correct direction
 
 .char:
@@ -656,7 +692,7 @@ teletype_output:                                ; Write character in teletype mo
     pusha                                       ; Save register states to stack
 
     mov ah, 0x03                                ; Get cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     int 0x10                                    ; BIOS VGA interrupt
 
     cmp al, 0x08                                ; Is this a backspace?
@@ -720,7 +756,7 @@ literal_output:                                 ; Prints literal character and a
 
 .print:
     mov ah, 0x0A                                ; Print character at cursor position
-    mov bh, 0x00                                ; Page 0
+    mov bh, byte [gs:display_page]              ; Active display page
     mov cx, 0x0001                              ; Write character once
     int 0x10                                    ; BIOS VGA interrupt
 
@@ -888,6 +924,8 @@ iface_data:
 
 input_buffer_addr   dw 0x0000
 input_buffer_limit  dw 0x0000
+
+display_page        db 0x00
 
 iface_info_pfx      db "INFO: ", 0x00
 iface_warn_pfx      db "WARN: ", 0x00
