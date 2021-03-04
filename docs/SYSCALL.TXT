@@ -920,6 +920,12 @@ VI. Interface Functions
 
         Prints a single character.
 
+    SWITCH_ACTIVE_DISPLAY_PAGE
+        AH = 0x1A
+        CF = Cleared for primary, set for secondary
+
+        Switches to either the primary or secondary display page. The secondary is cleared.
+
     GET_PARAM
         AH = 0x20
         CX = Item index (0 = first item)
