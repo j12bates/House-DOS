@@ -26,6 +26,10 @@ main:
     mov ax, 0x4300                      ; Set default output device to NUL
     int 0x7E
 
+    mov ah, 0x1A                        ; Switch display page
+    stc                                 ; Switch to secondary
+    int 0x7E
+
     mov ah, 0x0F                        ; Modify interface config
     mov al, 0b00000011                  ; Turn off error messages and commentary
     int 0x7E
@@ -52,6 +56,8 @@ main:
     jmp .load                           ; Proceed
 
 .get_file_name:
+    mov byte [fnamegiven], 0xFF         ; Sets to true
+
     mov ah, 0x01                        ; Print line
     mov si, prompt_filename             ; Message to ask for file name
     int 0x7E
@@ -212,6 +218,18 @@ main:
     cmp ah, 0x53                        ; Delete key
     je .delete
 
+    cmp ah, 0x77                        ; Control + home
+    je .ctrl_home
+
+    cmp ah, 0x75                        ; Control + end
+    je .ctrl_end
+
+    cmp ah, 0x47                        ; Home key
+    je .home
+
+    cmp ah, 0x4F                        ; End key
+    je .end
+
     cmp ah, 0x4B                        ; Left arrow
     je .left_arrow
 
@@ -293,6 +311,48 @@ main:
     int 0x7E
 
     jmp .load                           ; Print edited version
+
+.ctrl_home:                             ; Go to beginning of file
+    mov ax, 0x4140                      ; Move buffer pointer to beginning
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
+
+.ctrl_end:                              ; Go to end of file
+    mov ax, 0x4141                      ; Move pointer to end of file
+    int 0x7E
+
+    mov ax, 0x4120                      ; Decrement buffer pointer
+    std                                 ; Set DF to decrement
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
+
+.home:                                  ; Go to beginning of line
+    mov ax, 0x4114                      ; Get line and column of pointer
+    int 0x7E
+
+    mov cx, dx                          ; Move column number into cx
+
+    neg cx                              ; Go backward however many characters our column number is
+    mov ax, 0x4121                      ; Advance pointer
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
+
+.end:                                   ; Go to end of line
+    mov ax, 0x4114                      ; Get line and column of pointer
+    int 0x7E
+
+    mov ax, 0x5910                      ; Get line info (line number is in cx)
+    int 0x7E
+
+    sub cx, dx                          ; Subtract our column number from length of line to get how many bytes to advance
+    dec cx                              ; Avoid an O.B.O.E.
+    mov ax, 0x4121                      ; Advance pointer
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
 
 .left_arrow:
     mov ax, 0x4120                      ; Advance pointer
@@ -427,7 +487,7 @@ main:
     mov dx, 0x1800                      ; Bottom left
     int 0x7E
 
-    cmp word [fname], 0x0000            ; Is there no file name yet (not specified w/ parameter)?
+    cmp byte [fname], 0x00              ; Is there no file name yet (not specified w/ parameter)?
     je .get_file_name                   ; If so, get a file name through user input
 
 .actually_save:
@@ -442,6 +502,17 @@ main:
     mov ah, 0xFF                        ; End command
     int 0x7E
 
+.error:                                 ; If there is no valid filename provided
+    mov ah, 0x09                        ; Pause
+    int 0x7E
+
+    cmp byte [fnamegiven], 0xFF         ; Have we already asked for a filename?
+    jne .load                           ; If not, load file again
+
+    mov byte [fname], 0x00              ; If so, reset filename to 0
+    mov byte [fnamegiven], 0x00         ; Done working with a written filename
+
+    jmp .load                           ; Load file again
 
 draw_header:
     pusha                               ; Save register states
@@ -496,8 +567,9 @@ save_file:                              ; Save the file
     mov si, fname                       ; File name
     int 0x7E
 
-    jc main.done                        ; If failed, we're done
+    jc main.error                       ; If failed, go back to editing
 
+    mov byte [fnamegiven], 0x00         ; Clear whether we've asked for a file name
     mov ah, 0x0F                        ; Set interface config
     mov al, 0b00000011                  ; Error messages off, commentary off
     int 0x7E
@@ -512,6 +584,8 @@ headermsg       db "House-DOS Text Editor", 0x00
 
 fname           dq 0x0000000000000000
                 dd 0x00000000
+
+fnamegiven      db 0x00
 
 linecounter     dw 0x0000               ; Nearest 23 lines
 cline_length    dw 0x0000               ; Length of line in the clipboard

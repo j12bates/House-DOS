@@ -10,9 +10,9 @@
 ; DISK ROUTINES
 ; ========================================================================
 
-; VERIFY FILE: Verifies that a file with a given filename exists
-; IN: [filename] = 8.3 filename
-; OUT: CF = Set if no such file, [root_entry] = File's root entry
+; VERIFY FILE: Verifies that a file/directory with a given name exists
+; IN: [filename] = 8.3 filename (or 8-byte directory name with spaces for extension); [dir_id] = Loaded Directory ID
+; OUT: CF = Set if no such file; [root_entry] = File's root entry
 
 verify:                                         ; Verify that a file exists
     pusha                                       ; Save register states to stack
@@ -29,19 +29,30 @@ verify:                                         ; Verify that a file exists
     mov si, iface_disk_search
     call comment                                ; Comment message
 
-    mov ax, 0x3800
-    mov es, ax                                  ; Segment the root directory is loaded in
-    mov di, 0x0000                              ; Start looking at offset 0
+    push 0x3800
+    pop es                                      ; Segment our directories are loaded in
 
-    mov cx, word [root_entries]                 ; Number of entries to look through
+    mov cl, byte [dir_id]                       ; Each directory is of equal length
+    and cl, 0b00000001                          ; Max ID is 1
+    shl cx, 0xD                                 ; 0x2000 (8192 B) each
+    mov di, cx                                  ; This is the start of our directory
+
+    mov cx, 0x0100                              ; Number of entries to look through
 
 .check_entry:
-    cmp byte [es:di], 0x00                      ; Is this a null character?
+    cmp byte [es:di], 0x00                      ; Is this entry NULL?
     je .not_found                               ; If so, there are no more entries
 
-    test byte [es:di+0x0B], 0b00001000          ; Is this the volume label?
+    test byte [es:di+0x0B], 0b00001000          ; Is this entry the volume label?
     jnz .next_entry                             ; If so, skip
 
+    cmp byte [filename_extension], 0x20         ; Is the extension spaces?
+    jne .compare                                ; If not, proceed
+
+    test byte [es:di+0x0B], 0b00010000          ; Otherwise, is this entry a directory?
+    jz .next_entry                              ; If not, skip
+
+.compare:
     push cx                                     ; Otherwise, save the number of remaining entries
 
     mov cx, 0x000B                              ; Otherwise, compare the first 11 bytes
@@ -129,8 +140,8 @@ get_file_info:                                  ; Get an item (AL=offset) from a
     ret                                         ; Return to caller
 
 
-; LOAD FILE FROM CLUSTER NUMBER: Loads file starting from the cluster number given in memory into the file buffer
-; IN: [root_entry] = Root entry number of the file; [file_buffer_pointer] = Offset to load to; [dev] = Device ID
+; LOAD FILE: Loads file/directory from directory entry into the file buffer
+; IN: [root_entry] = Root entry number; [file_buffer_segment] = Segment to load to; [file_buffer_pointer] = Offset to load to; [dev] = Device ID
 ; OUT: [file_buffer_pointer] = Initial value + bytes copied; CF = Set on error
 
 load_file:                                      ; Load file starting at cluster into buffer
@@ -152,8 +163,7 @@ load_file:                                      ; Load file starting at cluster 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
     mul byte [sectors_cluster]                  ; Multiply to get sector number
-    add ax, word [root_start]                   ; Add start of root directory
-    add ax, 0x0020                              ; Root directory is 32 sectors
+    add ax, word [clusters_start]               ; Add the starting sector of clusters
     call conv_ls_chs                            ; Convert to CHS
 
     mov ax, 0x3C00
@@ -204,7 +214,7 @@ load_file:                                      ; Load file starting at cluster 
     mov ax, word [es:si]                        ; This is pointing to the FAT entry
 
     cmp ax, 0xFFF8                              ; Is this the end of the file?
-    jae .error_fat                              ; If so, error
+    jae .end_file                               ; If so, something strange is happening
 
     cmp ax, 0xFFF7                              ; Is there a bad sector?
     je .error_bsec                              ; If so, error
@@ -219,6 +229,13 @@ load_file:                                      ; Load file starting at cluster 
 
     jc .error_size                              ; If buffer overflow, error
     jmp .load_cluster                           ; Otherwise, load next cluster
+
+.end_file:
+    mov al, 0x0B                                ; Attribute byte
+    call get_file_info                          ; Get from directory entry
+
+    test al, 0b00010000                         ; Is this a directory?
+    jz .error_fat                               ; If not, error
 
 .done:
     call update_access_date                     ; Update access date
@@ -250,7 +267,7 @@ load_file:                                      ; Load file starting at cluster 
 
 
 ; WRITE FILE TO DISK: Writes contents of file buffer to a file on the disk and applies any filesystem changes
-; IN: [filename] = Valid filename (run conv_x3_83 to set this up), CX = File size
+; IN: [filename] = Valid filename (run conv_x3_83 to set this up); [dir_id] = Directory ID; CX = File size
 ; OUT: CF = Set on error
 
 write_file:                                     ; Write file buffer to disk as file
@@ -291,11 +308,15 @@ write_file:                                     ; Write file buffer to disk as f
     mov si, iface_disk_search
     call comment                                ; Comment message
 
-    mov ax, 0x3800
-    mov es, ax                                  ; The segment in which the root directory is loaded
+    push 0x3800
+    pop es                                      ; Segment our directories are loaded in
 
-    mov di, 0x0000                              ; Start looking at offset 0
-    mov cx, word [root_entries]                 ; Look through all the possible root entries
+    mov cl, byte [dir_id]                       ; Each directory is of equal length
+    and cl, 0b00000001                          ; Max ID is 1
+    shl cx, 0xD                                 ; 0x2000 (8192 B) each
+    mov di, cx                                  ; This is the start of our directory
+
+    mov cx, 0x0100                              ; Number of entries to look through
 
 .check_root_entry_unused:
     cmp byte [es:di], 0x00                      ; Is this entry unused?
@@ -363,8 +384,8 @@ write_file:                                     ; Write file buffer to disk as f
     jc .abort                                   ; If we can't, we're done
 
 .change_file_size:
-    mov ax, 0x3800
-    mov es, ax                                  ; The segment the root directory is loaded in
+    push 0x3800
+    pop es                                      ; The segment the directories are loaded in
 
     mov di, word [root_entry]                   ; The number of the root entry
     shl di, 0x5                                 ; There are 32 bytes in each entry
@@ -397,8 +418,7 @@ write_file:                                     ; Write file buffer to disk as f
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
     mul byte [sectors_cluster]                  ; Multiply to get sector number
-    add ax, word [root_start]                   ; Add start of root directory
-    add ax, 0x0020                              ; Root directory is 32 sectors
+    add ax, word [clusters_start]               ; Add the starting sector of clusters
     call conv_ls_chs                            ; Convert to CHS
 
     mov ax, 0x1000
@@ -499,6 +519,37 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done
 
 
+; LOAD DIRECTORY: Loads a directory from a directory entry into a directory space
+; IN: [root_entry] = Directory entry number of the file; CL = Destination directory ID
+; OUT: CF = Set on error
+
+load_dir:                                       ; Load directory to position in filesystem segment
+    pusha                                       ; Save register states to stack
+
+    push 0x3800
+    pop es                                      ; The segment our directories are loaded in
+
+    and cx, 0b00000001                          ; Max ID is 1
+    shl cx, 0xD                                 ; 0x2000 (8192 B) per directory
+    mov di, cx                                  ; This is the start of our directory
+
+    mov word [file_buffer_segment], es          ; We will be reading into our directories
+    mov word [file_buffer_pointer], di          ; At this index
+
+    mov cx, 0x2000                              ; One entire directory
+    mov al, 0x00                                ; Write NULL characters
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Overwrite with zeroes
+
+    call load_file                              ; Load this directory
+
+    mov word [file_buffer_segment], 0x1000      ; Reset file buffer segment
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
 ; APPLY FILESYSTEM CHANGES: Writes the current contents of the FAT and the root directory to the disk
 ; IN: None
 ; OUT: CF = Set on error
@@ -547,14 +598,15 @@ apply:                                          ; Apply filesystem changes to di
     mov si, iface_disk_wroot
     call comment                                ; Comment message
 
-    mov ax, 0x3800
-    mov es, ax                                  ; The segment in which the root directory is loaded
+    push 0x3800
+    pop es                                      ; The segment in which the root directory is loaded
+    mov bx, 0x0000                              ; Start at offset 0
 
     mov ax, word [root_start]                   ; Start of the root directory
     call conv_ls_chs                            ; Convert to CHS Address
 
     mov ah, 0x03                                ; Write disk sectors
-    mov al, 0x20                                ; Root directory is 32 sectors
+    mov al, byte [sectors_root]                 ; Number of sectors in root directory
 
     call disk_op                                ; Perform disk operation
     jc .end                                     ; If error, we're done
@@ -610,7 +662,7 @@ rollback:                                       ; Rollback filesystem
     call conv_ls_chs                            ; Convert to CHS address
 
     mov ah, 0x02                                ; Read disk sectors
-    mov al, 0x20                                ; Root directory is 32 sectors
+    mov al, byte [sectors_root]                 ; Number of sectors in root directory
 
     call disk_op                                ; Perform disk operation
     jc .end                                     ; If error, we're done
@@ -1168,8 +1220,13 @@ conv_83_x3:                                     ; Convert the 8.3 filename to th
     loop .name_char                             ; Repeat
 
 .ext:
-    mov al, 0x2E                                ; Dot character
-    stosb                                       ; Write to output buffer
+    mov al, 0x2F                                ; Forward-slash
+    stosb                                       ; Write by default for a directory
+
+    cmp byte [si], 0x20                         ; Does the extension start with a space?
+    je .done                                    ; If so, we're done
+
+    mov byte [es:di-0x01], 0x2E                 ; Otherwise, write a dot character instead
 
     mov cx, 0x0003                              ; 3 bytes in the extension
     rep movsb                                   ; Write to the output buffer
@@ -1191,14 +1248,22 @@ get_file_cluster:                               ; Get the starting cluster for a
     pusha                                       ; Save register states to stack
 
     mov al, 0x1A                                ; Read the starting cluster
-    call get_file_info                          ; Get from the root directory
+    call get_file_info                          ; Get from the directory entry
 
     mov word [cluster], ax                      ; Store as cluster number
 
     mov al, 0x1C                                ; Read the file size
-    call get_file_info                          ; Get from the root directory
+    call get_file_info                          ; Get from the directory entry
 
     mov word [bytes_remaining], ax              ; Store as the number of bytes to copy
+
+    mov al, 0x0B                                ; Read the attribute byte
+    call get_file_info                          ; Get from the directory entry
+
+    test al, 0b00010000                         ; Is this a directory?
+    jz .done                                    ; If not, we're done!
+
+    mov word [bytes_remaining], 0x2000          ; Otherwise, load this many bytes
 
 .done:
     popa                                        ; Restore register states
@@ -1343,6 +1408,8 @@ update_access_date:                             ; Update a file's access date fi
 verify_error_nf:                                ; Verifies file, produces error if not found
     pusha                                       ; Save register states to stack
 
+    mov byte [dir_id], 0x00                     ; Read from active directory
+
     call verify                                 ; Verify file
     jc .error_nf                                ; If failed, error
 
@@ -1455,12 +1522,13 @@ prompt_rollback:                                ; Prompt the user to authenticat
 
 disk_data:
 
-filename            db "        "
+filename            db "BIN     "               ; Set up for /BIN directory at initialization
 filename_extension  db "   "
 device_extension    db "DEV"
 
 drive_num           db 0x00
 cluster             dw 0x0000
+dir_id              db 0x00
 root_entry          dw 0x0000
 file_buffer_pointer dw 0x0000
 file_buffer_segment dw 0x1000
@@ -1476,7 +1544,9 @@ root_entries        dw 0x0000
 sectors_fat         dw 0x0000
 sectors_track       dw 0x0000
 heads               dw 0x0000
-root_start          dw 0x0000
+root_start          dw 0x0000                   ; Starting sector of the root directory
+sectors_root        db 0x00                     ; Number of sectors in the root directory
+clusters_start      dw 0x0000                   ; Starting sector of cluster data
 
 renames             dw 0x0000
 deletions           dw 0x0000

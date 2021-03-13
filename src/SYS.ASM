@@ -95,6 +95,8 @@ main:                                           ; Main code for House-DOS kernel
     cmp byte [redir_enabled], 0x00              ; Is output redirection enabled?
     je .default                                 ; If not, use default procedure
 
+    mov byte [dir_id], 0x00                     ; Active directory
+
     mov si, redir_fname                         ; Our redirection filename buffer
     mov di, filename                            ; Our normal filename buffer
     mov cx, 0x000B                              ; 11 bytes in total
@@ -344,6 +346,7 @@ command:                                        ; Main loop: Retrieve command fr
     call conv_x3_83                             ; Convert to usable format
     jc .bad_command                             ; If error, bad command
 
+    mov byte [dir_id], 0x00                     ; Active directory
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
 
@@ -426,17 +429,17 @@ command:                                        ; Main loop: Retrieve command fr
     sub ax, input_buffer                        ; Subtract the starting index of the command input buffer
     mov word [pipe_offset], ax                  ; This is our offset to look from next
 
-    jmp .load_file                              ; We are done with this part of the command
+    jmp .load_bin                               ; We are done with this part of the command
 
 .end_command:
     mov word [pipe_offset], 0x0000              ; Clear out our offset
-    jmp .load_file                              ; Proceed to load the file
 
-.load_file:
+.load_bin:
     mov si, program_fname                       ; Our program filename
     call conv_x3_83                             ; Convert to usable format
     jc .bad_command                             ; If error, bad command
 
+    mov byte [dir_id], 0x01                     ; Secondary directory
     call verify                                 ; Verify the file exists
     jc .bad_command                             ; If error, bad command
 
@@ -881,16 +884,40 @@ init:                                           ; Initialization code
     mov al, byte [es:0x0024]
     mov byte [drive_num], al                    ; Save our boot drive number
 
+.fs_disk_a:
     mov al, byte [sectors_cluster]              ; Our sectors per cluster
     mov ah, 0x00                                ; Upper byte of factor is zero
     mul word [bytes_sector]                     ; Multiply by bytes per sector to get the bytes per cluster
-    mov word [bytes_cluster], ax                ; Save the number of bytes per sector
+    mov word [bytes_cluster], ax                ; Save in memory
 
+    mov ax, word [root_entries]                 ; Our number of root entries
+    shl ax, 0x5                                 ; 32 bytes per entry
+    mov dx, 0x0000                              ; Upper word of dividend is zero
+    div word [bytes_sector]                     ; Divide by bytes per sector to get the sectors in the root directory
+
+    cmp dx, 0x0000                              ; Do we have a remainder?
+    je .fs_disk_b                               ; If not, proceed
+    inc al                                      ; Otherwise, one more sector
+
+.fs_disk_b:
+    mov byte [sectors_root], al                 ; Save number of sectors in the root directory
+
+    add ax, word [root_start]                   ; Add the starting sector of the root directory
+    mov word [clusters_start], ax               ; Save as the start of clusters
+
+.fs:
+    call verify                                 ; Verify /BIN directory
+    jc reboot_fatal                             ; If not found, fatal error
+
+    mov cl, 0x01                                ; Secondary directory
+    call load_dir                               ; Load directory
+    jc reboot_fatal                             ; If not found, fatal error
+
+.ivt:
     pop bx                                      ; Take this out of the stack for now
     mov sp, 0x4000                              ; 16K stack
     push bx                                     ; Push this back
 
-.ivt:
     mov ax, 0x0000
     mov es, ax                                  ; The IVT is in this segment
 
@@ -1887,6 +1914,7 @@ out_routines:                                   ; Output functions
 
 ._write:
     mov cx, word [gs:buffer_endpoint]           ; Write to the end of the buffer
+    mov byte [dir_id], 0x00                     ; Write to active directory
     call write_file                             ; Write file to disk
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -2620,7 +2648,10 @@ disk_routines:                                  ; Disk functions
 
 .write_line:
     call data_binseg                            ; We want to access data from the command
+
+    mov byte [dir_id], 0x00                     ; Write to active directory
     call write_line                             ; Write line
+
     jmp int_ret                                 ; We're done!
 
 .insert_bytes_qty:
@@ -2931,7 +2962,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x3400 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
+times 0x3600 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -2940,16 +2971,16 @@ times 0x3400 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (t
 
 buffers:
 
-input_buffer:                                   ; 0x00023400
+input_buffer:                                   ; 0x00023600
 times 0x0040        db 0x00
 
-misc_buffer:                                    ; 0x00023440
+misc_buffer:                                    ; 0x00023640
 times 0x0040        db 0x00
 
-params:                                         ; 0x00023480
+params:                                         ; 0x00023680
 times 0x0080        db 0x00
 
-param_flags:                                    ; 0x00023500
+param_flags:                                    ; 0x00023700
 times 0x0024        db 0x00                     ; One for each letter/number
 
 end_buffers:
@@ -2995,7 +3026,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.2 NATE, Build 57; Compiled 2021-03-03 (Happy birthday, Ben)", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 58; Compiled 2021-03-13", 0x00
 info_creator        db "By Jacob Bates and Ben Johnson", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
