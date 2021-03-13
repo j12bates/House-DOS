@@ -46,7 +46,8 @@ cp bin/SYS.BIN tmp/
 fatattr +s tmp/SYS.BIN
 
 echo "Copying commands & programs..."
-cp bin/usr/*.BIN tmp/
+mkdir tmp/BIN/
+cp bin/usr/*.BIN tmp/BIN/
 
 echo "Unmounting image..."
 umount tmp

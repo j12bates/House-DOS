@@ -19,7 +19,7 @@ bytes_sector        dw 0x0200           ; Number of bytes per sector (DO NOT CHA
 sectors_cluster     db 0x04             ; Number of sectors per cluster
 reserved            dw 0x0001           ; Number of sectors reserved for bootsector
 fats                db 0x02             ; Number of FAT copies
-root_entries        dw 0x0200           ; Max number of root entries (DO NOT CHANGE)
+root_entries        dw 0x0100           ; Max number of root entries (For now, DO NOT CHANGE)
 sectors             dw 0x0000           ; Number of sectors in volume (small)
 media_type          db 0xF8             ; Media descriptor
 sectors_fat         dw 0x0040           ; Number of sectors per FAT
@@ -89,7 +89,7 @@ main:
     call calc_root_start                ; First sector of root directory
     call calc_chs_ls                    ; Convert to CHS address
     mov ah, 0x02                        ; Read disk sectors
-    mov al, 0x20                        ; Root directory is 32 sectors (512/512 = 1)
+    mov al, 0x10                        ; Root directory is 16 sectors (512/512 = 1)
 
     int 0x13                            ; BIOS disk interrupt
     jnc .search_init                    ; If no error, begin searching
@@ -97,7 +97,7 @@ main:
     call reset_disk                     ; Otherwise, reset the disk
 
     mov ah, 0x02                        ; Read disk sectors
-    mov al, 0x20                        ; Root directory is 32 sectors (512/512 = 1)
+    mov al, 0x10                        ; Root directory is 16 sectors (512/512 = 1)
     int 0x13                            ; BIOS disk interrupt
     jc reboot                           ; If error, reboot
 
@@ -147,7 +147,7 @@ main:
     mov dx, ax                          ; Save in DX
 
     call calc_root_start                ; Start of root directory
-    add ax, 0x0020                      ; Root directory is 32 sectors
+    add ax, 0x0010                      ; Root directory is 16 sectors
     add ax, dx                          ; Add to the number of sectors
 
     call calc_chs_ls                    ; Convert this Logical sector to CHS
@@ -211,7 +211,7 @@ calc_root_start:                        ; Calculate the first sector of the root
     mov dl, byte [fats]
     mul dx                              ; Multiply by the number of FATs
     add ax, word [reserved]             ; Add the number of reserved sectors
-    
+
     pop dx                              ; Restore register states
     ret                                 ; Return to caller
 
@@ -226,7 +226,7 @@ calc_chs_ls:                            ; Setup Cylinder-Head-Sector from LBA (A
     div word [heads]
     mov dh, dl                          ; The remainder is the head number
     mov ch, al                          ; The quotient is the cylinder number
-    
+
     mov dl, byte [drive_num]            ; Drive number
     ret                                 ; Return to caller
 
