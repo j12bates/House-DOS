@@ -357,6 +357,10 @@ fs_errors:                                      ; Filesystem error strings
     push error_fs_dirfull                       ; No available root entries
     jmp error_print
 
+.invalid_cluster:
+    push error_fs_icluster                      ; Invalid cluster number
+    jmp error_print
+
 .real:
     push error_fs_real                          ; Not a real file
     jmp error_print
@@ -462,6 +466,7 @@ error_fs_bcluster   db "Cluster marked as bad", 0x00
 error_fs_fat        db "Inconsistent FAT", 0x00
 error_fs_full       db "Disk is full", 0x00
 error_fs_dirfull    db "No directory entries available", 0x00
+error_fs_icluster   db "Invalid cluster number", 0x00
 error_fs_real       db "Not a real file", 0x00
 error_fs_nf         db "File not found", 0x00
 

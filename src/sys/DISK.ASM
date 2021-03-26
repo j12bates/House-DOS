@@ -32,7 +32,7 @@ verify:                                         ; Verify that a file exists
     push 0x3800
     pop es                                      ; Segment our directories are loaded in
 
-    mov cl, byte [dir_id]                       ; Each directory is of equal length
+    mov cl, byte [gs:dir_id]                    ; Each directory is of equal length
     and cl, 0b00000001                          ; Max ID is 1
     shl cx, 0xD                                 ; 0x2000 (8192 B) each
     mov di, cx                                  ; This is the start of our directory
@@ -75,7 +75,7 @@ verify:                                         ; Verify that a file exists
 
 .found_entry:
     shr di, 0x5                                 ; Divide by 32 to get the root entry number
-    mov word [root_entry], di                   ; Save this in our spot in memory
+    mov word [gs:root_entry], di                ; Save this in our spot in memory
 
     mov si, iface_disk_found
     call comment_line                           ; Comment message
@@ -160,10 +160,14 @@ load_file:                                      ; Load file starting at cluster 
     mov si, iface_disk_cluster
     call comment                                ; Comment message
 
-    mov ax, word [cluster]                      ; Our cluster number
+    mov ax, word [gs:cluster]                   ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
-    mul byte [sectors_cluster]                  ; Multiply to get sector number
-    add ax, word [clusters_start]               ; Add the starting sector of clusters
+
+    mov bl, byte [gs:sectors_cluster]           ; Sectors per cluster
+    mov bh, 0x00                                ; Upper byte of multiplicand is zero
+
+    mul bx                                      ; Multiply to get sector number
+    add ax, word [gs:clusters_start]            ; Add the starting sector of clusters
     call conv_ls_chs                            ; Convert to CHS
 
     mov ax, 0x3C00
@@ -171,22 +175,22 @@ load_file:                                      ; Load file starting at cluster 
     mov bx, 0x0000                              ; At this offset
 
     mov ah, 0x02                                ; Read disk sectors
-    mov al, byte [sectors_cluster]              ; 1 cluster
+    mov al, byte [gs:sectors_cluster]           ; 1 cluster
 
     call disk_op                                ; Perform disk operation
     jc .end                                     ; If error, we're done
 
 .bytes:
-    mov cx, word [bytes_remaining]              ; The number of bytes left in the file to copy over
-    cmp cx, word [bytes_cluster]                ; Is this at least one full cluster?
+    mov cx, word [gs:bytes_remaining]           ; The number of bytes left in the file to copy over
+    cmp cx, word [gs:bytes_cluster]             ; Is this at least one full cluster?
     jb .copy                                    ; If not, proceed
 
-    mov cx, word [bytes_cluster]                ; If it is, only copy the one cluster we just read from
+    mov cx, word [gs:bytes_cluster]             ; If it is, only copy the one cluster we just read from
 
 .copy:
-    mov ax, word [file_buffer_segment]          ; The segment of our file buffer
+    mov ax, word [gs:file_buffer_segment]       ; The segment of our file buffer
     mov es, ax                                  ; Load file here
-    mov di, word [file_buffer_pointer]          ; At our pointer
+    mov di, word [gs:file_buffer_pointer]       ; At our pointer
 
     mov ax, 0x3C00
     mov ds, ax                                  ; The segment where we just loaded the cluster
@@ -200,34 +204,20 @@ load_file:                                      ; Load file starting at cluster 
     pop cx                                      ; Restore our counter
     call data_kernseg                           ; We need to access kernel variables
 
-    mov word [file_buffer_pointer], di          ; Update our buffer pointer
-    sub word [bytes_remaining], cx              ; Update the number of bytes to copy
-    jz .done                                    ; If no more bytes, we're done
+    mov word [gs:file_buffer_pointer], di       ; Update our buffer pointer
+    sub word [gs:bytes_remaining], cx           ; Update the number of bytes to copy
+    jnz .next_cluster                           ; If there's more, proceed
+
+    call interpret_fat                          ; Retrieve and interpret the next entry from the FAT
+    jnz .error_fat                              ; If not an EOF marker, error
+
+    jmp .done                                   ; Otherwise, we're done!
 
 .next_cluster:
-    mov si, word [cluster]                      ; Our cluster number
-    shl si, 0x1                                 ; There are two bytes per entry in FAT16
+    call interpret_fat                          ; Get the next entry from the FAT
+    jz .end_file                                ; If end of file, check if this is fine
+    jc .abort                                   ; If other error, abort operation
 
-    mov ax, 0x3000
-    mov es, ax                                  ; Segment where the FAT is loaded
-
-    mov ax, word [es:si]                        ; This is pointing to the FAT entry
-
-    cmp ax, 0xFFF8                              ; Is this the end of the file?
-    jae .end_file                               ; If so, something strange is happening
-
-    cmp ax, 0xFFF7                              ; Is there a bad sector?
-    je .error_bsec                              ; If so, error
-
-    cmp ax, 0x0002                              ; Is this an invalid cluster number?
-    jbe .error_fat                              ; If so, error
-
-    cmp ax, word [cluster]                      ; Is this the cluster we just loaded?
-    je .error_fat                               ; If so, error
-
-    mov word [cluster], ax                      ; If no error, that entry is our next cluster
-
-    jc .error_size                              ; If buffer overflow, error
     jmp .load_cluster                           ; Otherwise, load next cluster
 
 .end_file:
@@ -238,7 +228,7 @@ load_file:                                      ; Load file starting at cluster 
     jz .error_fat                               ; If not, error
 
 .done:
-    call update_access_date                     ; Update access date
+    call update_access_date                     ; Otherwise, update access date
 
     call done_el                                ; We've finished! Worthy of a break
     clc                                         ; No error
@@ -257,12 +247,12 @@ load_file:                                      ; Load file starting at cluster 
     mov ax, 0x0305                              ; Inconsistent FAT
     call error                                  ; Handle this error
 
-    jmp .end                                    ; We're done
+    jmp .done                                   ; We're done
 
-.error_bsec:
-    mov ax, 0x0304                              ; Cluster marked bad
-    call error                                  ; Handle this error
+.abort:
+    call abort                                  ; Display abort message
 
+    stc                                         ; Carry-flag for error
     jmp .end                                    ; We're done
 
 
@@ -304,6 +294,8 @@ write_file:                                     ; Write file buffer to disk as f
 .create_new:
     call next_available_cluster                 ; Get the next available cluster
     jc .abort                                   ; If error, we're done
+
+    mov word [cluster], dx                      ; This is the first cluster to write to
 
     mov si, iface_disk_search
     call comment                                ; Comment message
@@ -417,7 +409,11 @@ write_file:                                     ; Write file buffer to disk as f
 
     mov ax, word [cluster]                      ; Our cluster number
     sub ax, 0x0002                              ; Clusters begin at 2
-    mul byte [sectors_cluster]                  ; Multiply to get sector number
+
+    mov bl, byte [sectors_cluster]              ; Sectors per cluster
+    mov bh, 0x00                                ; Upper byte of multiplicand is zero
+
+    mul bx                                      ; Multiply to get sector number
     add ax, word [clusters_start]               ; Add the starting sector of clusters
     call conv_ls_chs                            ; Convert to CHS
 
@@ -432,55 +428,70 @@ write_file:                                     ; Write file buffer to disk as f
     jc .end                                     ; If error, we're done
 
 .next_cluster:
-    mov ax, word [bytes_sector]
-    mul word [sectors_cluster]
+    mov ax, word [bytes_sector]                 ; Bytes per Sector
+    mov bl, byte [sectors_cluster]              ; Sectors per cluster
+    mov bh, 0x00                                ; Upper byte of multiplicand is zero
+    mul bx                                      ; Bytes per cluster
     add word [file_buffer_pointer], ax          ; Advance pointer by one cluster
-
-    mov ax, 0x3000
-    mov es, ax                                  ; The segment in which the FAT is loaded
-
-    mov di, word [cluster]                      ; The cluster we just wrote to
-    shl di, 0x1                                 ; There are 2 bytes per entry in FAT16
-    mov bx, word [es:di]                        ; The FAT entry for this cluster
 
     mov cx, word [fsize]                        ; Retrieve our file size
     cmp word [file_buffer_pointer], cx          ; Have we finished writing the entire file?
     jae .end_file                               ; If so, we need to do a few things
 
-    cmp bx, 0x0000                              ; Was this cluster previously free?
-    je .change_fat_entry                        ; If so, we need to set it to the next available cluster
+    clc                                         ; Retrieve entry
+    call fat_entry                              ; Get entry from FAT
+    jc .done                                    ; If error, we're done
 
-    cmp bx, 0xFFF7                              ; Was this cluster previously EOF or bad sector?
-    jae .change_fat_entry                       ; If so, we need to set it to the next available cluster
+    cmp dx, 0x0002                              ; Is this entry free or invalid?
+    jbe .change_fat_entry                       ; If so, next available cluster
 
-    mov word [cluster], bx                      ; Otherwise, it is our next cluster to write to
+    cmp dx, 0xFFF8                              ; Is this an EOF marker?
+    jae .change_fat_entry                       ; if so, next available cluster
 
-    jmp .write_cluster                          ; Load next cluster
+    mov word [cluster], dx                      ; Otherwise, this is the next cluster
+    jmp .write_cluster                          ; Write next cluster
 
 .change_fat_entry:
     call next_available_cluster                 ; Get the next cluster available
     jc .abort                                   ; If error, we're done
 
-    mov bx, word [cluster]
-    mov word [es:di], bx                        ; Move this cluster number into our FAT entry
+    stc                                         ; Otherwise, write entry
+    call fat_entry                              ; Overwrite entry in FAT
+    jc .done                                    ; If error, we're done
 
     jmp .write_cluster                          ; We are ready to write the next cluster
 
 .end_file:
     call done                                   ; Done message
 
-    mov word [es:di], 0xFFFF                    ; Place an end-of-file marker into this entry
-    mov di, bx                                  ; Move the previous value into DI
+    clc                                         ; Retrieve entry
+    call fat_entry                              ; Get entry from FAT
+    jc .done                                    ; If error, we're done
+    push dx                                     ; Otherwise, preserve entry
+
+    mov dx, 0xFFFF                              ; EOF marker
+    stc                                         ; Write entry
+    call fat_entry                              ; Overwrite entry in FAT
 
 .free_entry:
-    cmp di, 0x0000                              ; Was this cluster previously free?
-    je .apply                                   ; If so, we're done changing the FAT
+    pop dx                                      ; Restore entry
+    jc .done                                    ; If error, we're done
 
-    shl di, 0x1                                 ; Otherwise, it is a new cluster number
-    mov bx, word [es:di]                        ; The FAT entry for that new cluster
+    cmp dx, 0x0002                              ; Was this cluster previously free or invalid?
+    jbe .apply                                  ; If so, we're done changing the FAT
 
-    mov word [es:di], 0x0000                    ; Mark that new cluster as free
-    mov di, bx                                  ; Work with the previous value next
+    cmp dx, 0xFFF7                              ; Was this a bad sector or an EOF?
+    jae .apply                                  ; If so, we're also done changing the FAT
+
+    mov word [cluster], dx                      ; Otherwise, it is a new cluster number
+    clc                                         ; Retrieve entry
+    call fat_entry                              ; Get entry from FAT
+    jc .done                                    ; If error, we're done
+    push dx                                     ; Otherwise, preserve entry
+
+    mov dx, 0x0000                              ; Free
+    stc                                         ; Overwrite entry
+    call fat_entry                              ; Mark this cluster as free
 
     jmp .free_entry                             ; Repeat
 
@@ -533,8 +544,8 @@ load_dir:                                       ; Load directory to position in 
     shl cx, 0xD                                 ; 0x2000 (8192 B) per directory
     mov di, cx                                  ; This is the start of our directory
 
-    mov word [file_buffer_segment], es          ; We will be reading into our directories
-    mov word [file_buffer_pointer], di          ; At this index
+    mov word [gs:file_buffer_segment], es       ; We will be reading into our directories
+    mov word [gs:file_buffer_pointer], di       ; At this index
 
     mov cx, 0x2000                              ; One entire directory
     mov al, 0x00                                ; Write NULL characters
@@ -544,7 +555,7 @@ load_dir:                                       ; Load directory to position in 
 
     call load_file                              ; Load this directory
 
-    mov word [file_buffer_segment], 0x1000      ; Reset file buffer segment
+    mov word [gs:file_buffer_segment], 0x1000   ; Reset file buffer segment
 
     popa                                        ; Restore register states
     ret                                         ; Return to caller
@@ -565,32 +576,10 @@ apply:                                          ; Apply filesystem changes to di
     mov si, iface_disk_wfats
     call comment                                ; Comment message
 
-    mov cx, word [fats]                         ; Number of FATs to write to
-
 .write_fat:
-    push cx                                     ; Save our counter
-
-    mov ax, 0x3000
-    mov es, ax                                  ; Write from this segment
-    mov bx, 0x0000                              ; Starting at offset 0
-
-    mov ax, word [sectors_fat]                  ; Sectors per FAT
-    mul cx                                      ; Number of sectors between this FAT and root directory
-    mov cx, ax                                  ; Store this number in here for now
-
-    mov ax, word [root_start]                   ; Start of the root directory
-    sub ax, cx                                  ; Subtract this number
-    call conv_ls_chs                            ; Convert to CHS Address
-
-    mov ax, word [sectors_fat]                  ; An entire FAT
-    mov ah, 0x03                                ; Write disk sectors
-
-    call disk_op                                ; Perform disk operation
+    std                                         ; Write
+    call load_write_fat                         ; Write FAT from memory
     jc .end                                     ; If error, we're done
-
-.next_fat:
-    pop cx                                      ; Restore our counter
-    loop .write_fat                             ; Repeat
 
 .write_root:
     call done                                   ; Done message
@@ -602,19 +591,19 @@ apply:                                          ; Apply filesystem changes to di
     pop es                                      ; The segment in which the root directory is loaded
     mov bx, 0x0000                              ; Start at offset 0
 
-    mov ax, word [root_start]                   ; Start of the root directory
+    mov ax, word [gs:root_start]                ; Start of the root directory
     call conv_ls_chs                            ; Convert to CHS Address
 
     mov ah, 0x03                                ; Write disk sectors
-    mov al, byte [sectors_root]                 ; Number of sectors in root directory
+    mov al, byte [gs:sectors_root]              ; Number of sectors in root directory
 
     call disk_op                                ; Perform disk operation
     jc .end                                     ; If error, we're done
 
 .done:
-    mov word [renames], 0x0000                  ; Reset the renames counter
-    mov word [deletions], 0x0000                ; Reset the deletions counter
-    mov word [vis_changes], 0x0000              ; Reset the visibility changes counter
+    mov word [gs:renames], 0x0000               ; Reset the renames counter
+    mov word [gs:deletions], 0x0000             ; Reset the deletions counter
+    mov word [gs:vis_changes], 0x0000           ; Reset the visibility changes counter
 
     call done_el                                ; Done message, newline
 
@@ -641,36 +630,27 @@ rollback:                                       ; Rollback filesystem
     call comment_line                           ; Comment message
 
 .load_fat:
-    mov ax, 0x3000
-    mov es, ax                                  ; Load FAT into this segment
-    mov bx, 0x0000                              ; Starting at offset 0
-
-    mov ax, word [reserved]                     ; First sector of FAT 1
-    call conv_ls_chs                            ; Convert to CHS address
-
-    mov ah, 0x02                                ; Read disk sectors
-    mov al, byte [sectors_fat]                  ; Read the entire FAT
-
-    call disk_op                                ; Perform disk operation
+    cld                                         ; Load
+    call load_write_fat                         ; Load FAT into memory
     jc .end                                     ; If error, we're done
 
 .load_root:
     mov ax, 0x3800
     mov es, ax                                  ; Load root directory into this segment
 
-    mov ax, word [root_start]                   ; First sector of root directory
+    mov ax, word [gs:root_start]                ; First sector of root directory
     call conv_ls_chs                            ; Convert to CHS address
 
     mov ah, 0x02                                ; Read disk sectors
-    mov al, byte [sectors_root]                 ; Number of sectors in root directory
+    mov al, byte [gs:sectors_root]              ; Number of sectors in root directory
 
     call disk_op                                ; Perform disk operation
     jc .end                                     ; If error, we're done
 
 .done:
-    mov word [renames], 0x0000                  ; Reset the renames counter
-    mov word [deletions], 0x0000                ; Reset the deletions counter
-    mov word [vis_changes], 0x0000              ; Reset the visibility changes counter
+    mov word [gs:renames], 0x0000               ; Reset the renames counter
+    mov word [gs:deletions], 0x0000             ; Reset the deletions counter
+    mov word [gs:vis_changes], 0x0000           ; Reset the visibility changes counter
 
     mov si, iface_disk_rdback
     call msg_info                               ; Info message
@@ -958,6 +938,228 @@ disk_op:                                        ; Perform a disk operation using
     ret                                         ; Return to caller
 
 
+; RETRIEVE/WRITE FAT ENTRY: Reads/writes the entry in the FAT
+; IN: [cluster] = Current cluster; DX = New value (if write); CF = Set to write, cleared to read
+; OUT: DX = Value of entry (if read); CF = Set on error
+
+fat_entry:                                      ; Read/write a specific entry in the FAT, realigning if needed
+    pusha                                       ; Save register states to stack
+    pushf                                       ; Preserve flags
+
+.check_entry:
+    mov si, word [gs:cluster]                   ; The cluster number
+
+    cmp si, 0x0002                              ; Is it below the minimum?
+    jb .invalid                                 ; If so, error
+
+    cmp si, word [gs:cluster_max]               ; Is it above the maximum?
+    ja .invalid                                 ; If so, error
+
+    mov al, byte [gs:fat_start]                 ; Starting 8K chunk
+    shl ax, 0xC                                 ; 0x2000 each, but there are two bytes per entry
+    sub si, ax                                  ; Subtract this offset
+
+    cmp si, 0x2000                              ; Are we accessing an entry that isn't loaded?
+    jb .ins                                     ; If not, proceed
+
+    clc                                         ; Otherwise, auto-align
+    call align_fat                              ; Perform an alignment
+    jc .abort                                   ; If error, abort
+    jmp .check_entry                            ; And repeat
+
+.ins:
+    push 0x3000                                 ; The segment where the FAT is loaded
+    pop es                                      ; Work from here
+
+    shl si, 0x1                                 ; Two bytes per entry
+
+    popf                                        ; Restore flags
+    jnc .done                                   ; If CF cleared, proceed to the end
+
+    mov word [es:si], dx                        ; Otherwise, overwrite this entry
+    clc                                         ; No error
+
+.done:
+    mov dx, word [es:si]                        ; Read the corresponding entry in the FAT (or what we just wrote)
+    mov word [register_bckp_a], dx              ; Preserve entry
+
+    popa                                        ; Restore register states
+    mov dx, word [register_bckp_a]              ; Restore entry
+
+    ret                                         ; Return to caller
+
+.invalid:
+    mov ax, 0x0308                              ; Invalid cluster number
+    call error                                  ; Handle this error
+
+    jmp .done                                   ; We're done
+
+.abort:
+    popf                                        ; Restore for balance
+
+    call abort                                  ; Aborting message
+    stc                                         ; Carry-flag for error
+
+    jmp .done                                   ; We're done
+
+
+; INTERPRET FAT ENTRY: Retrieves the next entry from the FAT and sets flags accordingly
+; IN: [cluster] = Current cluster
+; OUT: [cluster] = Next cluster; ZF = Set for EOF; CF = Set on error
+
+interpret_fat:                                  ; Interpret entry from FAT
+    pusha                                       ; Save register states to stack
+
+    clc                                         ; Retrieve entry
+    call fat_entry                              ; Get next entry from FAT
+    jc .done                                    ; If error, we're done
+
+.handle:
+    cmp dx, 0xFFF8                              ; Is this the end of the file?
+    jae .end_file                               ; If so, return appropriately
+
+    cmp dx, 0xFFF7                              ; Is this marked as bad?
+    je .error_bsec                              ; If so, error
+
+    cmp dx, 0x0002                              ; Is this an invalid cluster number?
+    jbe .error_fat                              ; If so, error
+
+    cmp dx, word [gs:cluster]                   ; Is this the cluster we just loaded?
+    je .error_fat                               ; If so, error
+
+    mov word [gs:cluster], dx                   ; Otherwise, this is the next cluster
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.end_file:
+    xor ax, ax                                  ; Set zero-flag
+    jmp .done                                   ; We're done
+
+.error_fat:
+    mov ax, 0x0305                              ; Inconsistent FAT
+    call error                                  ; Handle this error
+
+    jmp .done                                   ; We're done
+
+.error_bsec:
+    mov ax, 0x0304                              ; Cluster marked bad
+    call error                                  ; Handle this error
+
+    jmp .done                                   ; We're done
+
+
+; LOAD/WRITE FAT CHUNK: Reloads/writes either chunk of FAT based on the parameters in memory
+; IN: DF = Cleared to load, set to write; [fat_start] = Starting 8K chunk
+; OUT: CF = Set on error
+
+load_write_fat:                                 ; Load a portion of the FAT into memory
+    pusha                                       ; Save register states to stack
+
+    push 0x3000
+    pop es                                      ; Load FAT into this segment
+    mov bx, 0x0000                              ; Starting at offset 0
+
+    mov ax, 0x4000                              ; Bytes allocated to the FAT
+    mov dx, 0x0000                              ; Upper word of dividend is zero
+    div word [gs:bytes_sector]                  ; Divide to get sectors to load
+    push ax                                     ; Preserve result
+
+    shr ax, 0x1                                 ; Divide to get 8K
+    mul byte [gs:fat_start]                     ; Multiply by our starting 8K chunk
+
+    add ax, word [gs:reserved]                  ; Add to first sector of disk FAT 1
+    call conv_ls_chs                            ; Convert to CHS address
+
+    pushf                                       ; Push flags
+    pop ax                                      ; Pop into AX
+
+    test ax, 0x0400                             ; Is DF set?
+
+    pop ax                                      ; Restore number of sectors
+    mov ah, 0x02                                ; Read disk sectors
+
+    jz .disk                                    ; If so, proceed
+    mov ah, 0x03                                ; Otherwise, write disk sectors
+
+.disk:
+    call disk_op                                ; Perform disk operation
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; ALIGN FAT: Apply filesystem changes and reload the FAT to enable access to a particular entry
+; IN: [cluster] = Entry to access (if auto); AL = Starting 8K chunk (if manual); CF = Set for manual, cleared for auto
+; OUT: [fat_start] = New starting chunk
+
+align_fat:                                      ; Reload the FAT to a certain position
+    pusha                                       ; Save register states to stack
+    pushf                                       ; Preserve flags
+
+.apply:
+    call check_changes                          ; Check for filesystem changes
+    jnc .mode                                   ; If no changes, proceed
+
+    call data_kernseg                           ; Use kernel string
+    mov si, iface_disk_applya
+    call println                                ; Print message
+
+    call prompt_apply                           ; Prompt the user to apply filesystem changes
+    jc .abort                                   ; If error, we're done
+
+.mode:
+    popf                                        ; Restore flags
+    jc .reload                                  ; If manual, proceed
+
+    mov ax, word [gs:cluster]                   ; Otherwise, our cluster number
+    shr ax, 0xC                                 ; 4096 entries can be stored in 8K of memory
+    mov byte [gs:fat_start], al                 ; This is our new starting 8K chunk
+
+.reload:
+    cld                                         ; Load
+    call load_write_fat                         ; Reload FAT into memory
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.abort:
+    add sp, 0x0002                              ; Balance the stack
+
+    stc                                         ; Carry-flag for error
+    jmp .done                                   ; We're done
+
+
+; CHECK FILESYSTEM CHANGES: Checks for any remaining filesystem changes
+; IN: [renames] = Number of renames; [deletions] = Number of deletions; [vis_changes] = Number of visibility changes
+; OUT: CF = Set if there are changes
+
+check_changes:
+    pusha                                       ; Save register states to stack
+
+    cmp word [gs:renames], 0x0000               ; Are there any renames?
+    ja .changes                                 ; If so, changes
+
+    cmp word [gs:deletions], 0x0000             ; Are there any deletions?
+    ja .changes                                 ; If so, changes
+
+    cmp word [gs:vis_changes], 0x0000           ; Are there any visibility changes?
+    ja .changes                                 ; If so, changes
+
+    clc                                         ; Otherwise, no changes
+
+.done:
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+.changes:
+    stc                                         ; Carry-flag for changes
+    jmp .done                                   ; We're done!
+
+
 ; RESET DISK: Resets the disk, and reboots if failed
 ; IN: None
 ; OUT: None
@@ -969,7 +1171,7 @@ reset_disk:                                     ; Reset the disk
     call comment                                ; Comment message
 
     mov ah, 0x00                                ; Reset disk
-    mov dl, byte [drive_num]
+    mov dl, byte [gs:drive_num]
 
     int 0x13                                    ; BIOS disk interrupt
     jc reboot_fatal                             ; If there was an error, reboot
@@ -1025,42 +1227,52 @@ check_fname_legal:                              ; Check a character for filename
 
 ; NEXT AVAILABLE CLUSTER: Searches the FAT for unused entries, grabs the first unused cluster number
 ; IN: [cluster] = Exception cluster
-; OUT: [cluster] = Cluster number; CF = Set on error
+; OUT: DX = Cluster number; CF = Set on error
 
 next_available_cluster:                         ; Get the next cluster available
     pusha                                       ; Push register states to stack
 
-    mov ax, 0x3000
-    mov es, ax                                  ; The segment in which the FAT is loaded
+    push 0x3000
+    pop es                                      ; The segment in which the FAT is loaded
 
-    mov di, 0x0002                              ; Start looking at entry 2
-    mov cx, 0x3FFE                              ; Look through all the FAT entries
+    mov di, 0x0000                              ; Reset pointer
+    mov cx, 0x2000                              ; Look through all the FAT entries that are loaded
+    cld                                         ; Ensure correct direction
 
-.check_entry:
-    shl di, 0x1                                 ; Entries are 2 bytes each
+.check_entries:
+    mov ax, 0x0000                              ; Marker for unused entry
 
-    cmp word [es:di], 0x0000                    ; Is this FAT entry unused?
-    je .done                                    ; If so, we've found it
+    repne scasw                                 ; Scan until we find one
+    je .done                                    ; If equal, we found one
 
-    shr di, 0x1                                 ; Otherwise, convert back to an entry number
-
-.next_entry:
-    add di, 0x0002                              ; Otherwise, move to the next two-byte entry
-    loop .check_entry                           ; And repeat
-
-    jmp .error_full                             ; If all clusters are full, error
+    jmp .error_full                             ; Otherwise, next FAT chunk
 
 .done:
-    shr di, 0x1                                 ; Convert back to an entry number
+    shr di, 0x1                                 ; Convert to a relative entry number
+    dec di                                      ; The pointer was moved forward
+    mov al, byte [gs:fat_start]                 ; Get starting 8K chunk of FAT
+    shl ax, 0xC                                 ; 0x2000 each, but 2 bytes per entry
+    add ax, di                                  ; Add relative entry number
+    inc di
+    shl di, 0x1                                 ; Restore index
 
-    cmp word [cluster], di                      ; Is this the exception cluster?
-    je .next_entry                              ; If so, skip
+    cmp word [gs:cluster], ax                   ; Is this the exception cluster?
+    je .check_entries                           ; If so, skip
 
-    mov word [cluster], di                      ; Otherwise, the number of this entry is our cluster number
-    clc                                         ; No error
+    cmp ax, 0x0002                              ; Is this an invalid cluster?
+    jb .check_entries                           ; If so, skip
+
+    cmp ax, word [gs:cluster_max]               ; Is this above the maximum cluster number?
+    ja .error_full                              ; If so, we're out of entries
+
+    clc                                         ; Otherwise, no error
 
 .end:
+    mov word [gs:register_bckp_a], ax           ; Preserve cluster number
+
     popa                                        ; Restore register states
+    mov dx, word [gs:register_bckp_a]           ; Restore cluster number into DX
+
     ret                                         ; Return to caller
 
 .error_full:
@@ -1434,14 +1646,8 @@ prompt_apply:                                   ; Prompt the user to authenticat
     call setup_segments                         ; Using kernel variables
 
 .check:
-    cmp word [renames], 0x0000                  ; Do we have any renames?
-    jne .numbers                                ; If so, proceed
-
-    cmp word [deletions], 0x0000                ; Do we have any deletions?
-    jne .numbers                                ; If so, proceed
-
-    cmp word [vis_changes], 0x0000              ; Do we have any visibility changes?
-    jne .numbers                                ; If so, proceed
+    call check_changes                          ; Check for filesystem changes
+    jc .numbers                                 ; If there are any, proceed
 
     mov si, iface_disk_nochange
     call comment_line                           ; Otherwise, we have no changes to apply
@@ -1526,14 +1732,18 @@ filename            db "BIN     "               ; Set up for /BIN directory at i
 filename_extension  db "   "
 device_extension    db "DEV"
 
-drive_num           db 0x00
-cluster             dw 0x0000
-dir_id              db 0x00
-root_entry          dw 0x0000
-file_buffer_pointer dw 0x0000
-file_buffer_segment dw 0x1000
-bytes_remaining     dw 0x0000
-fsize               dw 0x0000
+drive_num           db 0x00                     ; Drive number
+cluster             dw 0x0000                   ; Cluster to load/write
+dir_id              db 0x00                     ; Directory to verify from/write to
+root_entry          dw 0x0000                   ; Directory entry number
+file_buffer_pointer dw 0x0000                   ; Index to load files into
+file_buffer_segment dw 0x1000                   ; Segment to load files into
+fat_start           db 0x00                     ; Starting 8K area to load into FAT area (0x30000 - 0x34000)
+bytes_remaining     dw 0x0000                   ; Bytes left to read
+fsize               dw 0x0000                   ; File size
+
+sectors             dd 0x00000000
+cluster_max         dw 0x0000
 
 bytes_sector        dw 0x0000
 sectors_cluster     db 0x00
@@ -1578,6 +1788,7 @@ iface_disk_found    db "Found file!", 0x00
 iface_disk_empty    db "Found empty entry!", 0x00
 iface_disk_exists   db "File already exists.", 0x00
 iface_disk_system   db "This is a system file.", 0x00
+iface_disk_applya   db "Parts of the filesystem must be reloaded, requiring the application of changes.", 0x00
 iface_disk_applyw   db "Filesystem changes must be applied.", 0x00
 iface_disk_cluster  db "Loading cluster...", 0x00
 iface_disk_write    db "Writing to cluster...", 0x00

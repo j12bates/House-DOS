@@ -34,7 +34,7 @@ chmod 777 House-DOS.IMG
 
 echo "Writing bootloader..."
 dd if=bin/BOOT.BIN of=House-DOS.IMG conv=notrunc
-fatlabel House-DOS.IMG HDOSNATE
+fatlabel House-DOS.IMG NATE
 
 echo "Mounting image..."
 rm -rf tmp
