@@ -884,6 +884,18 @@ init:                                           ; Initialization code
     mov al, byte [es:0x0024]
     mov byte [drive_num], al                    ; Save our boot drive number
 
+    cmp word [es:0x0013], 0x0000                ; Are we using the small number of sectors?
+    je .large                                   ; If not, proceed
+
+    mov ax, word [es:0x0013]
+    mov word [sectors], ax                      ; Otherwise, save as the number of sectors
+
+    jmp .fs_disk_a                              ; And proceed
+
+.large:
+    mov eax, dword [es:0x0020]
+    mov dword [sectors], eax                    ; Save the large number of sectors
+
 .fs_disk_a:
     mov al, byte [sectors_cluster]              ; Our sectors per cluster
     mov ah, 0x00                                ; Upper byte of factor is zero
@@ -904,6 +916,23 @@ init:                                           ; Initialization code
 
     add ax, word [root_start]                   ; Add the starting sector of the root directory
     mov word [clusters_start], ax               ; Save as the start of clusters
+
+    mov ax, word [sectors]
+    mov dx, word [sectors+0x02]                 ; The total number of sectors
+
+    sub ax, word [clusters_start]               ; Subtract the start of the data
+    jnc .fs_disk_c                              ; If no carry, proceed
+
+    dec dx                                      ; Otherwise, decrement upper word
+
+.fs_disk_c:
+    mov bl, byte [sectors_cluster]              ; Number of sectors per cluster
+    mov bh, 0x00                                ; Upper byte of divisor is zero
+
+    div bx                                      ; Divide to get number of clusters
+    dec ax                                      ; Clusters start at 2, avoid O.B.O.E
+
+    mov word [cluster_max], ax                  ; Save as the max cluster number
 
 .fs:
     call verify                                 ; Verify /BIN directory
@@ -1873,10 +1902,10 @@ out_routines:                                   ; Output functions
     jmp int_ret.preserve_flags                  ; We're done!
 
 .backspace:
-    pusha                                       ; Preserve register states
-
     cmp word [buffer_out_pointer], 0x0000       ; Is the pointer zero?
     je int_ret                                  ; If so, don't do anything
+
+    pusha                                       ; Preserve register states
 
     mov si, word [buffer_out_pointer]           ; Our pointer
     mov cx, 0xFFFF                              ; Negative one
@@ -1914,7 +1943,7 @@ out_routines:                                   ; Output functions
 
 ._write:
     mov cx, word [gs:buffer_endpoint]           ; Write to the end of the buffer
-    mov byte [dir_id], 0x00                     ; Write to active directory
+    mov byte [gs:dir_id], 0x00                  ; Write to active directory
     call write_file                             ; Write file to disk
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -2648,10 +2677,7 @@ disk_routines:                                  ; Disk functions
 
 .write_line:
     call data_binseg                            ; We want to access data from the command
-
-    mov byte [dir_id], 0x00                     ; Write to active directory
     call write_line                             ; Write line
-
     jmp int_ret                                 ; We're done!
 
 .insert_bytes_qty:
@@ -2739,6 +2765,7 @@ disk_routines:                                  ; Disk functions
     jc int_ret.preserve_flags                   ; If error, we're done
 
 ._write:
+    mov byte [gs:dir_id], 0x00                  ; Write to active directory
     call write_file                             ; Write file to disk
 
     jmp int_ret.preserve_flags                  ; We're done!
@@ -3026,7 +3053,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.2 NATE, Build 58; Compiled 2021-03-13", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 59; Compiled 2021-03-25", 0x00
 info_creator        db "By Jacob Bates and Ben Johnson", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
