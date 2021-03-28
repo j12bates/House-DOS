@@ -129,6 +129,7 @@ main:                                           ; Main code for House-DOS kernel
     call load_file                              ; Load the file
     jc command                                  ; If error, proceed to get a new command
 
+    mov word [file_buffer_pointer], 0x0000      ; Start from the beginning of the I/O buffer
     mov cx, ax                                  ; Our output plus the file size
     call write_file                             ; Write to disk
 
@@ -140,6 +141,7 @@ main:                                           ; Main code for House-DOS kernel
     jmp command                                 ; Proceed to get a new command
 
 .write:
+    mov word [file_buffer_pointer], 0x0000      ; Start from the beginning of the I/O buffer
     mov cx, word [buffer_endpoint]              ; The endpoint is the number of bytes in the output
     call write_file                             ; Write to disk
 
@@ -935,10 +937,27 @@ init:                                           ; Initialization code
     mov word [cluster_max], ax                  ; Save as the max cluster number
 
 .fs:
+    mov byte [dir_id], 0x02                     ; Located in segment 0x3800
     call verify                                 ; Verify /BIN directory
     jc reboot_fatal                             ; If not found, fatal error
 
     mov cl, 0x01                                ; Secondary directory
+    call load_dir                               ; Load directory
+    jc reboot_fatal                             ; If not found, fatal error
+
+    call setup_segments                         ; Work with kernel data
+    mov si, dir_home                            ; /HOME name
+    mov di, filename                            ; Filename buffer
+    mov cx, 0x0008                              ; 8 characters
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes
+
+    mov byte [dir_id], 0x02                     ; Also in segment 0x3800
+    call verify                                 ; Verify /HOME directory
+    jc reboot_fatal                             ; If not found, fatal error
+
+    mov cl, 0x00                                ; Active directory
     call load_dir                               ; Load directory
     jc reboot_fatal                             ; If not found, fatal error
 
@@ -1942,6 +1961,7 @@ out_routines:                                   ; Output functions
     jc int_ret.preserve_flags                   ; If error, we're done
 
 ._write:
+    mov word [gs:file_buffer_pointer], 0x0000   ; Start from the beginning of the I/O buffer
     mov cx, word [gs:buffer_endpoint]           ; Write to the end of the buffer
     mov byte [gs:dir_id], 0x00                  ; Write to active directory
     call write_file                             ; Write file to disk
@@ -2765,6 +2785,7 @@ disk_routines:                                  ; Disk functions
     jc int_ret.preserve_flags                   ; If error, we're done
 
 ._write:
+    mov word [gs:file_buffer_pointer], 0x0000   ; Start at the beginning of the I/O buffer
     mov byte [gs:dir_id], 0x00                  ; Write to active directory
     call write_file                             ; Write file to disk
 
@@ -2989,7 +3010,7 @@ int_ret:                                        ; Return back to command
     jmp int_ret.flags_used                      ; Perform interrupt return as normal
 
 
-times 0x3600 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
+times 0x3800 - ($-$$)   db 0xFF                 ; Pad up to a multiple of 256 (to make debugging easier)
 
 
 ; ========================================================================
@@ -3053,7 +3074,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.2 NATE, Build 59; Compiled 2021-03-25", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 60; Compiled 2021-03-28", 0x00
 info_creator        db "By Jacob Bates and Ben Johnson", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
