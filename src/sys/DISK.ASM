@@ -29,11 +29,11 @@ verify:                                         ; Verify that a file exists
     mov si, iface_disk_search
     call comment                                ; Comment message
 
-    push 0x3800
+    push 0x3400
     pop es                                      ; Segment our directories are loaded in
 
     mov cl, byte [gs:dir_id]                    ; Each directory is of equal length
-    and cl, 0b00000001                          ; Max ID is 1
+    and cl, 0b00000011                          ; Max ID is 3
     shl cx, 0xD                                 ; 0x2000 (8192 B) each
     mov di, cx                                  ; This is the start of our directory
 
@@ -103,7 +103,7 @@ get_file_info:                                  ; Get an item (AL=offset) from a
 
     mov si, word [gs:root_entry]                ; Read from the root entry of the file we've verified
     shl si, 0x5                                 ; There are 32 bytes per entry
-    mov bx, 0x3800
+    mov bx, 0x3400
     mov es, bx                                  ; The segment to root directory is loaded in
 
     mov ah, 0x00                                ; Clear upper byte of offset
@@ -257,7 +257,7 @@ load_file:                                      ; Load file starting at cluster 
 
 
 ; WRITE FILE TO DISK: Writes contents of file buffer to a file on the disk and applies any filesystem changes
-; IN: [filename] = Valid filename (run conv_x3_83 to set this up); [dir_id] = Directory ID; CX = File size
+; IN: [filename] = Valid filename; [dir_id] = Directory ID; CX = File size; [file_buffer_segment]:[file_buffer_pointer] = File buffer
 ; OUT: CF = Set on error
 
 write_file:                                     ; Write file buffer to disk as file
@@ -275,14 +275,32 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .end                                    ; We're done!
 
 .pre_apply:
-    mov word [file_buffer_pointer], 0x0000      ; Start reading from offset 0
+    cmp byte [filename_extension], 0x20         ; Is this a directory?
+    je .check_existence                         ; If so, skip this step
+
     mov word [fsize], cx                        ; Save our file size
 
     mov si, iface_disk_applyw
     call comment_line                           ; Comment message
 
+    push word [file_buffer_segment]
+    push word [file_buffer_pointer]             ; Preserve file buffer location
+    mov cl, byte [dir_id]                       ; Preserve directory ID
+
+    cld                                         ; Copy to backup
+    call copy_fname_buffer                      ; Back up filename buffer
+
     call prompt_apply                           ; Apply filesystem changes before writing file
+
+    pop word [file_buffer_pointer]
+    pop word [file_buffer_segment]              ; Restore file buffer location
+
     jc .abort                                   ; If not authorized, abort
+
+    mov byte [dir_id], cl                       ; Otherwise, restore directory ID
+
+    std                                         ; Restore from backup
+    call copy_fname_buffer                      ; Restore original filename
 
 .check_existence:
     call verify                                 ; Check if file with this name exists
@@ -300,11 +318,11 @@ write_file:                                     ; Write file buffer to disk as f
     mov si, iface_disk_search
     call comment                                ; Comment message
 
-    push 0x3800
+    push 0x3400
     pop es                                      ; Segment our directories are loaded in
 
     mov cl, byte [dir_id]                       ; Each directory is of equal length
-    and cl, 0b00000001                          ; Max ID is 1
+    and cl, 0b00000011                          ; Max ID is 3
     shl cx, 0xD                                 ; 0x2000 (8192 B) each
     mov di, cx                                  ; This is the start of our directory
 
@@ -368,15 +386,18 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .write_cluster                          ; Start writing data
 
 .file_exists:
+    cmp byte [filename_extension], 0x20         ; Is this a directory?
+    je .change_file_size                        ; If so, proceed
+
     mov si, iface_disk_exists
     call msg_warn                               ; Warning message/confirmation
     jc .abort                                   ; If not given, we're done
 
+.change_file_size:
     call check_attributes                       ; Check if we can write to this file
     jc .abort                                   ; If we can't, we're done
 
-.change_file_size:
-    push 0x3800
+    push 0x3400
     pop es                                      ; The segment the directories are loaded in
 
     mov di, word [root_entry]                   ; The number of the root entry
@@ -417,7 +438,7 @@ write_file:                                     ; Write file buffer to disk as f
     add ax, word [clusters_start]               ; Add the starting sector of clusters
     call conv_ls_chs                            ; Convert to CHS
 
-    mov ax, 0x1000
+    mov ax, word [file_buffer_segment]
     mov es, ax                                  ; File buffer is in this segment
     mov bx, word [file_buffer_pointer]          ; Read at this offset
 
@@ -496,6 +517,9 @@ write_file:                                     ; Write file buffer to disk as f
     jmp .free_entry                             ; Repeat
 
 .apply:
+    cmp byte [filename_extension], 0x20         ; Is this a directory?
+    je .done                                    ; If so, skip this step (unnecessary and creates a loop)
+
     call apply                                  ; Apply FAT and root changes to disk
     jc .end                                     ; If error, we're done
 
@@ -531,16 +555,16 @@ write_file:                                     ; Write file buffer to disk as f
 
 
 ; LOAD DIRECTORY: Loads a directory from a directory entry into a directory space
-; IN: [root_entry] = Directory entry number of the file; CL = Destination directory ID
+; IN: [root_entry] = Directory entry number; CL = Destination directory ID; [dir_id] = Parent directory ID
 ; OUT: CF = Set on error
 
 load_dir:                                       ; Load directory to position in filesystem segment
     pusha                                       ; Save register states to stack
 
-    push 0x3800
+    push 0x3400
     pop es                                      ; The segment our directories are loaded in
 
-    and cx, 0b00000001                          ; Max ID is 1
+    and cl, 0b00000011                          ; Max ID is 3
     shl cx, 0xD                                 ; 0x2000 (8192 B) per directory
     mov di, cx                                  ; This is the start of our directory
 
@@ -554,6 +578,36 @@ load_dir:                                       ; Load directory to position in 
     rep stosb                                   ; Overwrite with zeroes
 
     call load_file                              ; Load this directory
+
+    mov word [gs:file_buffer_segment], 0x1000   ; Reset file buffer segment
+
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; WRITE DIRECTORY: Writes a directory from a directory space to disk
+; IN: [filename] = 8-character directory name; CL = Source directory ID; [dir_id] = Parent directory ID
+; OUT: CF = Set on error
+
+write_dir:                                      ; Write directory from filesystem segment
+    pusha                                       ; Save register states to stack
+
+    and cl, 0b00000011                          ; Max ID is 3
+    shl cx, 0xD                                 ; 0x2000 (8192 B) per directory
+
+    mov word [gs:file_buffer_segment], 0x3400   ; We will be reading from our directories
+    mov word [gs:file_buffer_pointer], cx       ; At this index
+
+    call data_kernseg                           ; Work with kernel variables
+    mov di, filename_extension                  ; Filename extension
+    mov cx, 0x0003                              ; 3 characters
+    mov al, 0x20                                ; Pad with spaces for directory name
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Overwrite with zeroes
+
+    mov cx, 0x2000                              ; 0x2000 per directory
+    call write_file                             ; Write this directory
 
     mov word [gs:file_buffer_segment], 0x1000   ; Reset file buffer segment
 
@@ -584,27 +638,25 @@ apply:                                          ; Apply filesystem changes to di
 .write_root:
     call done                                   ; Done message
 
+    call setup_segments                         ; Work with kernel data
+
     mov si, iface_disk_wroot
     call comment                                ; Comment message
 
-    push 0x3800
-    pop es                                      ; The segment in which the root directory is loaded
-    mov bx, 0x0000                              ; Start at offset 0
+    mov si, dir_home                            ; /HOME directory name
+    mov di, filename                            ; Filename buffer
+    mov cx, 0x0008                              ; 8 characters
+    cld                                         ; Ensure correct direction
 
-    mov ax, word [gs:root_start]                ; Start of the root directory
-    call conv_ls_chs                            ; Convert to CHS Address
+    rep movsb                                   ; Copy bytes
 
-    mov ah, 0x03                                ; Write disk sectors
-    mov al, byte [gs:sectors_root]              ; Number of sectors in root directory
+    mov byte [dir_id], 0x02                     ; Parent directory is root
+    mov cl, 0x00                                ; This is the active directory
+    call write_dir                              ; Write directory to disk
 
-    call disk_op                                ; Perform disk operation
     jc .end                                     ; If error, we're done
 
 .done:
-    mov word [gs:renames], 0x0000               ; Reset the renames counter
-    mov word [gs:deletions], 0x0000             ; Reset the deletions counter
-    mov word [gs:vis_changes], 0x0000           ; Reset the visibility changes counter
-
     call done_el                                ; Done message, newline
 
     mov si, iface_disk_applied
@@ -635,7 +687,7 @@ rollback:                                       ; Rollback filesystem
     jc .end                                     ; If error, we're done
 
 .load_root:
-    mov ax, 0x3800
+    mov ax, 0x3400
     mov es, ax                                  ; Load root directory into this segment
 
     mov ax, word [gs:root_start]                ; First sector of root directory
@@ -684,7 +736,7 @@ list_files:                                     ; Retrieve a list of all filenam
     mov cx, 0x0200                              ; 512 entries in the root directory
 
 .entry:
-    mov ax, 0x3800
+    mov ax, 0x3400
     mov ds, ax                                  ; Segment our root directory is loaded in
 
     cmp byte [si], 0x00                         ; Is this a null character?
@@ -754,7 +806,7 @@ rename:                                         ; Rename a file
 .modify_name:
     mov si, filename                            ; Our filename
 
-    mov ax, 0x3800
+    mov ax, 0x3400
     mov es, ax                                  ; The segment our root directory is loaded in
 
     pop di                                      ; Restore the root entry
@@ -803,7 +855,7 @@ delete:                                         ; Delete a file
     call check_attributes                       ; Check if we can change this file
     jc .abort                                   ; If we can't, abort
 
-    mov ax, 0x3800
+    mov ax, 0x3400
     mov es, ax                                  ; The segment our root directory is loaded in
 
     call data_kernseg                           ; Use kernel variables
@@ -847,7 +899,7 @@ hide_reveal:                                    ; Hide/reveal a file
     mov si, word [root_entry]                   ; The directory entry for the file
     shl si, 0x5                                 ; 32 bytes per entry
 
-    mov ax, 0x3800
+    mov ax, 0x3400
     mov es, ax                                  ; The segment our root directory is loaded in
 
     mov al, byte [es:si+0x000B]                 ; Get the attribute byte
@@ -1184,7 +1236,7 @@ reset_disk:                                     ; Reset the disk
 ; IN: AH = INT 0x13 status
 ; OUT: CF = Set
 
-disk_error:
+disk_error:                                     ; Handle a disk error
     pusha                                       ; Save register states to stack
 
     mov al, ah                                  ; Move status code into lower byte of error code
@@ -1192,6 +1244,35 @@ disk_error:
 
     call error                                  ; Call on error handler
 
+    popa                                        ; Restore register states
+    ret                                         ; Return to caller
+
+
+; COPY FILENAME BUFFER: Copies the filename buffer to the backup (or vice versa)
+; IN: DF = Set to restore from backup, cleared to save to backup
+; OUT: None
+
+copy_fname_buffer:                              ; Copy between primary and backup filename buffers
+    pusha                                       ; Save register states to stack
+
+    call setup_segments                         ; Work with kernel data
+    mov si, filename                            ; Primary filename buffer
+    mov di, filename_backup                     ; Backup filename buffer
+
+    pushf                                       ; Push flags
+    pop ax                                      ; Pop here
+    test ax, 0x0400                             ; Is DF set?
+    jz .copy                                    ; If not, proceed
+
+    xchg si, di                                 ; Otherwise, swap
+
+.copy:
+    mov cx, 0x000B                              ; 11 characters in an 8.3 filename
+    cld                                         ; Ensure correct direction
+
+    rep movsb                                   ; Copy bytes
+
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -1371,32 +1452,42 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
 
 .dot:
     dec cx                                      ; Avoid an O.B.O.E
-    inc si                                      ; Get ready to read the extension
+    inc si                                      ; Extension is past this dot
 
-    cmp cx, 0x0000                              ; Do we have any room for spaces?
-    je .ext                                     ; If not, jump to copying the extension
+    jcxz .ext                                   ; If no room for spaces, proceed to copy extension
 
-.space:
-    mov byte [es:di], 0x20                      ; Pad with a space
-    inc di                                      ; Advance pointer
-    loop .space                                 ; Repeat
+    mov al, 0x20                                ; Pad with spaces
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Write spaces
 
 .ext:      
     mov cx, 0x0003                              ; 3 chars in the file EXTENSION
 
 .ext_char:
     lodsb                                       ; Load next character
+
     call capitalize_char                        ; Capitalize
+    call check_fname_legal                      ; Check if it is a legal character for a filename
+
     stosb                                       ; Store resulting character
 
-    loop .ext_char                              ; Repeat
+    cmp byte [si], 0x00                         ; Is the next byte a NULL character?
+    je .ext_end                                 ; If so, the filename is done
 
-    cmp byte [si], 0x00                         ; Is the final byte a null character?
-    jne .error_filename                         ; If not, this isn't a valid filename
+    loop .ext_char                              ; Otherwise, repeat
+    jmp .error_filename                         ; If there hasn't been a NULL, error
 
-    clc                                         ; If we're done, no error
-    
-.end:
+.ext_end:
+    dec cx                                      ; Avoid an O.B.O.E
+    jcxz .done                                  ; If no room for spaces, we're done!
+
+    mov al, 0x20                                ; Pad with spaces
+    cld                                         ; Ensure correct direction
+
+    rep stosb                                   ; Write spaces
+
+.done:
     popa                                        ; Restore register states
     ret                                         ; Return to caller
 
@@ -1404,7 +1495,7 @@ conv_x3_83:                                     ; Convert X.3 filename in DS:SI 
     mov ax, 0x0301                              ; Invalid filename
     call error                                  ; Handle this error
 
-    jmp .end                                    ; We're done
+    jmp .done                                   ; We're done
 
 
 ; CONVERT 8.3 FILENAME TO X.3: Converts an 8.3 filename to the X.3 format
@@ -1462,12 +1553,12 @@ get_file_cluster:                               ; Get the starting cluster for a
     mov al, 0x1A                                ; Read the starting cluster
     call get_file_info                          ; Get from the directory entry
 
-    mov word [cluster], ax                      ; Store as cluster number
+    mov word [gs:cluster], ax                   ; Store as cluster number
 
     mov al, 0x1C                                ; Read the file size
     call get_file_info                          ; Get from the directory entry
 
-    mov word [bytes_remaining], ax              ; Store as the number of bytes to copy
+    mov word [gs:bytes_remaining], ax           ; Store as the number of bytes to copy
 
     mov al, 0x0B                                ; Read the attribute byte
     call get_file_info                          ; Get from the directory entry
@@ -1475,7 +1566,7 @@ get_file_cluster:                               ; Get the starting cluster for a
     test al, 0b00010000                         ; Is this a directory?
     jz .done                                    ; If not, we're done!
 
-    mov word [bytes_remaining], 0x2000          ; Otherwise, load this many bytes
+    mov word [gs:bytes_remaining], 0x2000       ; Otherwise, load this many bytes
 
 .done:
     popa                                        ; Restore register states
@@ -1593,7 +1684,7 @@ is_real:                                        ; Check if a file is really a fi
 update_access_date:                             ; Update a file's access date field
     pusha                                       ; Save register states to stack
 
-    push 0x3800                                 ; The segment the root directory is loaded in
+    push 0x3400                                 ; The segment the root directory is loaded in
     call data_kernseg                           ; We will be accessing kernel veriables
 
     mov di, word [root_entry]                   ; Write to the root entry of the file
@@ -1685,7 +1776,11 @@ prompt_apply:                                   ; Prompt the user to authenticat
     call confirm                                ; Ask for confirmation
     jc .error_cancelled                         ; If not given, cancel
 
-    call apply                                  ; Otherwise, apply filesystem changes
+    mov word [gs:renames], 0x0000               ; Otherwise, reset the renames counter
+    mov word [gs:deletions], 0x0000             ; Reset the deletions counter
+    mov word [gs:vis_changes], 0x0000           ; Reset the visibility changes counter
+
+    call apply                                  ; Apply filesystem changes
 
 .end:
     popa                                        ; Restore register states
@@ -1730,7 +1825,11 @@ disk_data:
 
 filename            db "BIN     "               ; Set up for /BIN directory at initialization
 filename_extension  db "   "
+
+filename_backup     db "           "            ; Backup filename buffer (for applying changes while writing a file)
+
 device_extension    db "DEV"
+dir_home            db "HOME    "               ; /HOME directory name
 
 drive_num           db 0x00                     ; Drive number
 cluster             dw 0x0000                   ; Cluster to load/write

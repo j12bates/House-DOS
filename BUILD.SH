@@ -44,6 +44,7 @@ mount House-DOS.IMG tmp
 echo "Copying kernel..."
 cp bin/SYS.BIN tmp/
 fatattr +s tmp/SYS.BIN
+mkdir tmp/HOME/
 
 echo "Copying commands & programs..."
 mkdir tmp/BIN/
