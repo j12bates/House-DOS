@@ -91,6 +91,12 @@ main:
     mov ah, 0x15                        ; Get next keypress
     int 0x7E
 
+    cmp ah, 0x49                        ; Was it PAGE UP?
+    je .pg_up                           ; If so, up one page
+
+    cmp ah, 0x48                        ; Was it UP ARROW?
+    je .up                              ; If so, up one row
+
     cmp ah, 0x50                        ; Was it the DOWN ARROW?
     je .down                            ; If so, down one row
 
@@ -101,6 +107,18 @@ main:
     je .done                            ; If so, we're done!
 
     jmp .input                          ; Otherwise, try again
+
+.pg_up:
+    mov cx, 0x0018                      ; 24 rows
+    call move_rows_up                   ; Move up
+
+    jmp .repaint                        ; Repaint screen
+
+.up:
+    mov cx, 0x0001                      ; One row
+    call move_rows_up                   ; Move up
+
+    jmp .repaint                        ; Repaint screen
 
 .down:
     mov cx, 0x0001                      ; One row
@@ -203,6 +221,55 @@ move_rows_down:                         ; Move a certain number of rows (CX) dow
 .eof:
     mov byte [status], 0x01             ; End of input
     jmp .done                           ; We're done!
+
+
+move_rows_up:                           ; Move a certain number of rows (CX) up
+    pusha                               ; Save register states to stack
+
+.line:
+    push cx                             ; Preserve counter
+
+    mov ax, 0x5910                      ; Get line info
+    mov cx, word [start_line]           ; The starting line
+    int 0x7E
+
+    cmp word [start_line_rows], 0x0000  ; Do we have any rows above us?
+    je .retreat_line                    ; If not, go back a line
+
+    dec word [start_line_rows]          ; Otherwise, move up one row
+
+    pop cx                              ; Restore counter
+    loop .line                          ; And repeat
+
+    jmp .done                           ; If we've reached this point, we're done!
+
+.retreat_line:
+    pop cx                              ; Pop counter
+    cmp word [start_line], 0x0000       ; Are we at the very first line?
+    je .done                            ; If so, we're done!
+    push cx                             ; Otherwise, push counter
+
+    mov ax, 0x5910                      ; Get line info
+    mov cx, word [start_line]           ; The starting line
+    dec cx                              ; Next line up
+    int 0x7E
+
+    mov ax, cx                          ; Line length
+    mov dx, 0x0000                      ; Upper word of dividend is zero
+    mov bx, 0x0050                      ; The number of bytes per row
+    div bx                              ; Divide to get number of rows
+
+    pop cx                              ; Restore counter
+    jc .done                            ; If invalid line number, we're done
+
+    dec word [start_line]               ; Otherwise, start with previous line
+    mov word [start_line_rows], ax      ; Start at the lowest possible row
+
+    loop .line                          ; Repeat
+
+.done:
+    popa                                ; Restore register states
+    ret                                 ; Return to caller
 
 
 data:
