@@ -1038,7 +1038,7 @@ fat_entry:                                      ; Read/write a specific entry in
     shr ax, 0x2                                 ; Remove the FAT16 remnant, and convert nibbles to bytes
     mov bx, 0xF000                              ; Mask out the final three nibbles (12 bits)
 
-    test si, 0x0001                             ; Is this entry even?
+    test si, 0x0002                             ; Is this entry even? (We shifted left)
     mov si, ax                                  ; The product is our address
     jz .ins                                     ; If so, proceed
 
