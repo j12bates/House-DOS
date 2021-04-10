@@ -1007,6 +1007,9 @@ fat_entry:                                      ; Read/write a specific entry in
     cmp si, word [gs:cluster_max]               ; Is it above the maximum?
     ja .invalid                                 ; If so, error
 
+    cmp word [gs:cluster_max], 0x0FF7           ; Is this FAT12?
+    jb .address                                 ; If so, don't worry about FAT loading... we have it all
+
     mov al, byte [gs:fat_start]                 ; Starting 8K chunk
     shl ax, 0xC                                 ; 0x2000 each, but there are two bytes per entry
     sub si, ax                                  ; Subtract this offset
@@ -1019,20 +1022,55 @@ fat_entry:                                      ; Read/write a specific entry in
     jc .abort                                   ; If error, abort
     jmp .check_entry                            ; And repeat
 
-.ins:
+.address:
     push 0x3000                                 ; The segment where the FAT is loaded
     pop es                                      ; Work from here
 
     shl si, 0x1                                 ; Two bytes per entry
+    mov bx, 0x0000                              ; Empty bitmask
 
+    cmp word [gs:cluster_max], 0x0FF7           ; Is this FAT12?
+    jae .ins                                    ; If not, proceed
+
+    mov ax, 0x0003                              ; Otherwise, 3 nibbles per entry
+    mul si                                      ; Multiply by 3
+
+    shr ax, 0x2                                 ; Remove the FAT16 remnant, and convert nibbles to bytes
+    mov bx, 0xF000                              ; Mask out the final three nibbles (12 bits)
+
+    test si, 0x0001                             ; Is this entry even?
+    mov si, ax                                  ; The product is our address
+    jz .ins                                     ; If so, proceed
+
+    shl dx, 0x4                                 ; Otherwise, use left three nibbles
+    mov bx, 0x000F                              ; Reflect this in our bitmask
+
+.ins:
     popf                                        ; Restore flags
-    jnc .done                                   ; If CF cleared, proceed to the end
+    jnc .read                                   ; If read, proceed to read the entry
 
-    mov word [es:si], dx                        ; Otherwise, overwrite this entry
+    and word [es:si], bx                        ; Otherwise, clear out the bytes we're writing
+    not bx                                      ; Invert mask
+    and dx, bx                                  ; Clear out the bytes we're not writing
+
+    or word [es:si], dx                         ; Overwrite this entry
+    clc                                         ; No error
+
+    jmp .done                                   ; We're done!
+
+.read:
+    mov dx, word [es:si]                        ; Read the corresponding entry in the FAT (or what we just wrote)
+    not bx                                      ; Invert mask
+    and dx, bx                                  ; Clear the bytes that aren't part of the entry
+
+    cmp bx, 0xFFF0                              ; Is the entry to the left?
+    clc                                         ; No error
+    jne .done                                   ; If not, we're done!
+
+    shr dx, 0x4                                 ; Otherwise, shift bits into place
     clc                                         ; No error
 
 .done:
-    mov dx, word [es:si]                        ; Read the corresponding entry in the FAT (or what we just wrote)
     mov word [register_bckp_a], dx              ; Preserve entry
 
     popa                                        ; Restore register states
@@ -1066,11 +1104,19 @@ interpret_fat:                                  ; Interpret entry from FAT
     call fat_entry                              ; Get next entry from FAT
     jc .done                                    ; If error, we're done
 
+    mov ax, 0xFFF8                              ; EOF marker for FAT16
+
+    cmp word [gs:cluster_max], 0x0FF7           ; Is this FAT12?
+    jae .handle                                 ; If not, proceed
+
+    and ax, 0x0FFF                              ; Otherwise, left nibble isn't part of entry
+
 .handle:
-    cmp dx, 0xFFF8                              ; Is this the end of the file?
+    cmp dx, ax                                  ; Is this the end of the file?
     jae .end_file                               ; If so, return appropriately
 
-    cmp dx, 0xFFF7                              ; Is this marked as bad?
+    dec ax                                      ; Bad cluster marker
+    cmp dx, ax                                  ; Is this marked as bad?
     je .error_bsec                              ; If so, error
 
     cmp dx, 0x0002                              ; Is this an invalid cluster number?
