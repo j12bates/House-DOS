@@ -1015,7 +1015,7 @@ fat_entry:                                      ; Read/write a specific entry in
     sub si, ax                                  ; Subtract this offset
 
     cmp si, 0x2000                              ; Are we accessing an entry that isn't loaded?
-    jb .ins                                     ; If not, proceed
+    jb .address                                 ; If not, proceed
 
     clc                                         ; Otherwise, auto-align
     call align_fat                              ; Perform an alignment
