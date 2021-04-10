@@ -3074,7 +3074,7 @@ usage               db "SYS", 0x0A
                     db "H - Show hidden files", 0x00
 
 ; Information strings
-info_os             db "House-DOS v0.1.2 NATE, Build 61; Compiled 2021-04-11", 0x00
+info_os             db "House-DOS v0.1.2 NATE, Build 61; Compiled 2021-04-09", 0x00
 info_creator        db "By Jacob Bates and Ben Johnson", 0x00
 info_cpu            dq 0x0000000000000000
                     dq 0x0000000000000000
