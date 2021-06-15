@@ -269,6 +269,9 @@ write_file:                                     ; Write file buffer to disk as f
     call verify_dev                             ; Otherwise, verify device file
     jc .end                                     ; If invalid, we're done
 
+    ;cmp word [gs:cluster_max], 0x0FF7           ; Is this a FAT12 volume?
+    ;jb .error_fat12                             ; If so, error
+
     mov al, byte [gs:dev]                       ; Otherwise, our device ID
     call write_dev                              ; Write to device file
     clc                                         ; No error
@@ -463,11 +466,9 @@ write_file:                                     ; Write file buffer to disk as f
     call fat_entry                              ; Get entry from FAT
     jc .done                                    ; If error, we're done
 
-    cmp dx, 0x0002                              ; Is this entry free or invalid?
-    jbe .change_fat_entry                       ; If so, next available cluster
-
-    cmp dx, 0xFFF8                              ; Is this an EOF marker?
-    jae .change_fat_entry                       ; if so, next available cluster
+    std                                         ; Don't produce errors
+    call interpret_fat                          ; Interpret FAT entry
+    jc .change_fat_entry                        ; If not pointing somewhere, next available cluster
 
     mov word [cluster], dx                      ; Otherwise, this is the next cluster
     jmp .write_cluster                          ; Write next cluster
@@ -501,7 +502,7 @@ write_file:                                     ; Write file buffer to disk as f
     cmp dx, 0x0002                              ; Was this cluster previously free or invalid?
     jbe .apply                                  ; If so, we're done changing the FAT
 
-    cmp dx, 0xFFF7                              ; Was this a bad sector or an EOF?
+    cmp dx, word [cluster_max]                  ; Was this a bad sector or an EOF?
     jae .apply                                  ; If so, we're also done changing the FAT
 
     mov word [cluster], dx                      ; Otherwise, it is a new cluster number
@@ -687,16 +688,21 @@ rollback:                                       ; Rollback filesystem
     jc .end                                     ; If error, we're done
 
 .load_root:
-    mov ax, 0x3400
-    mov es, ax                                  ; Load root directory into this segment
+    call setup_segments                         ; Work with kernel data
+    mov si, dir_home                            ; /HOME name
+    mov di, filename                            ; Filename buffer
+    mov cx, 0x000C                              ; 11 characters
+    cld                                         ; Ensure correct direction
 
-    mov ax, word [gs:root_start]                ; First sector of root directory
-    call conv_ls_chs                            ; Convert to CHS address
+    rep movsb                                   ; Copy bytes
 
-    mov ah, 0x02                                ; Read disk sectors
-    mov al, byte [gs:sectors_root]              ; Number of sectors in root directory
+    mov byte [dir_id], 0x02                     ; Also in segment 0x3800
+    call verify                                 ; Verify /HOME directory
+    jc reboot_fatal                             ; If not found, fatal error
 
-    call disk_op                                ; Perform disk operation
+    mov cl, 0x00                                ; Active directory
+    call load_dir                               ; Load directory
+    jc reboot_fatal                             ; If not found, fatal error
     jc .end                                     ; If error, we're done
 
 .done:
@@ -1032,8 +1038,12 @@ fat_entry:                                      ; Read/write a specific entry in
     cmp word [gs:cluster_max], 0x0FF7           ; Is this FAT12?
     jae .ins                                    ; If not, proceed
 
+    push dx                                     ; Preserve value
+
     mov ax, 0x0003                              ; Otherwise, 3 nibbles per entry
     mul si                                      ; Multiply by 3
+
+    pop dx                                      ; Restore value
 
     shr ax, 0x2                                 ; Remove the FAT16 remnant, and convert nibbles to bytes
     mov bx, 0xF000                              ; Mask out the final three nibbles (12 bits)
@@ -1094,8 +1104,8 @@ fat_entry:                                      ; Read/write a specific entry in
 
 
 ; INTERPRET FAT ENTRY: Retrieves the next entry from the FAT and sets flags accordingly
-; IN: [cluster] = Current cluster
-; OUT: [cluster] = Next cluster; ZF = Set for EOF; CF = Set on error
+; IN: [cluster] = Current cluster; DF = Set to omit FAT error messages
+; OUT: [cluster] = Next cluster; ZF = Set for EOF; CF = Set if FAT error
 
 interpret_fat:                                  ; Interpret entry from FAT
     pusha                                       ; Save register states to stack
@@ -1136,6 +1146,13 @@ interpret_fat:                                  ; Interpret entry from FAT
     jmp .done                                   ; We're done
 
 .error_fat:
+    pushf                                       ; Push flags
+    pop ax                                      ; Restore flags
+
+    test ax, 0x0400                             ; Is DF set?
+    stc                                         ; Carry-flag for error
+    jnz .done                                   ; If so, we're done
+
     mov ax, 0x0305                              ; Inconsistent FAT
     call error                                  ; Handle this error
 
@@ -1159,6 +1176,9 @@ load_write_fat:                                 ; Load a portion of the FAT into
     pop es                                      ; Load FAT into this segment
     mov bx, 0x0000                              ; Starting at offset 0
 
+    cmp word [gs:cluster_max], 0x0FF7           ; Is this FAT12?
+    jb .fat12                                   ; If so, write the FAT
+
     mov ax, 0x4000                              ; Bytes allocated to the FAT
     mov dx, 0x0000                              ; Upper word of dividend is zero
     div word [gs:bytes_sector]                  ; Divide to get sectors to load
@@ -1170,6 +1190,15 @@ load_write_fat:                                 ; Load a portion of the FAT into
     add ax, word [gs:reserved]                  ; Add to first sector of disk FAT 1
     call conv_ls_chs                            ; Convert to CHS address
 
+    jmp .disk                                   ; Proceed
+
+.fat12:
+    push word [gs:sectors_fat]                  ; Number of sectors in FAT
+
+    mov ax, word [gs:reserved]                  ; First sector of FAT 1
+    call conv_ls_chs                            ; Convert to CHS address
+
+.disk:
     pushf                                       ; Push flags
     pop ax                                      ; Pop into AX
 
@@ -1178,10 +1207,10 @@ load_write_fat:                                 ; Load a portion of the FAT into
     pop ax                                      ; Restore number of sectors
     mov ah, 0x02                                ; Read disk sectors
 
-    jz .disk                                    ; If so, proceed
+    jz .op                                      ; If so, proceed
     mov ah, 0x03                                ; Otherwise, write disk sectors
 
-.disk:
+.op:
     call disk_op                                ; Perform disk operation
 
 .done:
@@ -1361,9 +1390,17 @@ next_available_cluster:                         ; Get the next cluster available
 
     push 0x3000
     pop es                                      ; The segment in which the FAT is loaded
-
     mov di, 0x0000                              ; Reset pointer
-    mov cx, 0x2000                              ; Look through all the FAT entries that are loaded
+
+    mov cx, word [gs:cluster_max]               ; The total number of clusters
+    push cx                                     ; Preserve the number of entries
+    dec cx                                      ; Avoid an O.B.O.E
+    cmp cx, 0x0FF7                              ; Is this FAT12?
+    jb .fat12_even                              ; If so, use a separate loop
+
+    mov cx, 0x2000                              ; Otherwise, look through all the FAT entries that are loaded
+    add sp, 0x0002                              ; Overwrite stack entry
+    push cx                                     ; Preserve the number of entries
     cld                                         ; Ensure correct direction
 
 .check_entries:
@@ -1374,25 +1411,57 @@ next_available_cluster:                         ; Get the next cluster available
 
     jmp .error_full                             ; Otherwise, next FAT chunk
 
+.fat12_even:
+    test word [es:di], 0x0FFF                   ; Is the even entry empty?
+    jz .done                                    ; If so, we found one
+
+    dec cx                                      ; One entry down
+    jcxz .error_full                            ; If no more entries, error
+
+.fat12_odd:
+    test word [es:di+0x01], 0xFFF0              ; Is the odd entry empty?
+    jz .done                                    ; If so, we found one
+
+    add di, 0x0003                              ; Otherwise, move on to next pair of entries
+    loop .fat12_even                            ; And repeat
+
+    jmp .error_full                             ; If we reach this point, error
+
 .done:
-    shr di, 0x1                                 ; Convert to a relative entry number
-    dec di                                      ; The pointer was moved forward
-    mov al, byte [gs:fat_start]                 ; Get starting 8K chunk of FAT
-    shl ax, 0xC                                 ; 0x2000 each, but 2 bytes per entry
-    add ax, di                                  ; Add relative entry number
-    inc di
-    shl di, 0x1                                 ; Restore index
+    pop ax                                      ; Restore total number of entries
+    push ax                                     ; Re-push
+    sub ax, cx                                  ; Subtract counter to get current entry
+    dec ax                                      ; Avoid an O.B.O.E
+    mov dl, byte [gs:fat_start]                 ; Get starting 8K chunk of FAT
+    shl dx, 0xC                                 ; 0x2000 each, but 2 bytes per entry
+    add ax, dx                                  ; Add together
 
     cmp word [gs:cluster], ax                   ; Is this the exception cluster?
-    je .check_entries                           ; If so, skip
+    je .continue                                ; If so, skip
 
     cmp ax, 0x0002                              ; Is this an invalid cluster?
-    jb .check_entries                           ; If so, skip
+    jb .continue                                ; If so, skip
+
+    add sp, 0x0002                              ; If search is over, balance stack
 
     cmp ax, word [gs:cluster_max]               ; Is this above the maximum cluster number?
     ja .error_full                              ; If so, we're out of entries
 
     clc                                         ; Otherwise, no error
+    jmp .end                                    ; We're done!
+
+.continue:
+    cmp word [gs:cluster_max], 0x0FF7           ; Is this FAT12?
+    jae .check_entries                          ; If not, use this loop
+
+    dec cx                                      ; Otherwise, decrement the index
+    jcxz .error_full                            ; If no more entries, error
+
+    test ax, 0x0001                             ; Was this an odd entry?
+    jz .fat12_odd                               ; If not, continue with odd entry
+
+    add di, 0x0003                              ; Otherwise, move on to next pair of entries
+    jmp .fat12_even                             ; Continue with even entry
 
 .end:
     mov word [gs:register_bckp_a], ax           ; Preserve cluster number
@@ -1875,7 +1944,7 @@ filename_extension  db "   "
 filename_backup     db "           "            ; Backup filename buffer (for applying changes while writing a file)
 
 device_extension    db "DEV"
-dir_home            db "HOME    "               ; /HOME directory name
+dir_home            db "HOME       "            ; /HOME directory name
 
 drive_num           db 0x00                     ; Drive number
 cluster             dw 0x0000                   ; Cluster to load/write

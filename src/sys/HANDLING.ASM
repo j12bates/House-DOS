@@ -161,6 +161,9 @@ error:                                          ; The error handler
     cmp ax, 0x0307
     je fs_errors.full_dir                       ; No directory entries available
 
+    cmp ax, 0x0308
+    je fs_errors.invalid_cluster                ; Invalid cluster number
+
     cmp ax, 0x0320
     je fs_errors.real                           ; Not a real file
 
