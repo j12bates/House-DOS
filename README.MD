@@ -15,8 +15,6 @@ You will need the Netwide Assembler (NASM).
 1. Create a disk image by running `BUILD.SH` as root.
 2. Virtualize as an HDD in QEMU, or write to a storage medium greater than 32M and boot to it.
 
-Alternatively, you can download a disk image from [jetpham.com](http://jetpham.com/Storage/House/House-DOS).
-
 ## Creating Programs & Commands:
   House-DOS commands are written in real-mode x86 assembly. There are many different system calls available for many specific tasks; here are a few examples:
 - Printing characters to the console
